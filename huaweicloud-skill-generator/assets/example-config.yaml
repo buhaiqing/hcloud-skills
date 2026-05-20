@@ -1,0 +1,94 @@
+# Huawei Cloud Skill Generator - Example Configuration
+# This file demonstrates the configuration structure for a generated skill.
+
+skill:
+  name_prefix: "huaweicloud"
+  name_suffix: "ops"
+  separator: "-"
+  # Example: huaweicloud-ecs-ops
+
+execution:
+  primary: "cli"       # cli | sdk
+  fallback: "jit-go"   # jit-go | none
+  cli_tool: "hcloud"   # hcloud CLI or openstack CLI
+  
+credentials:
+  access_key_env: "HW_ACCESS_KEY_ID"
+  secret_key_env: "HW_SECRET_ACCESS_KEY"
+  region_env: "HW_REGION_ID"
+  project_env: "HW_PROJECT_ID"
+  masking: "***"  # credential masking pattern
+
+sdk:
+  package: "github.com/huaweicloud/huaweicloud-sdk-go-v3"
+  version_latest: "v0.1.191"
+  version_minimum: "1.21"
+  go_version_jit: "1.25+"
+
+products:
+  ecs:
+    name: "Elastic Cloud Server"
+    chinese_name: "弹性云服务器"
+    service_slug: "ecs"
+    cli_tool: "hcloud"
+    resource_types: ["Instance", "Disk", "Snapshot", "KeyPair"]
+    primary_api: "https://support.huaweicloud.com/api-ecs/"
+    sdk_package: "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2"
+  rds:
+    name: "Relational Database Service"
+    chinese_name: "云数据库 RDS"
+    service_slug: "rds"
+    resource_types: ["Instance", "Backup", "Parameter"]
+    primary_api: "https://support.huaweicloud.com/api-rds/"
+    sdk_package: "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/rds/v3"
+  ces:
+    name: "Cloud Eye Service"
+    chinese_name: "云监控服务"
+    service_slug: "ces"
+    resource_types: ["AlarmRule", "Metric", "Dashboard"]
+    primary_api: "https://support.huaweicloud.com/api-ces/"
+    sdk_package: "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1"
+
+finops:
+  billing_models: ["pay-per-use", "subscription", "spot"]
+  idle_threshold:
+    cpu_percent: 10
+    consecutive_days: 7
+  right_sizing_thresholds:
+    downgrade_cpu: 20
+    downgrade_mem: 30
+    upgrade_cpu: 80
+    upgrade_mem: 85
+
+secops:
+  credential_rotation_days: 90
+  mfa_recommended: true
+  encryption:
+    at_rest: "KMS"
+    in_transit: "TLS 1.2+"
+  threat_detection:
+    hss_enabled: true
+    waf_integration: true
+
+aiops:
+  min_anomaly_patterns: 4
+  min_fault_patterns: 3
+  min_cascade_patterns: 1
+  storm_detection:
+    max_alarms_per_5min: 10
+    max_alarms_per_resource: 3
+  self_healing:
+    target_success_rate: 80
+    target_duration_seconds: 30
+    max_user_intervention_percent: 20
+
+ux:
+  max_onboarding_seconds: 60
+  max_prompts_per_operation: 3
+  error_format: "[ERROR] code: summary → explanation → fix → next step"
+
+quality_gates:
+  p0_required: true
+  p1_recommended: true
+  adversarial_review: true
+  eval_query_minimum: 20

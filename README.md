@@ -1,2 +1,164 @@
 # hcloud-skills
-华为云skills
+
+华为云（Huawei Cloud）运维 Agent Skills 集合。
+
+## 概述
+
+本项目是华为云运维 Agent Skills 的生成器与集合。提供云产品的自动化运维、监控、成本管理、安全治理和智能诊断能力。
+
+> **Skills Farm 是一套 Meta Skill（元技能）体系**——将运维知识转化为结构化的、AI Agent 可解析、可执行、可验证的声明式规范。
+
+## 核心价值
+
+| 特性 | 说明 |
+|------|------|
+| **三支柱集成** | FinOps（财务运营）+ SecOps（安全运营）+ AIOps（智能运营）内建于每个 Skill |
+| **占位符机制** | `{{env.*}}`（环境变量）、`{{user.*}}`（用户输入）、`{{output.*}}`（输出捕获），实现人机双通道 |
+| **职责委托** | `SHOULD/SHOULD NOT Use` 定义边界，跨产品操作自动委派 |
+| **生成器** | 基于 OpenAPI 规范自动生成 Skill 框架模板，支持人工审核和完善 |
+| **CLI-first 执行** | 优先使用 `hcloud` CLI，不支持时 JIT 构建 Go SDK 脚本 |
+| **安全机制** | 凭证隔离（`{{env.*}}` 不暴露）、操作安全门（删除/恢复需确认） |
+| **卓越架构** | 五支柱（安全、稳定、成本、效率、性能）+ FinOps + SecOps + AIOps 全覆盖 |
+
+## 项目结构
+
+```
+hcloud-skills/
+├── README.md
+├── LICENSE
+└── huaweicloud-skill-generator/          # Skill 生成器（Meta Skill）
+    ├── SKILL.md                          # 生成器主文件
+    ├── assets/
+    │   ├── eval_queries.json             # 触发准确率评估查询
+    │   └── example-config.yaml           # 配置示例
+    └── references/
+        ├── huaweicloud-skill-template.md # SKILL.md 模板
+        ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+        ├── aiops-best-practices.md        # AIOps 最佳实践
+        ├── governance-and-adversarial-review.md # 治理与对抗审查
+        ├── enhanced-self-healing-framework.md   # 自愈框架
+        ├── execution-environment.md       # 执行环境配置
+        ├── cli-behavior.md               # CLI 行为参考
+        ├── user-experience-spec.md        # UX 规范
+        ├── optimization-analysis.md       # 优化分析框架
+        └── prompt-library.md             # 提示词手册
+```
+
+## 三支柱运维体系
+
+### FinOps（财务运营）
+
+| 能力 | 说明 |
+|------|------|
+| 成本可见性 | 计费模式对比（按需 vs 包年包月 vs 竞价）、成本标签策略、费用中心集成 |
+| 成本优化 | 闲置资源检测、适配矩阵（利用率→推荐）、生命周期成本管理 |
+| 成本问责 | 预算告警（80%/90%/100%阈值）、成本中心分摊 |
+
+### SecOps（安全运营）
+
+| 能力 | 说明 |
+|------|------|
+| 身份安全 | IAM 最小权限、AK/SK 轮换（90天）、MFA 强制、凭证委托 |
+| 网络安全 | VPC Endpoint 隔离、安全组最佳实践、DDoS 防护 |
+| 数据安全 | KMS 加密、TDE 透明加密、审计日志（≥180天）、数据泄露防护 |
+| 威胁检测 | HSS 主机安全集成、WAF 联动、漏洞扫描 |
+
+### AIOps（智能运营）
+
+| 能力 | 说明 |
+|------|------|
+| 多指标关联分析 | ≥ 4 种异常模式（资源压力、趋势、突变、关联） |
+| 跨技能诊断委托 | 命名空间 → 主/次诊断 Skill 路由矩阵 |
+| 知识库 | ≥ 3 产品故障模式 + ≥ 2 跨产品级联故障 |
+| 告警风暴处理 | 频率检测、聚合抑制、根资源识别 |
+| 主动巡检 | 发现→采集→检测→诊断→报告 闭环 |
+| 自愈框架 | 预检→智能下载→安装→验证，多级降级路径 |
+
+## 快速开始
+
+### 1. 安装 Huawei Cloud CLI
+
+**One-click install (Linux):**
+```bash
+curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
+```
+
+**macOS:**
+```bash
+curl -sSL https://ap-southeast-3-hwcloudcli.obs.ap-southeast-3.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
+```
+
+**Verify:**
+```bash
+hcloud version
+# Current KooCLI version: 4.1.6
+```
+
+### 2. 配置凭证
+
+```bash
+export HW_ACCESS_KEY_ID="your-access-key-id"
+export HW_SECRET_ACCESS_KEY="your-secret-access-key"
+export HW_REGION_ID="cn-north-4"
+export HW_PROJECT_ID="your-project-id"
+```
+
+### 3. 生成新 Skill
+
+在 Agent Runtime 中引用生成器，然后提供提示词：
+
+> "生成 huaweicloud-ecs-ops Skill，核心功能：实例生命周期管理、磁盘、快照，包含 FinOps 成本优化和 SecOps 安全治理"
+
+## 华为云服务映射
+
+| 华为云服务 | 缩写 | Go SDK Package | 主要操作 |
+|-----------|------|---------------|---------|
+| 弹性云服务器 | ECS | `services/ecs/v2` | Create, Delete, Describe, Resize |
+| 云数据库 RDS | RDS | `services/rds/v3` | Instance, Backup, Restore |
+| 云监控服务 | CES | `services/ces/v1` | Alarm, Metric, Dashboard |
+| 虚拟私有云 | VPC | `services/vpc/v3` | VPC, Subnet, SecurityGroup |
+| 弹性负载均衡 | ELB | `services/elb/v3` | Listener, Pool, Health |
+| 云容器引擎 | CCE | `services/cce/v3` | Cluster, Node, Addon |
+| 分布式缓存 | DCS | `services/dcs/v2` | Instance, Backup, Resize |
+| 主机安全服务 | HSS | `services/hss/v5` | Host, Vulnerability, Event |
+| Web应用防火墙 | WAF | `services/waf/v1` | Policy, Rule, Domain |
+| 云日志服务 | LTS | `services/lts/v2` | Log Group, Stream, Search |
+| 对象存储 | OBS | `services/obs` | Bucket, Object, ACL |
+| GaussDB | GaussDB | `services/gaussdb/v3` | Instance, Backup, Monitor |
+
+## 生成质量门
+
+每个生成的 Skill 必须通过 **P0 强制检查清单**：
+
+### 基础标准
+- [ ] SHOULD/SHOULD NOT Use 触发条件完整
+- [ ] 预检→执行→验证→恢复 流程完备
+- [ ] ≥ 10 个产品错误码及恢复策略
+- [ ] 破坏性操作安全门
+- [ ] 凭证掩蔽（`***`）
+
+### FinOps 检查
+- [ ] 计费模式对比表
+- [ ] 闲置资源检测模式
+- [ ] 适配矩阵（利用率→推荐操作）
+- [ ] 成本标签策略
+
+### SecOps 检查
+- [ ] IAM 最小权限表
+- [ ] VPC/安全组隔离指导
+- [ ] 加密（静态+传输中）文档
+- [ ] HSS/WAF 威胁检测触发条件
+
+### AIOps 检查
+- [ ] ≥ 4 种异常模式及检测逻辑
+- [ ] 跨技能委托矩阵
+- [ ] 故障模式知识库
+- [ ] 告警风暴聚合处理
+
+## 参考资源
+
+- [Huawei Cloud Go SDK](https://github.com/huaweicloud/huaweicloud-sdk-go-v3)
+- [Huawei Cloud API Docs](https://support.huaweicloud.com/api/)
+- [Huawei Cloud CLI](https://support.huaweicloud.com/hcli/index.html)
+- [Huawei Cloud Well-Architected Framework](https://support.huaweicloud.com/topic/68733-1-I)
+- [Agent Skills Open Specification](https://agentskills.io/specification)
