@@ -1,0 +1,49 @@
+# Example: DMS Kafka Production Instance
+name: "prod-kafka-cluster"
+engine: "kafka"
+engine_version: "2.7"
+specification: "kafka.4u8g.cluster"
+broker_num: 3
+storage_space: 500  # GB per broker
+vpc_id: "vpc-abc123"
+subnet_id: "subnet-abc123"
+security_group_id: "sg-abc123"
+maintain_begin: "02:00"
+maintain_end: "06:00"
+enable_auto_topic: false
+
+# Topics
+topics:
+  - name: "order-events"
+    partition_num: 12
+    replication_factor: 3
+    retention_hours: 48
+  - name: "payment-events"
+    partition_num: 6
+    replication_factor: 3
+    retention_hours: 168
+  - name: "inventory-updates"
+    partition_num: 6
+    replication_factor: 2
+    retention_hours: 24
+
+# Backup Policy
+backup_policy:
+  enabled: true
+  schedule: "0 0 * * *"  # Daily at midnight
+  retention_days: 30
+
+# Monitoring
+alarms:
+  - metric: "broker_cpu_usage"
+    threshold: 80
+    period: 300
+  - metric: "kafka_messages_consumer_lag"
+    threshold: 100000
+    period: 600
+
+# Tags
+tags:
+  env: "production"
+  team: "platform"
+  cost_center: "infra-ops"

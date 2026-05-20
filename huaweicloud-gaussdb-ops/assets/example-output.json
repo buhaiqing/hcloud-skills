@@ -1,0 +1,218 @@
+{
+  "list_instances_response": {
+    "api": "GET /v3.3/{project_id}/instances",
+    "description": "List all GaussDB instances",
+    "response": {
+      "instances": [
+        {
+          "id": "ed7cc6166ec24360a5ed5c5c9c2ed726in14",
+          "name": "prod-gauss-01",
+          "status": "ACTIVE",
+          "port": 8000,
+          "type": "Enterprise",
+          "ha": {
+            "replication_mode": "strong",
+            "consistency": "strong"
+          },
+          "region": "ap-southeast-1",
+          "datastore": {
+            "type": "GaussDB",
+            "version": "V2.0-3.2"
+          },
+          "flavor_ref": "gaussdb.opengauss.4xlarge.x864.8",
+          "flavor_info": {
+            "vcpus": 8,
+            "memory": 32
+          },
+          "volume": {
+            "type": "ULTRAHIGH",
+            "size": 500
+          },
+          "disk_encryption_id": "2dcfd40a-8f32-46b8-8a47-6cfab5eba163",
+          "private_ips": ["192.168.1.100"],
+          "public_ips": [],
+          "db_user_name": "root",
+          "vpc_id": "vpc-abc123",
+          "subnet_id": "subnet-def456",
+          "security_group_id": "sg-ghi789",
+          "backup_strategy": {
+            "start_time": "02:00:00",
+            "keep_days": 7,
+            "period": "1,3,5"
+          },
+          "maintenance_window": "Sunday-03:00-04:00",
+          "nodes": [
+            {"id": "node1", "role": "master", "status": "ACTIVE", "availability_zone": "az1", "component_names": "dn_6001:60011"},
+            {"id": "node2", "role": "slave", "status": "ACTIVE", "availability_zone": "az2", "component_names": "dn_6001:60011"},
+            {"id": "node3", "role": "slave", "status": "ACTIVE", "availability_zone": "az3", "component_names": "dn_6001:60011"}
+          ],
+          "created": "2026-03-15T08:30:00+0800",
+          "updated": "2026-05-20T14:22:00+0800",
+          "disk_usage": "42%",
+          "backup_used_space": 128000,
+          "time_zone": "UTC+08:00",
+          "charge_info": {
+            "charge_mode": "postPaid"
+          }
+        }
+      ],
+      "total_count": 1
+    }
+  },
+
+  "show_instance_detail_response": {
+    "api": "GET /v3.3/{project_id}/instances/{instance_id}",
+    "description": "Show single GaussDB instance detail",
+    "response": {
+      "id": "ed7cc6166ec24360a5ed5c5c9c2ed726in14",
+      "name": "prod-gauss-01",
+      "status": "ACTIVE",
+      "port": 8000,
+      "type": "Enterprise",
+      "ha": {
+        "replication_mode": "strong",
+        "consistency": "strong"
+      },
+      "flavor_ref": "gaussdb.opengauss.4xlarge.x864.8",
+      "volume": {
+        "type": "ULTRAHIGH",
+        "size": 500
+      },
+      "disk_usage": "42%",
+      "backup_used_space": 128000,
+      "private_ips": ["192.168.1.100"],
+      "public_ips": [],
+      "db_user_name": "root",
+      "vpc_id": "vpc-abc123",
+      "subnet_id": "subnet-def456",
+      "security_group_id": "sg-ghi789",
+      "backup_strategy": {
+        "start_time": "02:00:00",
+        "keep_days": 7,
+        "period": "1,3,5"
+      },
+      "maintenance_window": "Sunday-03:00-04:00",
+      "disk_encryption_id": "2dcfd40a-8f32-46b8-8a47-6cfab5eba163",
+      "time_zone": "UTC+08:00",
+      "charge_info": {
+        "charge_mode": "postPaid"
+      },
+      "nodes": [
+        {"id": "node1", "role": "master", "status": "ACTIVE", "availability_zone": "az1"},
+        {"id": "node2", "role": "slave", "status": "ACTIVE", "availability_zone": "az2"},
+        {"id": "node3", "role": "slave", "status": "ACTIVE", "availability_zone": "az3"}
+      ]
+    }
+  },
+
+  "list_backups_response": {
+    "api": "GET /v3/{project_id}/backups",
+    "description": "List backups for an instance",
+    "response": {
+      "backups": [
+        {
+          "id": "a696cd25e4fc453aa503650225cece8bbr14",
+          "name": "GaussDB-prod-gauss-01-20260520020110",
+          "description": "Automated backup",
+          "status": "COMPLETED",
+          "size": 2048.0,
+          "type": "auto",
+          "datastore": {"type": "GaussDB", "version": "V2.0-3.2"},
+          "instance_id": "ed7cc6166ec24360a5ed5c5c9c2ed726in14",
+          "begin_time": "2026-05-20T02:01:10+0800",
+          "end_time": "2026-05-20T02:04:31+0800"
+        },
+        {
+          "id": "5651c62a7f12461c98020dd3abfe24ccbr14",
+          "name": "GaussDB-prod-gauss-01-20260519020109",
+          "description": "Automated backup",
+          "status": "COMPLETED",
+          "size": 2040.0,
+          "type": "auto",
+          "datastore": {"type": "GaussDB", "version": "V2.0-3.2"},
+          "instance_id": "ed7cc6166ec24360a5ed5c5c9c2ed726in14",
+          "begin_time": "2026-05-19T02:01:09+0800",
+          "end_time": "2026-05-19T02:04:28+0800"
+        }
+      ],
+      "total_count": 2
+    }
+  },
+
+  "list_flavors_response": {
+    "api": "GET /v3/{project_id}/flavors",
+    "description": "List available instance flavors",
+    "response": {
+      "flavors": [
+        {
+          "spec_code": "gaussdb.opengauss.2xlarge.x864.4",
+          "vcpus": 4,
+          "memory": 16,
+          "type": "Enterprise",
+          "az_status": {
+            "ap-southeast-1a": "normal",
+            "ap-southeast-1b": "normal"
+          },
+          "version": "V2.0-3.2"
+        },
+        {
+          "spec_code": "gaussdb.opengauss.4xlarge.x864.8",
+          "vcpus": 8,
+          "memory": 32,
+          "type": "Enterprise",
+          "az_status": {
+            "ap-southeast-1a": "normal",
+            "ap-southeast-1b": "normal"
+          },
+          "version": "V2.0-3.2"
+        }
+      ]
+    }
+  },
+
+  "list_databases_response": {
+    "api": "GET /v3/{project_id}/instances/{instance_id}/databases",
+    "description": "List databases on an instance",
+    "response": {
+      "databases": [
+        {
+          "name": "postgres",
+          "owner": "root",
+          "character_set": "UTF8",
+          "collate_set": "en_US.UTF-8",
+          "size": "15 MB",
+          "compatibility_type": "GaussDB"
+        },
+        {
+          "name": "appdb",
+          "owner": "app_admin",
+          "character_set": "UTF8",
+          "collate_set": "en_US.UTF-8",
+          "size": "25 MB",
+          "compatibility_type": "GaussDB"
+        }
+      ],
+      "total_count": 2
+    }
+  },
+
+  "create_instance_response": {
+    "api": "POST /v3/{project_id}/instances",
+    "description": "Response from creating a GaussDB instance (async)",
+    "response": {
+      "id": "ed7cc6166ec24360a5ed5c5c9c2ed726in14",
+      "name": "prod-gauss-01",
+      "status": "CREATING",
+      "flavor_ref": "gaussdb.opengauss.4xlarge.x864.8",
+      "volume": {"type": "ULTRAHIGH", "size": 500},
+      "region": "ap-southeast-1",
+      "datastore": {"type": "GaussDB", "version": "V2.0-3.2"},
+      "vpc_id": "vpc-abc123",
+      "subnet_id": "subnet-def456",
+      "security_group_id": "sg-ghi789",
+      "disk_encryption_id": "2dcfd40a-8f32-46b8-8a47-6cfab5eba163",
+      "charge_info": {"charge_mode": "postPaid"},
+      "job_id": "d5f2d1c3-8e9a-4b7f-a123-456789abcdef"
+    }
+  }
+}

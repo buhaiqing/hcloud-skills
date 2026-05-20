@@ -1,0 +1,48 @@
+# Example: LTS Production Log Configuration
+log_group_name: "prod-app"
+ttl_in_days: 30
+description: "Production application logs"
+
+# Log streams
+log_streams:
+  - name: "api-access"
+    description: "API gateway access logs"
+  - name: "api-error"
+    description: "API error logs"
+  - name: "app-audit"
+    description: "Application audit logs"
+  - name: "db-slow"
+    description: "Database slow query logs"
+
+# Log transfer to OBS
+transfer:
+  obs_bucket_name: "prod-lts-archive"
+  obs_period: 3600  # Aggregate logs every 1 hour
+  obs_dir_prefix: "prod-app/"
+  enabled: true
+
+# Query examples
+saved_queries:
+  - name: "last-hour-errors"
+    keywords: "ERROR"
+    time_range_minutes: 60
+  - name: "top-api-errors-today"
+    keywords: "status_code:5*"
+    time_range_minutes: 1440
+
+# Alarms (on CES)
+alarms:
+  - metric: "lts_log_volume"
+    name: "ingestion-spike"
+    threshold: 10737418240  # > 10 GB/h is abnormal
+    period: 3600
+  - metric: "lts_transfer_failed_count"
+    name: "transfer-failure"
+    threshold: 1
+    period: 300
+
+# Tags
+tags:
+  env: production
+  team: platform
+  cost_center: infra-observability

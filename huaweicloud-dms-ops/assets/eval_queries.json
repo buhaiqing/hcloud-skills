@@ -1,0 +1,52 @@
+[
+  {
+    "query": "创建一个Kafka实例，3个broker，每节点500GB存储",
+    "should_activate": true,
+    "reason": "User wants to create a DMS Kafka instance"
+  },
+  {
+    "query": "查看我的DMS消费者组lag情况",
+    "should_activate": true,
+    "reason": "User wants to check consumer group lag"
+  },
+  {
+    "query": "Topic order-events的积压消息量是多少",
+    "should_activate": true,
+    "reason": "User is asking about DMS topic message backlog"
+  },
+  {
+    "query": "帮我删除topic test-topic",
+    "should_activate": true,
+    "reason": "User wants to delete a DMS topic"
+  },
+  {
+    "query": "消息队列连接不上，报连接拒绝",
+    "should_activate": true,
+    "reason": "User is describing a DMS connection issue"
+  },
+  {
+    "query": "ECS实例CPU使用率过高",
+    "should_activate": false,
+    "reason": "ECS issue - should delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "帮我创建一个安全组",
+    "should_activate": false,
+    "reason": "Security group - should delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "我的VPC网段规划怎么做",
+    "should_activate": false,
+    "reason": "VPC planning - should delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "DMS Kafka producer端报timeout",
+    "should_activate": true,
+    "reason": "DMS producer timeout issue"
+  },
+  {
+    "query": "我的Redis缓存OOM了",
+    "should_activate": false,
+    "reason": "Redis/DCS issue - should delegate to huaweicloud-dcs-ops"
+  }
+]

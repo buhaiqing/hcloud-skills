@@ -1,0 +1,52 @@
+[
+  {
+    "query": "创建一个日志组，保留30天",
+    "should_activate": true,
+    "reason": "User wants to create an LTS log group"
+  },
+  {
+    "query": "在日志组下创建一个日志流",
+    "should_activate": true,
+    "reason": "User wants to create a log stream inside a log group"
+  },
+  {
+    "query": "帮我查一下最近1小时的错误日志",
+    "should_activate": true,
+    "reason": "User wants to search/query logs in LTS"
+  },
+  {
+    "query": "日志搜索太慢了",
+    "should_activate": true,
+    "reason": "LTS search performance troubleshooting"
+  },
+  {
+    "query": "把日志转储到OBS",
+    "should_activate": true,
+    "reason": "User wants to configure LTS log transfer to OBS"
+  },
+  {
+    "query": "ECS的ICAagent不采集日志了",
+    "should_activate": true,
+    "reason": "LTS ICAgent log collection troubleshooting"
+  },
+  {
+    "query": "K8s Pod一直ImagePullBackOff",
+    "should_activate": false,
+    "reason": "K8s pod issue - should delegate to huaweicloud-cce-ops"
+  },
+  {
+    "query": "ECS磁盘空间不足",
+    "should_activate": false,
+    "reason": "ECS disk issue - should delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "VPC里创建一个子网",
+    "should_activate": false,
+    "reason": "VPC subnet - should delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "Redis缓存操作慢查询",
+    "should_activate": false,
+    "reason": "DCS/Redis issue - should delegate to huaweicloud-dcs-ops"
+  }
+]

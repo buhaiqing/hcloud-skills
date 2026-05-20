@@ -1,0 +1,52 @@
+[
+  {
+    "query": "创建一个SWR组织，名称叫company-org",
+    "should_activate": true,
+    "reason": "User wants to create an SWR organization"
+  },
+  {
+    "query": "查看nginx镜像仓库里有哪些版本",
+    "should_activate": true,
+    "reason": "User wants to list SWR repository images/tags"
+  },
+  {
+    "query": "帮我删除过期的镜像标签，只保留最近10个",
+    "should_activate": true,
+    "reason": "User wants SWR retention policy or manual cleanup"
+  },
+  {
+    "query": "docker pull镜像报unauthorized错误",
+    "should_activate": true,
+    "reason": "SWR authentication issue during docker pull"
+  },
+  {
+    "query": "创建跨区域镜像同步规则，从cn-north-4同步到cn-south-1",
+    "should_activate": true,
+    "reason": "User wants to create SWR cross-region sync"
+  },
+  {
+    "query": "K8s Pod一直ImagePullBackOff",
+    "should_activate": false,
+    "reason": "K8s pod issue - should delegate to huaweicloud-cce-ops"
+  },
+  {
+    "query": "ECS磁盘空间不足",
+    "should_activate": false,
+    "reason": "ECS disk issue - should delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "VPC里创建一个子网",
+    "should_activate": false,
+    "reason": "VPC subnet - should delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "SWR镜像漏洞扫描结果怎么看",
+    "should_activate": true,
+    "reason": "SWR image vulnerability scanning query"
+  },
+  {
+    "query": "Redis缓存操作慢查询",
+    "should_activate": false,
+    "reason": "DCS/Redis issue - should delegate to huaweicloud-dcs-ops"
+  }
+]

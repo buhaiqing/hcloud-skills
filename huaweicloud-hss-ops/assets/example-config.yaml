@@ -1,0 +1,93 @@
+# HSS 防护配置示例
+# 用于参考和初始化 HSS 防护策略
+
+# 防护版本配置（按主机）
+host_protection:
+  - host_name: web-prod-01       # 生产 Web 服务器
+    host_id: "host-xxxxx"
+    version: hss.version.premium  # 旗舰版 — 需要网页防篡改
+    charging_mode: prePaid       # 包年包月
+
+  - host_name: app-prod-01       # 生产应用服务器
+    host_id: "host-yyyyy"
+    version: hss.version.enterprise  # 企业版
+    charging_mode: prePaid
+
+  - host_name: db-prod-01        # 生产数据库服务器
+    host_id: "host-zzzzz"
+    version: hss.version.enterprise
+    charging_mode: prePaid
+
+  - host_name: dev-01            # 开发测试服务器
+    host_id: "host-dev-01"
+    version: hss.version.basic    # 基础版（免费）
+    charging_mode: on_demand
+
+# 策略组配置
+policy_groups:
+  - name: production-servers     # 生产服务器策略组
+    description: "Default policy for production hosts"
+    policies:
+      - file_integrity: true     # 开启文件完整性校验
+      - ransom_protection: true  # 开启勒索防护
+      - login_detection: true    # 开启登录检测
+    hosts:
+      - web-prod-01
+      - app-prod-01
+      - db-prod-01
+
+  - name: development-servers    # 开发服务器策略组
+    description: "Loose policy for dev hosts"
+    policies:
+      - file_integrity: false
+      - ransom_protection: false
+      - login_detection: true
+    hosts:
+      - dev-01
+
+# 基线检查策略配置
+baseline_policies:
+  - name: security-baseline-prod
+    description: "生产环境安全基线"
+    schedule: weekly             # 每周检查
+    checks:
+      - weak_password: true      # 弱口令检查
+      - system_config: true      # 系统配置检查
+      - risk_config: true        # 风险配置检查
+    hosts:
+      - web-prod-01
+      - app-prod-01
+      - db-prod-01
+
+# 告警白名单（已确认为误报的告警模式）
+alarm_whitelist:
+  - keyword: "monitoring-agent"  # 监控 Agent 产生的告警忽略
+    hash: ""
+    comment: "Internal monitoring tool — false positive"
+
+# 登录白名单
+login_whitelist:
+  - login_ip: "10.0.0.0/8"      # 内网网段
+    login_user_name: "root"
+    comment: "Ops team internal network"
+
+  - login_ip: "203.0.113.0/24"  # 办公网 VPN 网段
+    login_user_name: "*"
+    comment: "Office VPN access"
+
+# 网页防篡改配置
+wtp_protection:
+  - host: web-prod-01
+    protected_directory: /var/www/html
+    backup_directory: /var/backup/html
+    policy_name: wtp-prod-web
+
+# 漏洞扫描配置
+vul_scan:
+  schedule: daily                # 每天执行
+  types:                         # 扫描漏洞类型
+    - linux
+    - windows
+    - web_cms
+  auto_fix: false                # 不自动修复，仅告警
+  severity_threshold: high       # 扫描严重级别 >= high 的漏洞

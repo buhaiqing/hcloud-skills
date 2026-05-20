@@ -1,0 +1,187 @@
+# WAF 防护配置示例
+# 用于参考和初始化 WAF 防护策略
+
+# 防护策略配置
+policies:
+  - name: prod-web-security   # 生产 Web 安全策略
+    level: 2                  # 防护等级: 1=宽松 2=中等 3=严格
+    full_detection: true      # 开启全检测
+    hosts:
+      - www.example.com
+      - api.example.com
+
+  - name: admin-protection    # 管理后台严格策略
+    level: 3
+    full_detection: true
+    hosts:
+      - admin.example.com
+
+  - name: dev-test-policy     # 开发测试宽松策略
+    level: 1
+    full_detection: false
+    hosts:
+      - dev.example.com
+
+# CC 攻击防护规则
+cc_rules:
+  - policy: prod-web-security
+    url: /api/v1/*
+    limit_num: 100            # 每 60 秒最多 100 次请求
+    limit_period: 60
+    lock_time: 600            # 锁定 10 分钟
+    tag_type: ip              # 按 IP 限速
+    action:
+      category: block         # 拦截
+
+  - policy: prod-web-security
+    url: /api/v2/login
+    limit_num: 20             # 登录接口更严格的限制
+    limit_period: 60
+    lock_time: 1800           # 锁定 30 分钟
+    tag_type: session         # 按 Session 限速
+    action:
+      category: captcha       # 验证码验证
+
+  - policy: admin-protection
+    url: /admin/*
+    limit_num: 50
+    limit_period: 60
+    lock_time: 3600           # 锁定 1 小时
+    tag_type: ip
+    action:
+      category: block
+
+# 精准访问防护规则（自定义规则）
+custom_rules:
+  - name: block-sql-injection
+    policy: prod-web-security
+    priority: 100
+    conditions:
+      - category: url
+        logic_operation: contain
+        contents: ["/api/v1/query"]
+      - category: params
+        logic_operation: contain
+        contents: ["'", "--", "union", "select", "drop", "insert", "delete"]
+    action:
+      category: block
+
+  - name: block-path-traversal
+    policy: prod-web-security
+    priority: 200
+    conditions:
+      - category: url
+        logic_operation: contain
+        contents: ["../", "..\\", "%2e%2e"]
+    action:
+      category: block
+
+  - name: redirect-to-https
+    policy: prod-web-security
+    priority: 10
+    conditions:
+      - category: scheme
+        logic_operation: equal
+        contents: ["HTTP"]
+    action:
+      category: redirect
+      redirect_url: https://www.example.com
+
+# 黑白名单规则
+ip_rules:
+  - name: whitelist-office
+    policy: prod-web-security
+    addr: 203.0.113.0/24    # 办公网段
+    white: 1                  # 白名单
+
+  - name: block-known-attackers
+    policy: prod-web-security
+    addr: 198.51.100.0/24    # 已知攻击来源
+    white: 0                  # 黑名单
+
+  - name: block-suspicious-ip
+    policy: admin-protection
+    addr: 192.0.2.0/24
+    white: 0
+
+# 地理位置访问控制
+geoip_rules:
+  - name: block-high-risk-regions
+    policy: prod-web-security
+    geoip: "RU|KP|IR|SY|AF"   # 高风险国家/地区
+    white: 0                   # 拦截
+
+  - name: allow-china-only
+    policy: admin-protection
+    geoip: "CN"
+    white: 1                   # 仅允许中国地区访问
+
+# 网页防篡改规则
+tamper_rules:
+  - policy: prod-web-security
+    url: /about
+  - policy: prod-web-security
+    url: /contact
+
+# 信息防泄漏规则
+leakage_rules:
+  - policy: prod-web-security
+    url: /api/user/*
+    category: all
+    contents:
+      - phone
+      - id_card
+      - email
+
+  - policy: prod-web-security
+    url: /api/order/*
+    category: sensitive
+    contents:
+      - phone
+      - email
+
+# 反爬虫规则
+crawler_rules:
+  - name: protect-login-api
+    policy: prod-web-security
+    url: /api/login
+    logic_operation: equal
+    description: 保护登录接口免遭爬虫攻击
+
+  - name: protect-search-api
+    policy: prod-web-security
+    url: /api/search
+    logic_operation: contain
+    description: 保护搜索接口免遭爬虫攻击
+
+# 引用表（可用于多个规则的公共匹配条件）
+value_lists:
+  - name: admin-paths
+    type: url
+    values:
+      - /admin
+      - /administrator
+      - /manage
+
+  - name: sensitive-params
+    type: params
+    values:
+      - password
+      - token
+      - secret
+      - credit_card
+
+  - name: known-bot-ips
+    type: ip
+    values:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
+
+# 证书配置（参考格式）
+certificates:
+  - name: example-com-cert
+    # content 和 key 使用 base64 编码
+    # content: "<base64 encoded certificate>"
+    # key: "<base64 encoded private key>"
+    # 不在此处填入实际证书内容，通过安全渠道传递

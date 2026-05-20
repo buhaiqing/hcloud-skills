@@ -1,0 +1,52 @@
+[
+  {
+    "query": "创建一个备份存储库，1000GB用于ECS备份",
+    "should_activate": true,
+    "reason": "User wants to create a CBR vault for ECS backup"
+  },
+  {
+    "query": "帮我设置每天凌晨2点的自动备份策略",
+    "should_activate": true,
+    "reason": "User wants to create a CBR backup policy"
+  },
+  {
+    "query": "查看今天有哪些备份失败了",
+    "should_activate": true,
+    "reason": "User wants to check backup status"
+  },
+  {
+    "query": "从昨天的备份恢复这台ECS",
+    "should_activate": true,
+    "reason": "User wants to restore from CBR backup"
+  },
+  {
+    "query": "备份存储库快满了，怎么办",
+    "should_activate": true,
+    "reason": "CBR vault capacity issue"
+  },
+  {
+    "query": "ECS实例创建不了",
+    "should_activate": false,
+    "reason": "ECS creation - should delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "帮我配置RDS数据库参数",
+    "should_activate": false,
+    "reason": "RDS configuration - should delegate to huaweicloud-rds-ops"
+  },
+  {
+    "query": "Redis缓存想跨区域备份",
+    "should_activate": false,
+    "reason": "DCS backup - should delegate to huaweicloud-dcs-ops"
+  },
+  {
+    "query": "删除这个备份（手工确认）",
+    "should_activate": true,
+    "reason": "CBR backup deletion with safety gate"
+  },
+  {
+    "query": "DMS的Kafka消息积压了",
+    "should_activate": false,
+    "reason": "DMS/Kafka issue - should delegate to huaweicloud-dms-ops"
+  }
+]

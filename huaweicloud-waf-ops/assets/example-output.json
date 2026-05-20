@@ -1,0 +1,226 @@
+{
+  "policy": {
+    "id": "policy-xxxxx",
+    "name": "prod-web-security",
+    "level": 2,
+    "full_detection": true,
+    "hosts": [
+      {
+        "id": "host-xxxxx",
+        "hostname": "www.example.com",
+        "domainid": "domain-xxxxx",
+        "policyid": "policy-xxxxx",
+        "access_code": "access-xxxxx",
+        "protect_status": 1,
+        "access_status": 1,
+        "protocol": "HTTPS",
+        "server": [
+          {
+            "front_protocol": "HTTPS",
+            "back_protocol": "HTTP",
+            "address": "192.168.1.100",
+            "port": 8080,
+            "type": "ipaddr"
+          }
+        ],
+        "certificateid": "cert-xxxxx",
+        "certificatename": "example-com-cert",
+        "timestamp": 1717200000000
+      }
+    ]
+  },
+  "cc_rules": {
+    "total": 2,
+    "items": [
+      {
+        "id": "cc-rule-xxxxx",
+        "policyid": "policy-xxxxx",
+        "url": "/api/v1/*",
+        "limit_num": 100,
+        "limit_period": 60,
+        "lock_time": 600,
+        "tag_type": "ip",
+        "tag_index": "",
+        "tag_condition": {},
+        "action": {
+          "category": "block",
+          "detail": {
+            "response": "default"
+          }
+        },
+        "timestamp": 1717200000000,
+        "status": 1
+      },
+      {
+        "id": "cc-rule-yyyyy",
+        "policyid": "policy-xxxxx",
+        "url": "/api/v2/login",
+        "limit_num": 20,
+        "limit_period": 60,
+        "lock_time": 1800,
+        "tag_type": "session",
+        "tag_index": "",
+        "tag_condition": {},
+        "action": {
+          "category": "captcha",
+          "detail": {}
+        },
+        "timestamp": 1717203600000,
+        "status": 1
+      }
+    ]
+  },
+  "custom_rules": {
+    "total": 3,
+    "items": [
+      {
+        "id": "custom-rule-xxxxx",
+        "name": "block-sql-injection",
+        "policyid": "policy-xxxxx",
+        "description": "",
+        "status": 1,
+        "conditions": [
+          {
+            "category": "url",
+            "logic_operation": "contain",
+            "contents": ["/api/v1/query"]
+          },
+          {
+            "category": "params",
+            "logic_operation": "contain",
+            "contents": ["'", "--", "union", "select"]
+          }
+        ],
+        "action": {
+          "category": "block"
+        },
+        "priority": 100,
+        "timestamp": 1717200000000
+      },
+      {
+        "id": "custom-rule-yyyyy",
+        "name": "block-path-traversal",
+        "policyid": "policy-xxxxx",
+        "description": "Block path traversal attempts",
+        "status": 1,
+        "conditions": [
+          {
+            "category": "url",
+            "logic_operation": "contain",
+            "contents": ["../", "..\\", "%2e%2e"]
+          }
+        ],
+        "action": {
+          "category": "block"
+        },
+        "priority": 200,
+        "timestamp": 1717203600000
+      }
+    ]
+  },
+  "ip_rules": {
+    "total": 3,
+    "items": [
+      {
+        "id": "ip-rule-xxxxx",
+        "name": "whitelist-office",
+        "policyid": "policy-xxxxx",
+        "addr": "203.0.113.0/24",
+        "description": "Office network whitelist",
+        "white": 1,
+        "timestamp": 1717200000000,
+        "status": 1
+      },
+      {
+        "id": "ip-rule-yyyyy",
+        "name": "block-known-attackers",
+        "policyid": "policy-xxxxx",
+        "addr": "198.51.100.0/24",
+        "description": "",
+        "white": 0,
+        "timestamp": 1717203600000,
+        "status": 1
+      }
+    ]
+  },
+  "events": {
+    "total": 1523,
+    "items": [
+      {
+        "id": "event-xxxxx",
+        "time": 1717286400000,
+        "policyid": "policy-xxxxx",
+        "host": "www.example.com",
+        "host_id": "host-xxxxx",
+        "attack": "cc",
+        "rule": "cc-rule-xxxxx",
+        "sip": "198.51.100.10",
+        "url": "/api/v1/query",
+        "headers": {
+          "user-agent": "Mozilla/5.0 (compatible; SemrushBot/7.0; +http://www.semrush.com/bot.html)",
+          "x-forwarded-for": "198.51.100.10"
+        },
+        "cookie": "",
+        "action": "block",
+        "region": "RU"
+      },
+      {
+        "id": "event-yyyyy",
+        "time": 1717286500000,
+        "policyid": "policy-xxxxx",
+        "host": "www.example.com",
+        "host_id": "host-xxxxx",
+        "attack": "sqli",
+        "rule": "custom-rule-xxxxx",
+        "sip": "203.0.113.50",
+        "url": "/api/v1/query?id=1'+OR+'1'='1",
+        "headers": {
+          "user-agent": "sqlmap/1.8.2 (http://sqlmap.org)"
+        },
+        "cookie": "session=abc123",
+        "action": "block",
+        "region": "CN"
+      }
+    ]
+  },
+  "certificates": {
+    "total": 2,
+    "items": [
+      {
+        "id": "cert-xxxxx",
+        "name": "example-com-cert",
+        "content": "-----BEGIN CERTIFICATE-----\nMIIF...\n-----END CERTIFICATE-----",
+        "key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+        "expire_time": "2027-06-15",
+        "timestamp": 1717200000000,
+        "bind_host": [
+          {
+            "id": "host-xxxxx",
+            "hostname": "www.example.com"
+          }
+        ]
+      }
+    ]
+  },
+  "value_lists": {
+    "total": 2,
+    "items": [
+      {
+        "id": "valuelist-xxxxx",
+        "name": "admin-paths",
+        "type": "url",
+        "values": ["/admin", "/administrator", "/manage"],
+        "description": "Admin panel paths for access control",
+        "timestamp": 1717200000000
+      },
+      {
+        "id": "valuelist-yyyyy",
+        "name": "sensitive-params",
+        "type": "params",
+        "values": ["password", "token", "secret", "credit_card"],
+        "description": "Sensitive request parameters",
+        "timestamp": 1717203600000
+      }
+    ]
+  }
+}

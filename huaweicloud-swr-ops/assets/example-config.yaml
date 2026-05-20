@@ -1,0 +1,48 @@
+# Example: SWR Production Configuration
+organization_name: "company-org"
+description: "Production container image registry"
+
+# Repository defaults
+default_repository_type: "app_server"
+default_is_public: false
+
+# Repositories
+repositories:
+  - name: "nginx"
+    type: "app_server"
+    description: "Production nginx images"
+  - name: "api-gateway"
+    type: "app_server"
+    description: "API Gateway service images"
+  - name: "python-base"
+    type: "linux"
+    description: "Python base images for CI"
+
+# Retention Policy
+retention_policy:
+  algorithm: "retain_most_recent"
+  count: 10  # Keep only the 10 most recent tags
+
+# Cross-region Sync
+cross_region_sync:
+  enabled: true
+  target_region: "cn-south-1"
+  target_org: "company-org"
+  sync_repositories:
+    - "nginx"
+    - "api-gateway"
+
+# Alarms
+alarms:
+  - metric: "repo_storage_usage"
+    threshold: 8589934592  # 8 GB
+    period: 86400
+  - metric: "auth_failure_count"
+    threshold: 10
+    period: 3600
+
+# Tags
+tags:
+  env: "production"
+  team: "platform"
+  cost_center: "infra-container"

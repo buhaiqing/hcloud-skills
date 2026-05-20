@@ -181,6 +181,10 @@ hcloud-skills/
 │   └── assets/
 │       ├── eval_queries.json             # 触发准确率评估查询
 │       └── example-config.yaml           # 配置示例
+├── huaweicloud-dms-ops/                   # 分布式消息服务 Skill
+├── huaweicloud-cbr-ops/                   # 云备份 Skill
+├── huaweicloud-swr-ops/                   # 容器镜像服务 Skill
+├── huaweicloud-gaussdb-ops/              # GaussDB Skill
 └── huaweicloud-functiongraph-ops/        # 函数工作流 Skill
     ├── SKILL.md                          # 主文件：函数生命周期、触发器、版本管理、诊断
     ├── references/
@@ -294,10 +298,13 @@ export HW_PROJECT_ID="your-project-id"
 | `huaweicloud-functiongraph-ops` | 函数工作流 (FunctionGraph) | 函数生命周期、触发器、版本管理、诊断 | ✅ 已生成 |
 | `huaweicloud-iam-ops` | 身份与访问管理 (IAM) | 用户、用户组、策略、委托、AK/SK、MFA | ✅ 已生成 |
 | `huaweicloud-obs-ops` | 对象存储 (OBS) | 桶/对象生命周期、ACL、版本控制、生命周期规则、CDN集成、静态网站 | ✅ 已生成 |
-| `huaweicloud-hss-ops` | 主机安全服务 (HSS) | 主机、漏洞、事件 | 📝 待生成 |
-| `huaweicloud-waf-ops` | Web应用防火墙 (WAF) | 策略、规则、域名 | 📝 待生成 |
-| `huaweicloud-lts-ops` | 云日志服务 (LTS) | 日志组、日志流、搜索 | 📝 待生成 |
-| `huaweicloud-gaussdb-ops` | GaussDB | 实例、备份、监控 | 📝 待生成 |
+| `huaweicloud-dms-ops` | 分布式消息服务 (DMS) | Kafka/RabbitMQ实例生命周期、Topic/Queue管理、消费组、消息查询、备份恢复 | ✅ 已生成 |
+| `huaweicloud-cbr-ops` | 云备份 (CBR) | 备份存储库、备份策略、备份执行/恢复、跨区域复制 | ✅ 已生成 |
+| `huaweicloud-swr-ops` | 容器镜像服务 (SWR) | 组织管理、仓库管理、镜像标签管理、保留策略、跨区域同步、Docker集成 | ✅ 已生成 |
+| `huaweicloud-hss-ops` | 主机安全服务 (HSS) | 主机管理、资产采集、告警事件、漏洞管理、基线检查、网页防篡改、容器安全 | ✅ 已生成 |
+| `huaweicloud-waf-ops` | Web应用防火墙 (WAF) | 策略、规则、域名、证书、攻击事件、引用表 | ✅ 已生成 |
+| `huaweicloud-lts-ops` | 云日志服务 (LTS) | 日志组/日志流生命周期、日志搜索/查询、日志转储(OBS/DMS)、结构化解析、仪表盘管理、日志告警配置 | ✅ 已生成 |
+| `huaweicloud-gaussdb-ops` | GaussDB | 实例生命周期、备份/恢复、参数模板、数据库/账户管理、标签管理、企业项目管理、回收站 | ✅ 已生成 |
 
 ## 华为云服务映射
 
@@ -315,7 +322,10 @@ export HW_PROJECT_ID="your-project-id"
 | 云日志服务 | LTS | `services/lts/v2` | Log Group, Stream, Search |
 | 对象存储 | OBS | `services/obs` | Bucket, Object, ACL |
 | 身份与访问管理 | IAM | `services/iam/v3` | User, Group, Policy, Agency, Credential |
-| GaussDB | GaussDB | `services/gaussdb/v3` | Instance, Backup, Monitor |
+| 分布式消息服务 | DMS | `services/dms/v2` | Instance, Topic, Queue, Consumer Group, Backup |
+| 云备份 | CBR | `services/cbr/v3` | Vault, Policy, Backup, Restore, Replication |
+| 容器镜像服务 | SWR | `services/swr/v2` | Organization, Repository, Image, Tag, Retention |
+| GaussDB for openGauss | GaussDB | `services/gaussdb/v3` | Instance, Backup, Template, Database/User, Quota, RecycleBin |
 
 ## 生成质量门
 

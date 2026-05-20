@@ -1,0 +1,109 @@
+# GaussDB Instance Configuration Example
+# This file documents a complete production-grade GaussDB setup.
+
+metadata:
+  name: prod-gauss-01
+  region: "{{env.REGION}}"
+  project_id: "{{env.PROJECT_ID}}"
+  enterprise_project_id: "{{env.EPS_ID}}"
+
+instance:
+  name: "prod-gauss-01"
+  flavor_ref: "gaussdb.opengauss.4xlarge.x864.8"   # 8vCPU, 32GB
+  replica_num: 3                                      # 1 primary + 2 standby
+  type: "Enterprise"                                   # Enterprise | Centralization_standard
+  vpc_id: "{{env.VPC_ID}}"
+  subnet_id: "{{env.SUBNET_ID}}"
+  security_group_id: "{{env.SG_ID}}"
+  availability_zone: "{{env.AZ}}"
+
+  volume:
+    type: "ULTRAHIGH"
+    size: 500  # GB
+
+  disk_encryption_id: "{{env.KMS_KEY_ID}}"
+
+  charge_info:
+    charge_mode: "postPaid"            # postPaid | prePaid
+    period_type: null                   # month | year (if prePaid)
+    period_num: null
+    is_auto_renew: false
+
+  backup_strategy:
+    start_time: "02:00:00"
+    keep_days: 7
+    period: "1,3,5"   # Monday, Wednesday, Friday
+
+  maintenance_window:
+    day: "Sunday"
+    start_time: "03:00:00"
+    end_time: "04:00:00"
+
+  tags:
+    - key: "Environment"
+      value: "production"
+    - key: "Product"
+      value: "myapp"
+    - key: "Team"
+      value: "platform"
+
+# Initial database and account configuration
+database:
+  - name: "appdb"
+    character_set: "UTF8"
+    owner: "app_admin"
+    template: "template0"
+
+db_users:
+  - name: "app_admin"
+    password: "{{env.APP_DB_PASSWORD}}"
+    privileges:
+      - "CREATE"
+      - "SELECT"
+      - "INSERT"
+      - "UPDATE"
+      - "DELETE"
+  - name: "app_reader"
+    password: "{{env.READER_PASSWORD}}"
+    privileges:
+      - "SELECT"
+
+# Parameter template (applied post-creation)
+parameter_template:
+  name: "prod-gauss-template"
+  datastore:
+    type: "GaussDB"
+    version: "V2.0-3.2"
+  parameters:
+    - name: "max_connections"
+      value: "500"
+    - name: "shared_buffers"
+      value: "8GB"
+    - name: "work_mem"
+      value: "64MB"
+    - name: "maintenance_work_mem"
+      value: "1GB"
+    - name: "effective_cache_size"
+      value: "24GB"
+    - name: "wal_buffers"
+      value: "16MB"
+    - name: "random_page_cost"
+      value: "1.1"
+    - name: "log_min_duration_statement"
+      value: "1000"  # ms — log slow queries
+
+# Backup configuration (manual schedule)
+manual_backups:
+  - name: "weekly-full-backup"
+    schedule: "0 3 * * 0"   # Every Sunday 03:00
+    description: "Weekly full backup"
+
+# Monitoring configuration
+monitoring:
+  alarm_actions:
+    - disk_usage_threshold: 85   # % — triggers storage scale
+    - backup_failure: true
+    - connection_ratio: 90       # % of max_connections
+  notification:
+    sms: "{{env.ALERT_PHONE}}"
+    webhook: "{{env.ALERT_WEBHOOK}}"

@@ -1,0 +1,41 @@
+# Example: CBR Backup Configuration for Production ECS
+name: "prod-ecs-backup-vault"
+object_type: "server"
+storage_size: 1000  # GB
+billing_mode: "postPaid"
+auto_renew: false
+
+# Resources to protect
+resources:
+  - "ecs-prod-web-01"
+  - "ecs-prod-web-02"
+  - "ecs-prod-api-01"
+
+# Backup Policy
+backup_policy:
+  name: "daily-backup-nightly"
+  schedule: "FREQ=DAILY;INTERVAL=1;BYHOUR=2;BYMINUTE=0"
+  retention:
+    max_backups: 30
+    retention_days: 30
+
+# Cross-region Replication
+replication:
+  enabled: true
+  target_region: "cn-south-1"
+  target_vault_name: "dr-ecs-backup-vault"
+
+# Alarms
+alarms:
+  - metric: "vault_used_percent"
+    threshold: 80
+    period: 86400
+  - metric: "backup_failure_count"
+    threshold: 0
+    period: 3600
+
+# Tags
+tags:
+  env: "production"
+  team: "infra"
+  cost_center: "infra-backup"
