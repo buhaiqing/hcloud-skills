@@ -1,0 +1,116 @@
+# DCS Instance Example Configuration
+# For Huawei Cloud Distributed Cache Service (Redis)
+
+instance:
+  name: "{{user.instance_name}}"              # DCS instance name
+  engine: "redis"                             # Engine type: redis | memcached
+  engine_version: "6.0"                       # Redis version: 4.0 | 5.0 | 6.0
+  capacity_gb: 4                               # Memory capacity in GB
+  instance_mode: "ha"                         # Mode: single | ha | cluster | rw
+  spec_code: "dcs.master_standby"             # Specification code
+  availability_zones:
+    - "cn-north-4a"                           # Primary AZ
+    - "cn-north-4b"                           # Standby AZ (HA mode)
+  enable_ssl: true                            # Enable TLS for Redis 6.0
+  port: 6379                                  # Redis port (6379 or 6380 for TLS)
+  password: "{{user.password}}"               # Redis AUTH password (8-64 chars)
+  description: "Production Redis cache for order service"
+
+# Network Configuration
+network:
+  vpc_id: "{{env.VPC_ID}}"                    # Target VPC
+  subnet_id: "{{env.SUBNET_ID}}"              # Target subnet (must be in VPC)
+  security_group_id: "{{env.SG_ID}}"          # Security group (must allow port 6379)
+  whitelist:
+    enabled: true
+    ips:
+      - "192.168.1.0/24"                      # App server subnet
+      - "10.0.0.0/8"                          # Internal network
+
+# Backup Policy
+backup:
+  enabled: true
+  save_days: 7                                # Retention period (1-7 days)
+  period_type: "weekly"                       # daily | weekly
+  backup_at: [1, 3, 5]                       # Days: Mon=1, Sun=7
+  begin_at: "02:00-04:00"                     # Backup time window (UTC+8)
+
+# Monitoring (CES Integration)
+monitoring:
+  namespace: "SYS.DCS"
+  metrics:
+    - name: "cpu_usage"
+      threshold_warning: 70
+      threshold_critical: 90
+      window_minutes: 5
+    - name: "memory_usage"
+      threshold_warning: 80
+      threshold_critical: 95
+      window_minutes: 5
+    - name: "hit_rate"
+      threshold_warning: 80                   # Alert when below 80%
+      threshold_critical: 60                  # Critical when below 60%
+      window_minutes: 10
+    - name: "latency"
+      threshold_warning: 10                   # ms
+      threshold_critical: 100                  # ms
+      window_minutes: 5
+  notification:
+    methods: ["sms", "email", "dingtalk"]     # Alert notification channels
+
+# Cost Optimization (FinOps)
+cost:
+  billing_mode: "subscription"                # pay_per_use | subscription
+  tags:
+    cost_center: "ops-team"                   # Team/department responsible
+    environment: "production"                  # prod | staging | dev
+    owner: "redis-admin"                       # Owner identifier
+    project: "order-service"                  # Project identifier
+  alerts:
+    idle_detection:
+      cpu_threshold: 10                       # CPU < 10% for 7 days = idle
+      memory_threshold: 20                    # Memory < 20% for 7 days = idle
+      days: 7
+    right_sizing:                             # Utilization → recommendation matrix
+      cpu_low: 20                             # CPU < 20% → suggest downgrade
+      memory_low: 30                          # Memory < 30% → suggest downgrade
+      cpu_high: 80                            # CPU > 80% → suggest upgrade
+      memory_high: 85                         # Memory > 85% → suggest upgrade
+
+# Security Configuration (SecOps)
+security:
+  encryption:
+    at_rest: true                             # KMS encryption for backup data
+    in_transit: true                          # TLS for Redis connections
+    kms_key_id: "{{env.KMS_KEY_ID}}"          # KMS key for encrypted backups
+  authentication:
+    method: "password"                        # AUTH password (Redis default)
+    password_complexity:                      # Enforced by DCS
+      min_length: 8
+      max_length: 64
+      requires_letters: true
+      requires_digits: true
+      requires_special_chars: true
+  iam:
+    minimum_policy: "dcs:*List*,dcs:*Get*,dcs:*Create*,dcs:*Update*,dcs:*Delete*"
+    ak_sk_rotation_days: 90
+
+# AIOps Configuration
+aiops:
+  anomaly_detection:
+    memory_pressure:
+      threshold: 90                           # Memory > 90%
+      evicted_keys: true                      # AND evicted_keys > 0
+    connection_storm:
+      threshold_percentage: 80                # Connections > 80% of max
+      latency_multiplier: 2                    # AND latency > 2x baseline
+    cache_miss_avalanche:
+      hit_rate_below: 50                      # Hit rate < 50%
+      expired_keys_multiplier: 3              # AND expired_keys > 3x normal
+    latency_degradation:
+      p95_threshold_ms: 50                    # P95 latency > 50ms
+      window_minutes: 5
+  proactive_inspection:
+    schedule: "daily"                         # daily | weekly
+    health_score_threshold: 70                # Alert when score < 70
+    report_retention_days: 30

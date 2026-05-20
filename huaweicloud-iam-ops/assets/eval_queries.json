@@ -1,0 +1,264 @@
+{
+  "skill_name": "huaweicloud-iam-ops",
+  "version": "1.0.0",
+  "last_updated": "2026-05-20",
+  "description": "Evaluation queries for trigger accuracy and execution quality of huaweicloud-iam-ops skill",
+  "evaluation_queries": [
+    {
+      "id": "E1",
+      "category": "should_trigger",
+      "query": "创建IAM用户",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and prompts for required parameters (user name, domain ID, etc.)",
+      "priority": "P0"
+    },
+    {
+      "id": "E2",
+      "category": "should_trigger",
+      "query": "权限管理怎么配置",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates with Chinese trigger '权限管理'",
+      "priority": "P0"
+    },
+    {
+      "id": "E3",
+      "category": "should_trigger",
+      "query": "用户没有ECS访问权限怎么办",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides permission diagnosis flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E4",
+      "category": "should_trigger",
+      "query": "创建AK/SK访问密钥",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and requires safety gate confirmation before creating AK/SK",
+      "priority": "P0"
+    },
+    {
+      "id": "E5",
+      "category": "should_trigger",
+      "query": "查看IAM用户列表",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides list command",
+      "priority": "P1"
+    },
+    {
+      "id": "E6",
+      "category": "should_trigger",
+      "query": "删除IAM用户",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and requires confirmation before deletion",
+      "priority": "P0"
+    },
+    {
+      "id": "E7",
+      "category": "should_trigger",
+      "query": "配置MFA多因素认证",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides MFA configuration guidance",
+      "priority": "P0"
+    },
+    {
+      "id": "E8",
+      "category": "should_trigger",
+      "query": "创建跨账号委托",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides agency creation flow with safety warning",
+      "priority": "P0"
+    },
+    {
+      "id": "E9",
+      "category": "should_trigger",
+      "query": "身份认证配置",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides identity configuration guidance",
+      "priority": "P1"
+    },
+    {
+      "id": "E10",
+      "category": "should_trigger",
+      "query": "创建自定义策略",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides policy creation flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E11",
+      "category": "should_trigger",
+      "query": "用户组权限分配",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides group policy assignment flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E12",
+      "category": "should_trigger",
+      "query": "403权限被拒绝",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides permission diagnosis flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E13",
+      "category": "should_trigger",
+      "query": "AK/SK轮换",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides credential rotation workflow",
+      "priority": "P1"
+    },
+    {
+      "id": "E14",
+      "category": "should_trigger",
+      "query": "配置SAML联邦认证",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides federation configuration guidance",
+      "priority": "P1"
+    },
+    {
+      "id": "E15",
+      "category": "should_trigger",
+      "query": "IAM安全审计",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill activates and provides permission audit workflow",
+      "priority": "P1"
+    },
+    {
+      "id": "E16",
+      "category": "should_not_trigger",
+      "query": "查看华为云账单",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill does NOT activate; delegates to billing skill if present",
+      "priority": "P0"
+    },
+    {
+      "id": "E17",
+      "category": "should_not_trigger",
+      "query": "创建ECS实例",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill does NOT activate; delegates to ECS skill",
+      "priority": "P0"
+    },
+    {
+      "id": "E18",
+      "category": "should_not_trigger",
+      "query": "RDS数据库备份",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Skill does NOT activate; delegates to RDS skill",
+      "priority": "P1"
+    },
+    {
+      "id": "E19",
+      "category": "execution_quality",
+      "query": "创建IAM用户",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Execution flow: Pre-flight checks → Execute → Validate → Recover",
+      "validation_checks": [
+        "CLI/SDK dual-path documented",
+        "Credential masking enforced (no secrets in logs)",
+        "Global endpoint (iam.myhuaweicloud.com) used correctly",
+        "Error taxonomy ≥ 10 codes",
+        "HALT vs retry distinction clear"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E20",
+      "category": "execution_quality",
+      "query": "创建AK/SK访问密钥",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "AK/SK creation requires explicit safety gate confirmation",
+      "validation_checks": [
+        "Safety gate present with credential exposure warning",
+        "Secret key masking in output (show only last 4 chars)",
+        "One-time display warning documented",
+        "90-day rotation reminder included"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E21",
+      "category": "execution_quality",
+      "query": "删除IAM用户",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Deletion requires explicit confirmation with cascading effects warning",
+      "validation_checks": [
+        "Safety gate present",
+        "AK/SK invalidation warning",
+        "Group membership removal documented",
+        "Cascading effects on applications documented"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E22",
+      "category": "execution_quality",
+      "query": "分配策略给用户组",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Policy attachment includes least privilege warning",
+      "validation_checks": [
+        "Permission scope warning before attachment",
+        "Admin policy attachment requires explicit confirmation",
+        "Post-attachment validation",
+        "No wildcard actions in production"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "E23",
+      "category": "finops_integration",
+      "query": "IAM权限成本分析",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Provides IAM indirect cost impact analysis",
+      "validation_checks": [
+        "IAM is free but misconfig has indirect cost",
+        "Permission creep detection pattern",
+        "Unused credentials cost impact",
+        "Cost accountability via tagging"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E24",
+      "category": "secops_integration",
+      "query": "IAM安全配置检查",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Provides comprehensive IAM security posture assessment",
+      "validation_checks": [
+        "MFA enforcement documented",
+        "Least privilege principle documented",
+        "Credential rotation schedule defined",
+        "Zero trust implementation guidance",
+        "Incident response procedures"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E25",
+      "category": "aiops_integration",
+      "query": "IAM权限异常检测",
+      "expected_skill": "huaweicloud-iam-ops",
+      "pass_condition": "Provides AIOps patterns for IAM anomaly detection",
+      "validation_checks": [
+        "Permission creep detection pattern",
+        "Unused credentials detection",
+        "Stale account identification",
+        "Brute force detection pattern",
+        "Cross-skill delegation matrix"
+      ],
+      "priority": "P0"
+    }
+  ],
+  "summary": {
+    "total_queries": 25,
+    "should_trigger": 15,
+    "should_not_trigger": 3,
+    "execution_quality": 4,
+    "finops_integration": 1,
+    "secops_integration": 1,
+    "aiops_integration": 1,
+    "p0_critical": 18,
+    "p1_important": 7
+  }
+}

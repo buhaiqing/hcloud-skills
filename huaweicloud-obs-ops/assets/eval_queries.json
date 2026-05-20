@@ -1,0 +1,77 @@
+[
+  {
+    "query": "Create an OBS bucket in cn-north-4 to store application logs",
+    "should_trigger": true,
+    "reason": "Direct OBS bucket creation request"
+  },
+  {
+    "query": "Upload a 500MB backup file to my object storage bucket",
+    "should_trigger": true,
+    "reason": "OBS large file upload (requires multipart)"
+  },
+  {
+    "query": "我的对象存储桶配置了公开读取，安全风险大吗？",
+    "should_trigger": true,
+    "reason": "OBS public bucket security question (Chinese)"
+  },
+  {
+    "query": "Set up lifecycle rules to auto-transition old objects to archive storage",
+    "should_trigger": true,
+    "reason": "OBS lifecycle management"
+  },
+  {
+    "query": "Generate a presigned URL for temporary file download from OBS",
+    "should_trigger": true,
+    "reason": "OBS presigned URL generation"
+  },
+  {
+    "query": "Configure S3-compatible bucket with CDN as origin",
+    "should_trigger": true,
+    "reason": "OBS + CDN integration request"
+  },
+  {
+    "query": "我的OCS bucket的ACL变成了public-read-write，紧急改为private",
+    "should_trigger": true,
+    "reason": "OBS ACL emergency fix (typo OCS still relates to OBS)"
+  },
+  {
+    "query": "Set up cross-region replication for our data bucket",
+    "should_trigger": true,
+    "reason": "OBS CRR configuration"
+  },
+  {
+    "query": "查询华为云账户本月的对象存储费用",
+    "should_trigger": false,
+    "reason": "Pure billing query — delegate to billing skill"
+  },
+  {
+    "query": "Create an ECS instance and mount a cloud disk",
+    "should_trigger": false,
+    "reason": "ECS + EVS operations — delegate to ECS skill"
+  },
+  {
+    "query": "Create a new IAM user with OBS read permission",
+    "should_trigger": false,
+    "reason": "Primarily IAM user creation — delegate to IAM skill"
+  },
+  {
+    "query": "Set up a VPC peering connection between two networks",
+    "should_trigger": false,
+    "reason": "VPC peering — delegate to VPC skill"
+  },
+  {
+    "query": "Configure RDS MySQL for automatic daily backup",
+    "should_trigger": false,
+    "reason": "RDS backup — delegate to RDS skill"
+  },
+  {
+    "query": "Install Nginx on my Linux server",
+    "should_trigger": false,
+    "reason": "Server software installation — not OBS related"
+  },
+  {
+    "query": "Delete files from my ECS home directory",
+    "should_trigger": false,
+    "reason": "ECS local filesystem — not OBS object storage"
+  }
+]

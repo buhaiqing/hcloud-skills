@@ -1,0 +1,75 @@
+# FunctionGraph Example Configuration
+# This is a reference configuration for creating a common function workflow.
+
+function:
+  name: "data-processor"
+  runtime: "Python3.9"
+  handler: "index.handler"
+  description: "Real-time data processing function"
+  timeout: 30           # seconds (1-300)
+  memory_size: 256      # MB (128-4096, step 128)
+  ephemeral_storage: 512 # MB (512-10240)
+  
+  code:
+    type: "obs"         # obs | inline | zip
+    bucket: "my-code-bucket"
+    object: "functions/data-processor/v1/code.zip"
+  
+  triggers:
+    - type: "OBS"
+      event_type: "ObjectCreated:*"
+      bucket: "my-input-bucket"
+      prefix: "incoming/"
+      suffix: ".csv"
+      status: "ACTIVE"
+    
+    - type: "APIG"
+      group_name: "my-api-group"
+      api_path: "/process"
+      api_method: "POST"
+      auth: "IAM"
+      status: "ACTIVE"
+  
+  vpc_config:
+    enabled: false
+    vpc_name: ""
+    vpc_id: ""
+    subnet_name: ""
+    subnet_id: ""
+  
+  env_vars:
+    LOG_LEVEL: "INFO"
+    OUTPUT_BUCKET: "my-output-bucket"
+    DB_CONNECTION_STRING: "{{env.DB_CONNECTION_STRING}}"  # Use env var, never hardcode secrets
+  
+  versions:
+    - name: "v1.0.0"
+      description: "Initial production release"
+    - name: "v2.0.0"
+      description: "Added batch processing"
+  
+  aliases:
+    - name: "prod"
+      version: "v2.0.0"
+      additional_version_strategy:
+        "v1.0.0": 10  # 10% canary traffic
+
+# Monitoring configuration
+monitoring:
+  alarms:
+    - name: "DataProcessor-ErrorRate"
+      metric: "fail_count"
+      condition: "> 5 in 5 minutes"
+      severity: "critical"
+      notification: "{{output.topic_arn}}"
+    
+    - name: "DataProcessor-Duration"
+      metric: "max_duration"
+      condition: "> 25000ms"
+      severity: "warning"
+      notification: "{{output.topic_arn}}"
+
+# Cost optimization
+cost:
+  reserved_instances: 0  # Set to > 0 for latency-sensitive functions
+  memory_right_sizing: true  # Enable periodic memory optimization review

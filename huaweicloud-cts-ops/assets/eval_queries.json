@@ -1,0 +1,22 @@
+[
+  {
+    "query": "Create a Huawei Cloud CTS trail for audit event delivery to OBS",
+    "description": "Matches user intent to create CTS audit trails and configure delivery destinations."
+  },
+  {
+    "query": "查询 CTS 审计日志",
+    "description": "Matches Chinese user requests for CTS audit log queries."
+  },
+  {
+    "query": "Huawei Cloud Cloud Trace Service event query",
+    "description": "Matches event query and compliance investigation requests."
+  },
+  {
+    "query": "delete cts trail",
+    "description": "Matches trail deletion operations requiring confirmation."
+  },
+  {
+    "query": "trace audit event for user activity",
+    "description": "Matches forensic and security audit scenarios."
+  }
+]

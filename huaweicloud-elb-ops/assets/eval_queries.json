@@ -1,0 +1,67 @@
+[
+  {
+    "query": "帮我创建一个独享型负载均衡器，绑定到生产环境VPC",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "负载均衡后端服务器健康检查失败，帮我看一下",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "添加后端服务器到ELB的web-pool中",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "配置HTTPS监听器，绑定SSL证书",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "ELB的5xx错误率突然升高了，排查原因",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "创建一个HTTP监听器，端口80，将流量分发到后端服务器",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "删除负载均衡器，级联删除关联资源",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "ELB连接数飙升，检查一下状态",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "修改健康检查配置，把检查间隔改为10秒",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "列出所有负载均衡器及其监听器配置",
+    "should_match": true,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "创建一台ECS云服务器",
+    "should_match": false,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "配置RDS数据库的参数",
+    "should_match": false,
+    "skill": "huaweicloud-elb-ops"
+  },
+  {
+    "query": "创建一个OBS存储桶",
+    "should_match": false,
+    "skill": "huaweicloud-elb-ops"
+  }
+]

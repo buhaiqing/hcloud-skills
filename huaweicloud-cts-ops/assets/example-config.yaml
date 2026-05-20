@@ -1,0 +1,23 @@
+# Huawei Cloud CTS example configuration
+
+# This YAML file shows sample parameters for CTS trail creation.
+# Replace values with your project-specific details.
+
+hw_access_key_id: "YOUR_HW_ACCESS_KEY_ID"
+hw_secret_access_key: "YOUR_HW_SECRET_ACCESS_KEY"
+hw_region_id: "cn-north-4"
+hw_project_id: "YOUR_PROJECT_ID"
+
+ctr_trail:
+  name: "security-audit-trail"
+  delivery_to: "OBS"
+  delivery_config:
+    bucket_name: "my-cts-audit-bucket"
+    location: "cn-north-4"
+  retention_days: 365
+
+query:
+  start_time: "2026-05-01T00:00:00Z"
+  end_time: "2026-05-02T00:00:00Z"
+  filter: "event_name=CreateTrail AND status=success"
+  limit: 100

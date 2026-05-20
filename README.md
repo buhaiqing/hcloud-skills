@@ -55,19 +55,144 @@ hcloud-skills/
 │   │   └── idempotency-checklist.md      # 幂等性检查清单
 │   └── assets/
 │       └── eval_queries.json             # 触发准确率评估查询
-└── huaweicloud-vpc-ops/                  # 虚拟私有云 Skill
-    ├── SKILL.md                          # 主文件：VPC、子网、安全组、EIP、NAT
+├── huaweicloud-vpc-ops/                  # 虚拟私有云 Skill
+│   ├── SKILL.md                          # 主文件：VPC、子网、安全组、EIP、NAT
+│   ├── references/
+│   │   ├── core-concepts.md              # VPC 架构与网络概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # 网络监控模式
+│   │   ├── integration.md                # JIT SDK 集成
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       └── eval_queries.json             # 触发准确率评估查询
+├── huaweicloud-iam-ops/                  # 身份与访问管理 Skill
+│   ├── SKILL.md                          # 主文件：用户、用户组、策略、委托、AK/SK、MFA
+│   ├── references/
+│   │   ├── core-concepts.md              # IAM 架构与身份模型
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CTS 事件监控模式
+│   │   ├── integration.md                # 跨技能委托与 SDK 集成
+│   │   └── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-dcs-ops/                  # 分布式缓存 Skill
+│   ├── SKILL.md                          # 主文件：实例生命周期、备份/恢复、扩容、密码重置、白名单
+│   ├── references/
+│   │   ├── core-concepts.md              # DCS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # DCS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── knowledge-base.md             # 故障模式知识库
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-obs-ops/                  # 对象存储 Skill
+│   ├── SKILL.md                          # 主文件：桶/对象生命周期、ACL、版本控制、CDN集成、静态网站
+│   ├── references/
+│   │   ├── core-concepts.md              # OBS 架构与存储类别
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI/obsutil 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # OBS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── knowledge-base.md             # 故障模式知识库
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-ecs-ops/                  # 弹性云服务器 Skill
+│   ├── SKILL.md                          # 主文件：实例生命周期、磁盘、快照、CloudShell远程执行
+│   ├── references/
+│   │   ├── core-concepts.md              # ECS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # ECS 监控模式
+│   │   ├── observability.md              # 可观测性集成
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── knowledge-base.md             # 故障模式知识库
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-rds-ops/                  # 云数据库 RDS Skill
+│   ├── SKILL.md                          # 主文件：实例生命周期、备份/恢复、参数管理、性能监控
+│   ├── references/
+│   │   ├── core-concepts.md              # RDS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # RDS 监控模式
+│   │   ├── observability.md              # 可观测性集成
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-elb-ops/                  # 弹性负载均衡 Skill
+│   ├── SKILL.md                          # 主文件：负载均衡器、监听器、后端池、健康检查
+│   ├── references/
+│   │   ├── core-concepts.md              # ELB 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # ELB 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   └── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-cce-ops/                  # 云容器引擎 Skill
+│   ├── SKILL.md                          # 主文件：集群、节点、节点池、插件管理
+│   ├── references/
+│   │   ├── core-concepts.md              # CCE 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CCE 监控模式
+│   │   ├── observability.md              # 可观测性集成
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── knowledge-base.md             # 故障模式知识库
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-cts-ops/                  # 云审计服务 Skill
+│   ├── SKILL.md                          # 主文件：审计追踪、事件收集、追踪查询、诊断分析
+│   ├── references/
+│   │   ├── core-concepts.md              # CTS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CTS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── aiops-best-practices.md        # AIOps 最佳实践
+│   │   └── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+└── huaweicloud-functiongraph-ops/        # 函数工作流 Skill
+    ├── SKILL.md                          # 主文件：函数生命周期、触发器、版本管理、诊断
     ├── references/
-    │   ├── core-concepts.md              # VPC 架构与网络概念
+    │   ├── core-concepts.md              # FunctionGraph 架构与核心概念
     │   ├── api-sdk-usage.md              # API 与 SDK 使用
-    │   ├── cli-usage.md                  # CLI 命令映射
     │   ├── troubleshooting.md            # 故障排查指南
-    │   ├── monitoring.md                 # 网络监控模式
-    │   ├── integration.md                # JIT SDK 集成
-    │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
-    │   └── idempotency-checklist.md      # 幂等性检查清单
+    │   ├── monitoring.md                 # FunctionGraph 监控模式
+    │   ├── integration.md                # JIT SDK 集成与跨技能委托
+    │   └── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
     └── assets/
-        └── eval_queries.json             # 触发准确率评估查询
+        ├── eval_queries.json             # 触发准确率评估查询
+        └── example-config.yaml           # 配置示例
 ```
 
 ## 三支柱运维体系
@@ -160,15 +285,18 @@ export HW_PROJECT_ID="your-project-id"
 |-----------|------|---------|------|
 | `huaweicloud-ces-ops` | 云监控服务 (CES) | 告警规则、指标查询、仪表盘、事件监控 | ✅ 已生成 |
 | `huaweicloud-vpc-ops` | 虚拟私有云 (VPC) | VPC/子网/安全组/EIP/带宽/NAT网关/VPC对等连接 | ✅ 已生成 |
-| `huaweicloud-ecs-ops` | 弹性云服务器 (ECS) | 实例生命周期、磁盘、快照 | 📝 待生成 |
-| `huaweicloud-rds-ops` | 云数据库 RDS | 实例、备份、恢复 | 📝 待生成 |
-| `huaweicloud-elb-ops` | 弹性负载均衡 (ELB) | 监听器、后端池、健康检查 | 📝 待生成 |
-| `huaweicloud-cce-ops` | 云容器引擎 (CCE) | 集群、节点、插件 | 📝 待生成 |
-| `huaweicloud-dcs-ops` | 分布式缓存 (DCS) | 实例、备份、扩容 | 📝 待生成 |
+| `huaweicloud-ecs-ops` | 弹性云服务器 (ECS) | 实例生命周期、磁盘、快照、CloudShell远程执行 | ✅ 已生成 |
+| `huaweicloud-rds-ops` | 云数据库 RDS | 实例、备份、恢复、参数管理、性能监控 | ✅ 已生成 |
+| `huaweicloud-elb-ops` | 弹性负载均衡 (ELB) | 监听器、后端池、健康检查 | ✅ 已生成 |
+| `huaweicloud-cce-ops` | 云容器引擎 (CCE) | 集群、节点、节点池、插件管理 | ✅ 已生成 |
+| `huaweicloud-dcs-ops` | 分布式缓存 (DCS) | 实例生命周期、备份/恢复、扩容、密码重置、白名单 | ✅ 已生成 |
+| `huaweicloud-cts-ops` | 云审计服务 (CTS) | 审计追踪、事件收集、追踪查询、诊断分析 | ✅ 已生成 |
+| `huaweicloud-functiongraph-ops` | 函数工作流 (FunctionGraph) | 函数生命周期、触发器、版本管理、诊断 | ✅ 已生成 |
+| `huaweicloud-iam-ops` | 身份与访问管理 (IAM) | 用户、用户组、策略、委托、AK/SK、MFA | ✅ 已生成 |
+| `huaweicloud-obs-ops` | 对象存储 (OBS) | 桶/对象生命周期、ACL、版本控制、生命周期规则、CDN集成、静态网站 | ✅ 已生成 |
 | `huaweicloud-hss-ops` | 主机安全服务 (HSS) | 主机、漏洞、事件 | 📝 待生成 |
 | `huaweicloud-waf-ops` | Web应用防火墙 (WAF) | 策略、规则、域名 | 📝 待生成 |
 | `huaweicloud-lts-ops` | 云日志服务 (LTS) | 日志组、日志流、搜索 | 📝 待生成 |
-| `huaweicloud-obs-ops` | 对象存储 (OBS) | 桶、对象、ACL | 📝 待生成 |
 | `huaweicloud-gaussdb-ops` | GaussDB | 实例、备份、监控 | 📝 待生成 |
 
 ## 华为云服务映射
@@ -186,6 +314,7 @@ export HW_PROJECT_ID="your-project-id"
 | Web应用防火墙 | WAF | `services/waf/v1` | Policy, Rule, Domain |
 | 云日志服务 | LTS | `services/lts/v2` | Log Group, Stream, Search |
 | 对象存储 | OBS | `services/obs` | Bucket, Object, ACL |
+| 身份与访问管理 | IAM | `services/iam/v3` | User, Group, Policy, Agency, Credential |
 | GaussDB | GaussDB | `services/gaussdb/v3` | Instance, Backup, Monitor |
 
 ## 生成质量门

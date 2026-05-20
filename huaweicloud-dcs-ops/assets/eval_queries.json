@@ -1,0 +1,77 @@
+[
+  {
+    "query": "Create a Redis 6.0 instance in cn-north-4 with 4GB capacity",
+    "should_trigger": true,
+    "reason": "Direct DCS instance creation request"
+  },
+  {
+    "query": "我的分布式缓存实例连接不上了",
+    "should_trigger": true,
+    "reason": "DCS instance connectivity issue (Chinese)"
+  },
+  {
+    "query": "Reset Redis password on dcs-instance-001",
+    "should_trigger": true,
+    "reason": "DCS password reset operation"
+  },
+  {
+    "query": "List all Redis instances and check their memory utilization",
+    "should_trigger": true,
+    "reason": "DCS instance listing + monitoring"
+  },
+  {
+    "query": "我的Redis缓存实例内存满了，一直在淘汰key",
+    "should_trigger": true,
+    "reason": "DCS OOM/eviction issue"
+  },
+  {
+    "query": "Create a backup of our cache instance before we resize it",
+    "should_trigger": true,
+    "reason": "DCS backup operation before resize"
+  },
+  {
+    "query": "Configure IP whitelist for DCS instance to allow only app servers",
+    "should_trigger": true,
+    "reason": "DCS whitelist management"
+  },
+  {
+    "query": "Redis hit rate dropped to 30%, what's happening?",
+    "should_trigger": true,
+    "reason": "DCS performance diagnosis request"
+  },
+  {
+    "query": "查询华为云账户本月费用明细",
+    "should_trigger": false,
+    "reason": "Pure billing query — delegate to billing skill"
+  },
+  {
+    "query": "Create an ECS instance with 4 cores and 16GB RAM",
+    "should_trigger": false,
+    "reason": "ECS instance creation — delegate to ECS skill"
+  },
+  {
+    "query": "Create a new IAM user with read-only permissions",
+    "should_trigger": false,
+    "reason": "IAM user management — delegate to IAM skill"
+  },
+  {
+    "query": "Add a route to my VPC routing table for 10.0.0.0/8",
+    "should_trigger": false,
+    "reason": "VPC route table management — delegate to VPC skill"
+  },
+  {
+    "query": "Set up a CES alarm rule for ECS CPU usage",
+    "should_trigger": false,
+    "reason": "CES alarm setup for ECS — not DCS specific"
+  },
+  {
+    "query": "Create a bucket in OBS to store backup files",
+    "should_trigger": false,
+    "reason": "OBS bucket creation — delegate to OBS skill"
+  },
+  {
+    "query": "How to install MySQL on a Linux server",
+    "should_trigger": false,
+    "reason": "Database installation — not Huawei Cloud DCS"
+  }
+]

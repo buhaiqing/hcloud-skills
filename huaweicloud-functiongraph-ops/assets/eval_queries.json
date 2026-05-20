@@ -1,0 +1,62 @@
+[
+  {
+    "query": "在华为云上创建一个Python3.9的函数，处理OBS文件上传事件",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "函数工作流执行超时了，帮我查一下原因",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "帮我更新FunctionGraph的函数代码到最新版本",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "函数触发器不生效，检查一下OBS触发器配置",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "发布函数新版本并设置别名指向v2，10%流量灰度",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "列出所有函数和它们的调用次数统计",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "FunctionGraph并发执行数达到上限被限流了",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "帮我创建一个定时触发的云函数，每天凌晨执行数据清理",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "函数日志怎么看？查一下最近的执行错误",
+    "should_match": true,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "创建一个ECS云服务器",
+    "should_match": false,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "配置RDS数据库的备份策略",
+    "should_match": false,
+    "skill": "huaweicloud-functiongraph-ops"
+  },
+  {
+    "query": "查看VPC的安全组规则",
+    "should_match": false,
+    "skill": "huaweicloud-functiongraph-ops"
+  }
+]

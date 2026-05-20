@@ -1,0 +1,82 @@
+[
+  {
+    "query": "Create a CCE cluster in cn-north-4 with my existing VPC",
+    "should_trigger": true,
+    "reason": "Direct CCE cluster creation request"
+  },
+  {
+    "query": "List all K8s clusters in my account",
+    "should_trigger": true,
+    "reason": "Listing CCE clusters (K8s = Kubernetes = CCE context)"
+  },
+  {
+    "query": "Add nodes to the production cluster",
+    "should_trigger": true,
+    "reason": "Node management for existing CCE cluster"
+  },
+  {
+    "query": "Install coredns addon on my cluster",
+    "should_trigger": true,
+    "reason": "CCE addon installation operation"
+  },
+  {
+    "query": "Create a node pool with autoscaling enabled",
+    "should_trigger": true,
+    "reason": "Node pool creation with CCE autoscaling"
+  },
+  {
+    "query": "Delete the test cluster and all its nodes",
+    "should_trigger": true,
+    "reason": "CCE cluster deletion operation"
+  },
+  {
+    "query": "My node is NotReady, how do I fix it",
+    "should_trigger": true,
+    "reason": "CCE node troubleshooting scenario"
+  },
+  {
+    "query": "Scale up the node pool to 5 nodes",
+    "should_trigger": true,
+    "reason": "Node pool scaling operation"
+  },
+  {
+    "query": "Create a VPC with CIDR 10.0.0.0/16",
+    "should_trigger": false,
+    "reason": "VPC creation — delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "Check my monthly cloud bill",
+    "should_trigger": false,
+    "reason": "Billing query — delegate to huaweicloud-billing-ops"
+  },
+  {
+    "query": "Create an IAM user with read-only access",
+    "should_trigger": false,
+    "reason": "IAM operation — delegate to huaweicloud-iam-ops"
+  },
+  {
+    "query": "Resize my ECS instance from s6.large.2 to c7.xlarge.2",
+    "should_trigger": false,
+    "reason": "Direct ECS resize — delegate to huaweicloud-ecs-ops (not CCE-managed node)"
+  },
+  {
+    "query": "Query ECS instance i-abc123 CPU metrics",
+    "should_trigger": false,
+    "reason": "ECS metric query — delegate to huaweicloud-ces-ops or huaweicloud-ecs-ops"
+  },
+  {
+    "query": "Configure load balancer for my service",
+    "should_trigger": false,
+    "reason": "ELB configuration — delegate to huaweicloud-elb-ops"
+  },
+  {
+    "query": "How many clusters does Huawei Cloud support per project",
+    "should_trigger": true,
+    "reason": "CCE quota/capacity question within CCE scope"
+  },
+  {
+    "query": "Set up pod monitoring and alerting",
+    "should_trigger": true,
+    "reason": "CCE pod monitoring via CES integration"
+  }
+]

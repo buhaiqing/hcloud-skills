@@ -1,0 +1,176 @@
+# CCE Example Configuration — Huawei Cloud Cloud Container Engine
+# This file provides a reference configuration for creating a production-grade CCE cluster.
+
+---
+# Cluster Configuration
+cluster:
+  # Cluster name (must be unique within project)
+  name: "prod-cce-cluster"
+
+  # Region
+  region: "cn-north-4"
+
+  # Cluster version
+  k8s_version: "1.28"
+
+  # Cluster type: VM (ECS-based), BMS (bare metal), ARM (Kunpeng)
+  host_type: "VM"
+
+  # Control plane flavor (managed by Huawei Cloud)
+  control_plane_flavor: "cce.s1.small"
+
+  # Network configuration
+  network:
+    # VPC ID where the cluster resides
+    vpc_id: "{{env.VPC_ID}}"
+    # Subnet ID for node IP allocation
+    subnet_id: "{{env.SUBNET_ID}}"
+    # Security group for cluster nodes
+    security_group_id: "{{env.SECURITY_GROUP_ID}}"
+    # Container network mode: vpc (VPC network) or tunnel (VxLAN)
+    container_network_mode: "vpc"
+    # Service CIDR range (must not overlap with VPC/subnet CIDR)
+    kubernetes_svc_ip_range: "10.247.0.0/16"
+    # Pod CIDR range (for tunnel mode)
+    kubernetes_svc_ipv6_range: ""
+
+  # Enforce authentication for API server access
+  enable_authentication: true
+
+  # Billing mode: 0 = pay-per-use, 1 = subscription
+  billing_mode: 0
+
+  # Resource labels for cost tracking
+  labels:
+    env: "production"
+    team: "platform"
+    cost-center: "CC-2024-001"
+
+---
+# Node Pool Configuration
+node_pool:
+  # Node pool name
+  name: "prod-general-pool"
+
+  # ECS flavor for nodes
+  flavor: "s6.large.2"  # 2 vCPU, 4 GB memory
+
+  # OS for worker nodes
+  os: "EulerOS 2.9"
+
+  # Volume configuration
+  volumes:
+    - type: "SATA"
+      size: 40  # GB for system disk
+    - type: "SSD"
+      size: 100  # GB for data disk
+    - type: "SAS"
+      size: 200  # GB for large data disk
+
+  # Auto-scaling configuration
+  autoscaling:
+    enabled: true
+    min_node_count: 1
+    max_node_count: 20
+    scale_down_cooldown_time: 300  # seconds
+    priority: 0  # priority for scale-down order (lower = preferred for deletion)
+
+  # Initial node count
+  initial_node_count: 2
+
+  # SSH key for node access
+  ssh_key: "prod-node-ssh-key"
+
+  # Node labels
+  labels:
+    role: "general-workload"
+    zone: "az-1"
+
+  # Taints (prevent scheduling of regular pods)
+  taints: []
+
+  # Pod security group (optional, separate from node security group)
+  pod_security_group_id: ""
+
+---
+# Additional Node Pool (GPU workloads)
+gpu_node_pool:
+  name: "prod-gpu-pool"
+  flavor: "pi1.large.4"  # GPU-enabled flavor
+  os: "EulerOS 2.9"
+  volumes:
+    - type: "SSD"
+      size: 100
+  autoscaling:
+    enabled: true
+    min_node_count: 0
+    max_node_count: 5
+  initial_node_count: 0
+  gpu_driver: true  # Install NVIDIA driver
+
+---
+# Addon Configuration
+addons:
+  # Core system addons (auto-installed by CCE)
+  - name: "coredns"
+    version: "1.28"
+    status: "auto-installed"
+
+  - name: "everest"
+    version: "1.28"
+    status: "auto-installed"
+    description: "CSI storage provisioner for PersistentVolume"
+
+  - name: "metrics-server"
+    version: "1.28"
+    status: "recommended"
+    description: "Resource metrics for HPA/VPA"
+
+  # Optional addons
+  - name: "cloud-eye"
+    version: "1.28"
+    status: "recommended"
+    description: "CES metrics collection agent"
+
+  - name: "cce-logs-agent"
+    version: "1.28"
+    status: "optional"
+    description: "LTS log collection for pods and nodes"
+
+  - name: "network-policy"
+    version: "1.28"
+    status: "optional"
+    description: "Calico-based network policy enforcement"
+
+---
+# Cost Optimization Settings
+cost_optimization:
+  # Billing model for nodes
+  node_billing:
+    production: "subscription"   # 包年包月 for stable production nodes
+    staging: "pay-per-use"       # 按需 for dev/test environments
+    hpa_scale_out: "spot"        # 竞价 for autoscale burst capacity
+
+  # Idle detection thresholds
+  idle_detection:
+    cpu_threshold_percent: 10
+    memory_threshold_percent: 10
+    consecutive_days: 7
+
+  # Tag-based auto-decommission
+  ttl_policy:
+    dev_clusters: "7d"
+    staging_clusters: "30d"
+
+---
+# Smart Defaults Summary
+defaults:
+  cluster_flavor: "cce.s1.small"
+  node_flavor: "s6.large.2"
+  node_os: "EulerOS 2.9"
+  volume_type: "SATA"
+  volume_size: 40
+  network_mode: "vpc"
+  node_pool_min: 1
+  node_pool_max: 10
+  node_pool_initial: 1

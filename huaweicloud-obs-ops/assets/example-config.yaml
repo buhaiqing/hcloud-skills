@@ -1,0 +1,113 @@
+# OBS Bucket Example Configuration
+# For Huawei Cloud Object Storage Service
+
+bucket:
+  name: "{{user.bucket_name}}"                   # Globally unique, 3-63 chars
+  region: "cn-north-4"                            # Region code
+  storage_class: "standard"                       # standard | warm | cold | deep-cold
+  acl: "private"                                  # private | public-read (NEVER public-read-write in prod)
+  versioning: "Enabled"                           # Enabled | Suspended
+
+# Lifecycle Rules
+lifecycle:
+  rules:
+    - id: "transition-to-warm"
+      prefix: "logs/"                             # Apply to log files
+      status: "Enabled"
+      transition:
+        - days: 30
+          storage_class: "WARM"
+        - days: 180
+          storage_class: "COLD"
+      expiration:
+    - id: "abort-incomplete-multipart"
+      prefix: ""                                  # Apply to all objects
+      status: "Enabled"
+      abort_incomplete_multipart:
+        days_after_initiation: 7                  # Clean up stale uploads
+
+# CORS Configuration (for browser access)
+cors:
+  allowed_origins:
+    - "https://example.com"
+    - "https://cdn.example.com"
+  allowed_methods:
+    - "GET"
+    - "PUT"
+    - "POST"
+  allowed_headers:
+    - "Authorization"
+    - "Content-Type"
+  exposed_headers:
+    - "ETag"
+    - "x-obs-request-id"
+  max_age_seconds: 3600
+
+# Static Website Hosting
+static_website:
+  enabled: false                                  # Set true to enable
+  index_document: "index.html"
+  error_document: "error.html"
+  cdn_integration: true                           # Use CDN in front of website
+  cdn_domain: "static.example.com"
+
+# Monitoring (CES Integration)
+monitoring:
+  namespace: "SYS.OBS"
+  metrics:
+    - name: "request_error_rate"
+      threshold_warning: 5
+      threshold_critical: 20
+      window_minutes: 5
+    - name: "error_5xx_count"
+      threshold_warning: 10                       # per minute
+      threshold_critical: 50                      # per minute
+      window_minutes: 5
+    - name: "first_byte_latency"
+      threshold_warning: 500                     # ms
+      threshold_critical: 2000                   # ms
+      window_minutes: 10
+    - name: "bytes_out"
+      threshold_warning: 80                       # % of expected
+      window_minutes: 10
+  notification:
+    methods: ["sms", "email"]
+
+# Cost Optimization (FinOps)
+cost:
+  storage_class_distribution:                     # Target distribution by age
+    standard_max_days: 30
+    warm_min_days: 30
+    cold_min_days: 180
+    deep_cold_min_days: 365
+  idle_detection:
+    zero_requests_days: 30                        # Bucket with 0 requests for 30d
+    action: "review_for_deletion_or_transition"
+  egress_optimization:
+    use_cdn: true                                 # CDN egress cheaper than OBS direct
+    cdn_cache_ttl: 86400                          # 24 hours for static assets
+    tags:
+      cost_center: "ops-team"
+      environment: "production"
+      data_type: "application-assets"
+      retention: "1y"
+  alerts:
+    budget_warning: 80                            # % of monthly budget
+    egress_spike_multiplier: 3                    # Alert at 3x average daily
+
+# Security Configuration (SecOps)
+security:
+  encryption:
+    at_rest: "SSE-KMS"                            # SSE-OBS | SSE-KMS | SSE-C
+    kms_key_id: "{{env.OBS_KMS_KEY_ID}}"          # KMS key for SSE-KMS
+    in_transit: true                              # TLS enforcement
+  bucket_policy:
+    enforce_secure_transport: true                # Deny non-TLS access
+    deny_public_access: true                     # Block public-read-write
+  access_logging:
+    enabled: true
+    target_bucket: "{{user.logging_bucket_name}}" # Separate bucket for access logs
+    target_prefix: "obs-access-logs/"
+  iam:
+    minimum_policy: "obs:*List*,obs:*Get*,obs:*Put*,obs:*Delete*"
+    ak_sk_rotation_days: 90

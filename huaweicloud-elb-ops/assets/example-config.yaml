@@ -1,0 +1,90 @@
+# ELB Example Configuration
+# This is a reference configuration for creating a production load balancer setup.
+
+load_balancer:
+  name: "prod-web-lb"
+  type: "dedicated"           # shared | dedicated
+  category: "application"     # application (ALB) | network (NLB)
+  vpc_id: "{{user.vpc_id}}"
+  subnet_ids:
+    - "{{user.subnet_id}}"
+  availability_zones:
+    - "cn-north-4a"
+    - "cn-north-4b"
+  admin_state_up: true
+  description: "Production web application load balancer"
+
+listeners:
+  - name: "https-443"
+    protocol: "HTTPS"
+    port: 443
+    certificate_id: "{{output.certificate_id}}"
+    default_pool: "web-backend"
+    idle_timeout: 60
+    request_timeout: 300
+    admin_state_up: true
+  
+  - name: "http-80-redirect"
+    protocol: "HTTP"
+    port: 80
+    default_pool: "web-backend"
+    redirect_to_https: true
+    admin_state_up: true
+
+pools:
+  - name: "web-backend"
+    protocol: "HTTP"
+    algorithm: "ROUND_ROBIN"   # ROUND_ROBIN | LEAST_CONNECTIONS | SOURCE_IP
+    session_persistence:
+      type: "SOURCE_IP"        # SOURCE_IP | HTTP_COOKIE | APP_COOKIE
+    slow_start:
+      enabled: true
+      duration: 30             # seconds
+    health_monitor:
+      type: "HTTP"
+      delay: 5                 # seconds between checks
+      timeout: 3               # seconds per check
+      max_retries: 3           # consecutive failures before unhealthy
+      url_path: "/health"
+      expected_codes: "200-399"
+    members:
+      - address: "10.0.1.10"
+        protocol_port: 8080
+        weight: 100
+        subnet_id: "{{user.subnet_id}}"
+      - address: "10.0.1.11"
+        protocol_port: 8080
+        weight: 100
+        subnet_id: "{{user.subnet_id}}"
+      - address: "10.0.2.10"
+        protocol_port: 8080
+        weight: 100
+        subnet_id: "{{user.subnet_id}}"
+
+# Monitoring configuration
+monitoring:
+  alarms:
+    - name: "ELB-Backend-Unhealthy"
+      metric: "m9_unhealthy_host"
+      condition: "> 0"
+      severity: "critical"
+      notification: "{{output.topic_arn}}"
+    
+    - name: "ELB-High-Error-Rate"
+      metric: "m7_req_5xx"
+      condition: "rate > 1%"
+      severity: "critical"
+      notification: "{{output.topic_arn}}"
+    
+    - name: "ELB-Connection-Spike"
+      metric: "m1_cps"
+      condition: "> 80% of limit"
+      severity: "warning"
+      notification: "{{output.topic_arn}}"
+
+# Cost optimization
+cost:
+  billing_mode: "monthly"     # pay-per-use | monthly | yearly
+  reserved_instances: false
+  idle_check_enabled: true
+  right_sizing_enabled: true
