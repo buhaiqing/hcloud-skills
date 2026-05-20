@@ -1,0 +1,515 @@
+# Example Configuration — Huawei Cloud RDS
+
+> **Purpose:** Example YAML configuration for RDS skill with FinOps, SecOps, and AIOps settings.
+> **Version:** 1.0.0
+> **Last Updated:** 2026-05-20
+
+---
+
+## Configuration Overview
+
+This file provides example configurations for different environments and use cases.
+
+---
+
+## Environment: Production
+
+```yaml
+# huaweicloud-rds-ops/config/production.yaml
+
+metadata:
+  environment: production
+  version: "1.0.0"
+  last_updated: "2026-05-20"
+
+# RDS Instance Configuration
+instance:
+  engine: MySQL
+  engine_version: "8.0"
+  flavor_ref: rds.mysql.s1.xlarge
+  volume_type: ULTRAHIGH
+  volume_size: 200
+  ha_mode: true
+  replication_mode: async
+
+# Network Configuration
+network:
+  vpc_id: vpc-prod-xxxxx
+  subnet_id: subnet-prod-private-xxxxx
+  security_group_id: sg-rds-mysql-prod-xxxxx
+  availability_zone: cn-north-4a,cn-north-4b
+
+# Backup Configuration
+backup:
+  auto_enabled: true
+  start_time: "02:00-03:00"
+  keep_days: 7
+  cross_region_enabled: false
+
+# Security Configuration
+security:
+  ssl_enabled: true
+  tde_enabled: true
+  require_secure_transport: true
+  min_password_length: 12
+
+# Monitoring Configuration
+monitoring:
+  ces_enabled: true
+  alarm_enabled: true
+  metrics:
+    - cpu_usage
+    - mem_usage
+    - connections_usage
+    - disk_usage
+    - slow_queries
+    - iops
+
+# Alert Thresholds
+alerts:
+  cpu:
+    warning: 80
+    critical: 95
+    duration_minutes: 5
+  memory:
+    warning: 85
+    critical: 95
+    duration_minutes: 5
+  connections:
+    warning: 80
+    critical: 90
+    duration_minutes: 5
+  disk:
+    warning: 85
+    critical: 95
+    duration_minutes: 2
+  slow_queries:
+    warning: 10
+    critical: 50
+    duration_minutes: 5
+
+# FinOps Configuration
+finops:
+  cost_center_tag: "CC-PROD-001"
+  environment_tag: "prod"
+  budget_alert_threshold: 0.8
+  idle_detection:
+    cpu_threshold: 5
+    days_threshold: 7
+    action: notify
+  right_sizing:
+    cpu_low_threshold: 20
+    mem_low_threshold: 30
+    days_threshold: 14
+    action: recommend
+
+# SecOps Configuration
+secops:
+  iam_policy:
+    allowed_actions:
+      - rds:instance:get
+      - rds:instance:list
+      - rds:backup:*
+      - rds:database:*
+    resource_scope: "acs:rds:*:*:instance/*"
+  security_group_rules:
+    ingress:
+      - protocol: TCP
+        port: 3306
+        source: sg-app-servers-xxxxx
+    egress:
+      - protocol: TCP
+        port: 3306
+        destination: sg-app-servers-xxxxx
+  credential_rotation_days: 90
+
+# AIOps Configuration
+aiops:
+  anomaly_detection:
+    enabled: true
+    patterns:
+      - name: cpu_mem_dual_high
+        metrics:
+          - rds001_cpu_usage
+          - rds002_mem_usage
+        condition: "cpu > 80 AND mem > 85"
+        severity: critical
+      - name: slow_query_spike
+        metrics:
+          - rds043_slow_queries
+        condition: "delta(10min) > 50%"
+        severity: warning
+  proactive_inspection:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily at 2 AM
+    scope: all_instances
+  alarm_storm:
+    enabled: true
+    threshold_per_5min: 10
+    aggregation_window_minutes: 5
+```
+
+---
+
+## Environment: Staging
+
+```yaml
+# huaweicloud-rds-ops/config/staging.yaml
+
+metadata:
+  environment: staging
+  version: "1.0.0"
+  last_updated: "2026-05-20"
+
+# RDS Instance Configuration
+instance:
+  engine: MySQL
+  engine_version: "8.0"
+  flavor_ref: rds.mysql.s1.large
+  volume_type: ULTRAHIGH
+  volume_size: 100
+  ha_mode: true
+  replication_mode: async
+
+# Network Configuration
+network:
+  vpc_id: vpc-staging-xxxxx
+  subnet_id: subnet-staging-private-xxxxx
+  security_group_id: sg-rds-mysql-staging-xxxxx
+  availability_zone: cn-north-4a,cn-north-4b
+
+# Backup Configuration
+backup:
+  auto_enabled: true
+  start_time: "03:00-04:00"
+  keep_days: 3
+  cross_region_enabled: false
+
+# Security Configuration
+security:
+  ssl_enabled: true
+  tde_enabled: false
+  require_secure_transport: true
+  min_password_length: 12
+
+# Monitoring Configuration
+monitoring:
+  ces_enabled: true
+  alarm_enabled: true
+  metrics:
+    - cpu_usage
+    - mem_usage
+    - connections_usage
+    - disk_usage
+
+# Alert Thresholds (slightly relaxed for staging)
+alerts:
+  cpu:
+    warning: 85
+    critical: 95
+    duration_minutes: 10
+  memory:
+    warning: 90
+    critical: 95
+    duration_minutes: 10
+  connections:
+    warning: 85
+    critical: 95
+    duration_minutes: 5
+  disk:
+    warning: 85
+    critical: 95
+    duration_minutes: 5
+
+# FinOps Configuration
+finops:
+  cost_center_tag: "CC-STAGING-001"
+  environment_tag: "staging"
+  budget_alert_threshold: 0.9
+  idle_detection:
+    cpu_threshold: 10
+    days_threshold: 3
+    action: notify
+  right_sizing:
+    cpu_low_threshold: 30
+    mem_low_threshold: 40
+    days_threshold: 7
+    action: recommend
+
+# SecOps Configuration
+secops:
+  iam_policy:
+    allowed_actions:
+      - rds:instance:get
+      - rds:instance:list
+      - rds:backup:*
+      - rds:database:*
+    resource_scope: "acs:rds:*:*:instance/*"
+  security_group_rules:
+    ingress:
+      - protocol: TCP
+        port: 3306
+        source: sg-app-servers-xxxxx
+    egress:
+      - protocol: TCP
+        port: 3306
+        destination: sg-app-servers-xxxxx
+  credential_rotation_days: 90
+
+# AIOps Configuration
+aiops:
+  anomaly_detection:
+    enabled: true
+    patterns:
+      - name: cpu_mem_dual_high
+        metrics:
+          - rds001_cpu_usage
+          - rds002_mem_usage
+        condition: "cpu > 85 AND mem > 90"
+        severity: critical
+  proactive_inspection:
+    enabled: true
+    schedule: "0 3 * * *"
+    scope: all_instances
+  alarm_storm:
+    enabled: true
+    threshold_per_5min: 15
+```
+
+---
+
+## Environment: Development
+
+```yaml
+# huaweicloud-rds-ops/config/development.yaml
+
+metadata:
+  environment: development
+  version: "1.0.0"
+  last_updated: "2026-05-20"
+
+# RDS Instance Configuration
+instance:
+  engine: MySQL
+  engine_version: "8.0"
+  flavor_ref: rds.mysql.s1.medium
+  volume_type: ULTRAHIGH
+  volume_size: 40
+  ha_mode: false
+  replication_mode: ""
+
+# Network Configuration
+network:
+  vpc_id: vpc-dev-xxxxx
+  subnet_id: subnet-dev-private-xxxxx
+  security_group_id: sg-rds-mysql-dev-xxxxx
+  availability_zone: cn-north-4a
+
+# Backup Configuration
+backup:
+  auto_enabled: true
+  start_time: "04:00-05:00"
+  keep_days: 1
+  cross_region_enabled: false
+
+# Security Configuration
+security:
+  ssl_enabled: false
+  tde_enabled: false
+  require_secure_transport: false
+  min_password_length: 8
+
+# Monitoring Configuration
+monitoring:
+  ces_enabled: true
+  alarm_enabled: false  # No alerts for dev
+  metrics:
+    - cpu_usage
+    - mem_usage
+    - disk_usage
+
+# Alert Thresholds (relaxed for development)
+alerts:
+  cpu:
+    warning: 90
+    critical: 95
+    duration_minutes: 15
+  memory:
+    warning: 90
+    critical: 95
+    duration_minutes: 15
+  connections:
+    warning: 90
+    critical: 95
+    duration_minutes: 10
+  disk:
+    warning: 90
+    critical: 95
+    duration_minutes: 10
+
+# FinOps Configuration
+finops:
+  cost_center_tag: "CC-DEV-001"
+  environment_tag: "dev"
+  budget_alert_threshold: 1.0
+  idle_detection:
+    cpu_threshold: 10
+    days_threshold: 1
+    action: delete  # Auto-delete for dev
+  right_sizing:
+    cpu_low_threshold: 40
+    mem_low_threshold: 50
+    days_threshold: 3
+    action: recommend
+
+# SecOps Configuration
+secops:
+  iam_policy:
+    allowed_actions:
+      - rds:instance:get
+      - rds:instance:list
+      - rds:instance:create
+      - rds:instance:delete
+    resource_scope: "acs:rds:*:*:instance/*"
+  security_group_rules:
+    ingress:
+      - protocol: TCP
+        port: 3306
+        source: 0.0.0.0/0  # Open for dev
+    egress:
+      - protocol: TCP
+        port: 3306
+        destination: 0.0.0.0/0
+  credential_rotation_days: 180
+
+# AIOps Configuration
+aiops:
+  anomaly_detection:
+    enabled: false
+  proactive_inspection:
+    enabled: false
+  alarm_storm:
+    enabled: false
+```
+
+---
+
+## Cost Optimization Profile
+
+```yaml
+# huaweicloud-rds-ops/config/cost-optimization.yaml
+
+metadata:
+  profile: cost-optimization
+  version: "1.0.0"
+
+# Resource Utilization Targets
+utilization_targets:
+  cpu:
+    target: 60-70%
+    alert_above: 80%
+    action_below: recommend_downgrade
+  memory:
+    target: 70-80%
+    alert_above: 85%
+    action_below: recommend_downgrade
+  connections:
+    target: 50-70%
+    alert_above: 80%
+    action_below: recommend_downgrade
+
+# Scheduled Actions
+scheduled_actions:
+  - name: weekly_review
+    schedule: "0 9 * * MON"
+    actions:
+      - list_idle_instances
+      - report_right_sizing_candidates
+      - cleanup_orphaned_backups
+  - name: monthly_report
+    schedule: "0 9 1 * *"
+    actions:
+      - generate_cost_report
+      - compare_with_previous_month
+      - update_budget_forecast
+
+# Auto-Remediation (with approval)
+auto_remediation:
+  idle_detection:
+    enabled: true
+    cpu_threshold: 5
+    days_threshold: 7
+    action: notify  # Notify only, no auto-action
+  right_sizing:
+    enabled: false  # Requires approval
+    auto_approve_threshold: 20
+```
+
+---
+
+## Security Hardening Profile
+
+```yaml
+# huaweicloud-rds-ops/config/security-hardened.yaml
+
+metadata:
+  profile: security-hardened
+  version: "1.0.0"
+
+# Enhanced Security Configuration
+security:
+  # Network Isolation
+  network_isolation:
+    vpc_endpoint_only: true
+    public_access: false
+    allowed_cidrs: []  # No public CIDRs
+
+  # Encryption
+  encryption:
+    tde_enabled: true
+    ssl_enabled: true
+    require_secure_transport: true
+    tls_version: "TLSv1.2"
+
+  # Access Control
+  access_control:
+    ip_whitelist_enabled: true
+    allowed_ips:
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+    max_failed_attempts: 3
+    lockout_duration_minutes: 30
+
+  # Audit
+  audit:
+    sql_audit_enabled: true
+    audit_log_retention_days: 180
+    log_all_select: true
+
+  # Password Policy
+  password_policy:
+    min_length: 16
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: true
+    expire_days: 90
+
+# Monitoring
+enhanced_monitoring:
+  slow_query_threshold_ms: 100
+  connection_timeout_seconds: 30
+  deadlock_detection: true
+  full_table_scan_alert: true
+
+# Backup Security
+backup_security:
+  encryption_enabled: true
+  cross_region_backup: true
+  backup_retention_days: 30
+  automated_purge: true
+```
+
+---
+
+*This document provides example configurations for different environments. Adjust values based on your specific requirements.*

@@ -1,0 +1,256 @@
+{
+  "skill_name": "huaweicloud-rds-ops",
+  "version": "1.0.0",
+  "last_updated": "2026-05-20",
+  "description": "Evaluation queries for trigger accuracy and execution quality of huaweicloud-rds-ops skill",
+  "evaluation_queries": [
+    {
+      "id": "E1",
+      "category": "should_trigger",
+      "query": "创建RDS MySQL实例",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and prompts for required parameters (engine, flavor, vpc, subnet, etc.)",
+      "priority": "P0"
+    },
+    {
+      "id": "E2",
+      "category": "should_trigger",
+      "query": "云数据库怎么创建",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates with Chinese trigger '云数据库'",
+      "priority": "P0"
+    },
+    {
+      "id": "E3",
+      "category": "should_trigger",
+      "query": "MySQL实例连接超时了怎么办",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides troubleshooting guidance",
+      "priority": "P0"
+    },
+    {
+      "id": "E4",
+      "category": "should_trigger",
+      "query": "RDS备份失败怎么解决",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides backup troubleshooting flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E5",
+      "category": "should_trigger",
+      "query": "查看RDS实例列表",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides list command",
+      "priority": "P1"
+    },
+    {
+      "id": "E6",
+      "category": "should_trigger",
+      "query": "删除RDS实例",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and requires confirmation before deletion",
+      "priority": "P0"
+    },
+    {
+      "id": "E7",
+      "category": "should_trigger",
+      "query": "PostgreSQL实例存储满了",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates for PostgreSQL and provides storage troubleshooting",
+      "priority": "P0"
+    },
+    {
+      "id": "E8",
+      "category": "should_trigger",
+      "query": "RDS慢查询怎么优化",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides slow query diagnosis flow",
+      "priority": "P0"
+    },
+    {
+      "id": "E9",
+      "category": "should_trigger",
+      "query": "华为云数据库性能监控",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides monitoring guidance",
+      "priority": "P1"
+    },
+    {
+      "id": "E10",
+      "category": "should_trigger",
+      "query": "RDS参数组修改",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides parameter modification flow",
+      "priority": "P1"
+    },
+    {
+      "id": "E11",
+      "category": "should_not_trigger",
+      "query": "查看华为云账单",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill does NOT activate; delegates to billing skill if present",
+      "priority": "P0"
+    },
+    {
+      "id": "E12",
+      "category": "should_not_trigger",
+      "query": "IAM权限配置",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill does NOT activate; delegates to IAM skill if present",
+      "priority": "P0"
+    },
+    {
+      "id": "E13",
+      "category": "should_not_trigger",
+      "query": "GaussDB怎么用",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill does NOT activate; delegates to GaussDB skill if present",
+      "priority": "P1"
+    },
+    {
+      "id": "E14",
+      "category": "should_trigger",
+      "query": "RDS从备份恢复",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides restore with safety warning",
+      "priority": "P0"
+    },
+    {
+      "id": "E15",
+      "category": "should_trigger",
+      "query": "RDS成本优化建议",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides FinOps cost optimization guidance",
+      "priority": "P1"
+    },
+    {
+      "id": "E16",
+      "category": "execution_quality",
+      "query": "创建RDS MySQL实例",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Execution flow: Pre-flight checks → Execute → Validate → Recover",
+      "validation_checks": [
+        "CLI/SDK dual-path documented",
+        "Credential masking enforced (no secrets in logs)",
+        "Polling for async creation documented",
+        "Error taxonomy ≥ 10 codes",
+        "HALT vs retry distinction clear"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E17",
+      "category": "execution_quality",
+      "query": "删除RDS实例",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Deletion requires explicit confirmation",
+      "validation_checks": [
+        "Safety gate present",
+        "Backup warning documented",
+        "Deletion order (replicas → backups → instance) documented"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E18",
+      "category": "execution_quality",
+      "query": "修改RDS实例规格",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Resize flow includes pre-flight checks",
+      "validation_checks": [
+        "Flavor availability check",
+        "Cost implication warning",
+        "Downtime warning",
+        "Post-resize validation"
+      ],
+      "priority": "P1"
+    },
+    {
+      "id": "E19",
+      "category": "finops_integration",
+      "query": "RDS成本分析",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Provides cost visibility and optimization patterns",
+      "validation_checks": [
+        "Billing model comparison table",
+        "Idle detection pattern",
+        "Right-sizing guidance",
+        "Cost tagging strategy"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E20",
+      "category": "secops_integration",
+      "query": "RDS安全配置",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Provides IAM and network security guidance",
+      "validation_checks": [
+        "IAM minimum permissions documented",
+        "SSL/TLS configuration documented",
+        "TDE configuration documented",
+        "Security group best practices"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E21",
+      "category": "aiops_integration",
+      "query": "RDS监控告警配置",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Provides AIOps patterns and alert configuration",
+      "validation_checks": [
+        "CES metrics documented",
+        "Alert thresholds defined",
+        "Anomaly patterns (≥4) documented",
+        "Cross-skill delegation matrix"
+      ],
+      "priority": "P0"
+    },
+    {
+      "id": "E22",
+      "category": "trigger_accuracy",
+      "query": "数据库连接失败",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates with implied scenario",
+      "priority": "P1"
+    },
+    {
+      "id": "E23",
+      "category": "trigger_accuracy",
+      "query": "实例状态为FAILED",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides recovery guidance",
+      "priority": "P1"
+    },
+    {
+      "id": "E24",
+      "category": "should_trigger",
+      "query": "SQL Server实例创建",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates for SQL Server engine",
+      "priority": "P1"
+    },
+    {
+      "id": "E25",
+      "category": "should_trigger",
+      "query": "RDS主备切换",
+      "expected_skill": "huaweicloud-rds-ops",
+      "pass_condition": "Skill activates and provides HA failover guidance",
+      "priority": "P1"
+    }
+  ],
+  "summary": {
+    "total_queries": 25,
+    "should_trigger": 15,
+    "should_not_trigger": 3,
+    "execution_quality": 3,
+    "finops_integration": 1,
+    "secops_integration": 1,
+    "aiops_integration": 1,
+    "trigger_accuracy": 2,
+    "p0_critical": 18,
+    "p1_important": 7
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "skill": "huaweicloud-vpc-ops",
+  "should_match": [
+    {
+      "query": "Create a VPC with CIDR 10.0.0.0/16",
+      "reason": "Direct VPC creation request"
+    },
+    {
+      "query": "设置虚拟私有云和子网",
+      "reason": "Chinese reference to VPC and subnet setup"
+    },
+    {
+      "query": "Add a security group rule to allow SSH from 10.0.0.0/8",
+      "reason": "Security group rule creation"
+    },
+    {
+      "query": "Allocate an elastic IP and bind it to my ECS instance",
+      "reason": "EIP allocation and binding"
+    },
+    {
+      "query": "Create VPC peering between vpc-abc and vpc-def",
+      "reason": "VPC peering creation"
+    },
+    {
+      "query": "The instance in private subnet cannot access the internet",
+      "reason": "NAT/routing troubleshooting"
+    },
+    {
+      "query": "设置NAT网关让私有子网访问外网",
+      "reason": "Chinese NAT gateway setup request"
+    },
+    {
+      "query": "Delete the unused VPC named test-vpc-123",
+      "reason": "VPC deletion request"
+    },
+    {
+      "query": "List all security groups in my production VPC",
+      "reason": "Security group listing"
+    },
+    {
+      "query": "My server is not reachable from the public internet",
+      "reason": "Network connectivity troubleshooting"
+    },
+    {
+      "query": "Check if my EIP is properly bound to the instance",
+      "reason": "EIP binding verification"
+    },
+    {
+      "query": "配置安全组规则，只允许特定IP访问数据库",
+      "reason": "Chinese security group configuration for DB"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "Create a new ECS instance",
+      "reason": "ECS resource creation, delegate to huaweicloud-ecs-ops"
+    },
+    {
+      "query": "How much did I spend on EIPs this month",
+      "reason": "Billing question, delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "Grant a user permission to manage VPCs",
+      "reason": "IAM permission management, delegate to huaweicloud-iam-ops"
+    },
+    {
+      "query": "Set up RDS database backup",
+      "reason": "RDS backup management, delegate to huaweicloud-rds-ops"
+    },
+    {
+      "query": "Configure ELB listener for my web application",
+      "reason": "Load balancer configuration, delegate to huaweicloud-elb-ops"
+    },
+    {
+      "query": "Create an alarm rule for CPU usage",
+      "reason": "Monitoring alarm, delegate to huaweicloud-ces-ops"
+    }
+  ]
+}

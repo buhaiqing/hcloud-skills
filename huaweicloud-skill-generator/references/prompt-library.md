@@ -58,6 +58,10 @@ Evaluate FinOps coverage in huaweicloud-[product]-ops:
 - Idle detection pattern documented?
 - Right-sizing guidance complete?
 - Cost attribution/tagging guidance?
+- Unit economics metrics defined (cost/request, cost/vCPU)?
+- Cost anomaly detection rules documented?
+- Reserved coverage analysis template present?
+- TCO model with cost breakdown documented?
 Gap analysis and recommended additions.
 ```
 
@@ -68,6 +72,11 @@ Evaluate SecOps coverage in huaweicloud-[product]-ops:
 - VPC/network isolation guidance?
 - Encryption at rest/in transit documented?
 - HSS/WAF integration triggers defined?
+- Zero Trust Architecture alignment documented?
+- Security incident response runbook present?
+- Supply chain security (SDK + SBOM) guidance?
+- KMS key lifecycle management strategy?
+- Compliance automation (等保2.0/GDPR) checklist?
 Gap analysis and recommended additions.
 ```
 
@@ -78,6 +87,10 @@ Evaluate AIOps coverage in huaweicloud-[product]-ops:
 - Cross-skill delegation matrix?
 - Knowledge base populated?
 - Alarm storm handling defined?
+- SLO/SLI with Error Budget and burn rate alerting?
+- Change correlation analysis with CTS integration?
+- Capacity forecasting methodology documented?
+- Diagnosis confidence scoring model with uncertainty declaration?
 Gap analysis and recommended additions.
 ```
 
@@ -108,9 +121,10 @@ For each conflict, document the trade-off and recommended balance.
 ### 5.1 Round 1: Foundation
 ```
 Self-Reflection Round 1 for huaweicloud-[product]-ops:
-1. FinOps: Are cost optimization patterns actionable? Billing table complete?
-2. SecOps: IAM permissions minimum documented? Credential masking enforced?
-3. AIOps: Multi-metric correlation defined? Delegation matrix present?
+1. FinOps: Are cost optimization patterns actionable? Billing table complete? Unit economics defined? Cost anomaly detection? TCO model?
+2. SecOps: IAM permissions minimum documented? Credential masking enforced? Zero trust alignment? Incident response runbook? Supply chain security? Key lifecycle?
+3. AIOps: Multi-metric correlation defined? Delegation matrix present? SLO/SLI with Error Budget? Change correlation? Capacity forecast? Diagnosis confidence?
+4. Well-Architected: All five pillars covered? Cross-pillar trade-off matrix reviewed? Maturity scorecard completed? ADR for key decisions?
 Report gaps per pillar with specific remediation steps.
 ```
 
@@ -122,6 +136,10 @@ Self-Reflection Round 2 for huaweicloud-[product]-ops:
 3. Are HALT conditions clearly separated from retry scenarios?
 4. Do any FinOps recommendations conflict with reliability requirements?
 5. Does SecOps create performance bottlenecks that contradict Performance pillar?
+6. Are SLO targets realistic given the product's actual capabilities?
+7. Has the maturity scorecard identified any dimension below L1 target?
+8. Are there sustainability/green computing considerations for this product?
+9. Are key architecture decisions documented as ADRs?
 Document findings and generate targeted fixes.
 ```
 

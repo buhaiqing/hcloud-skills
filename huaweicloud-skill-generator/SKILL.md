@@ -327,15 +327,17 @@ Run the [P0/P1 Checklist](#p0p1-checklist) below against the generated skill. Ru
 **After initial verification, execute multi-round self-reflection:**
 
 #### Self-Reflection Round 1: Foundation Check
-1. **FinOps**: Are cost optimization patterns actionable? Billing model comparison present? Idle detection documented?
-2. **SecOps**: IAM permissions minimum documented? Credential masking enforced? Network isolation recommended?
-3. **AIOps**: Multi-metric correlation defined? Cross-skill delegation matrix present? Knowledge base populated?
+1. **FinOps**: Are cost optimization patterns actionable? Billing model comparison present? Idle detection documented? Unit economics defined? Cost anomaly detection covered?
+2. **SecOps**: IAM permissions minimum documented? Credential masking enforced? Network isolation recommended? Zero trust alignment? Security incident response runbook? Supply chain security?
+3. **AIOps**: Multi-metric correlation defined? Cross-skill delegation matrix present? Knowledge base populated? SLO/SLI with Error Budget defined? Change correlation analysis? Capacity forecasting?
 
 #### Self-Reflection Round 2: Critical Analysis
 4. **Gap Analysis**: What would break if the user follows this skill in production?
 5. **Alternative Coverage**: Is there a better way to document this that would reduce agent confusion?
 6. **Escalation Paths**: Are HALT conditions clear? Are there enough non-retryable error patterns?
-7. **Cross-Pillar Synergy**: Do FinOps recommendations conflict with reliability? Does SecOps create performance bottlenecks?
+7. **Cross-Pillar Synergy**: Do FinOps recommendations conflict with reliability? Does SecOps create performance bottlenecks? Have trade-off decisions been documented in the Cross-Pillar Trade-off Matrix?
+8. **Maturity Assessment**: Has the skill self-assessed against the Maturity Scorecard? Which dimensions are below target?
+9. **Sustainability**: Has the resource carbon efficiency been considered? Are there green computing recommendations?
 
 **For any failure:**
 1. Identify the gap
@@ -467,13 +469,18 @@ Every generated skill MUST integrate FinOps, SecOps, and AIOps best practices in
 #### Well-Architected + Three-Pillar (P0)
 - [ ] **FinOps — Cost Visibility:** Billing model table present; cost attribution guidance documented
 - [ ] **FinOps — Cost Optimization:** Idle resource detection pattern; right-sizing guidance present
+- [ ] **FinOps — Unit Economics:** At least 1 unit cost metric defined (cost/request or cost/vCPU)
+- [ ] **FinOps — Anomaly Detection:** Cost anomaly detection rule documented
 - [ ] **SecOps — IAM Security:** Minimum IAM permissions table documented; credential masking enforced
 - [ ] **SecOps — Network Security:** VPC/security group isolation guidance; encryption recommendations present
 - [ ] **AIOps — Multi-Metric Correlation:** ≥ 4 anomaly patterns with detection logic (monitoring skills)
 - [ ] **AIOps — Cross-Skill Delegation:** Delegation matrix defined in `integration.md` (diagnostic skills)
 - [ ] **AIOps — Knowledge Base:** Fault pattern library present (diagnostic skills)
+- [ ] **AIOps — SLO/SLI:** At least 1 SLO with SLI, Error Budget, and burn rate alerting defined
 - [ ] **Five Pillars:** All five Well-Architected pillars addressed per well-architected-assessment.md
 - [ ] **Well-Architected Reference:** SKILL.md links to well-architected-assessment.md section
+- [ ] **Maturity Scorecard:** Self-assessment scorecard completed
+- [ ] **Cross-Pillar Conflicts:** Trade-off matrix reviewed for known pillar conflicts
 
 ### P1 — SHOULD PASS
 
@@ -484,13 +491,24 @@ Every generated skill MUST integrate FinOps, SecOps, and AIOps best practices in
 - [ ] **Adversarial scenarios** considered
 - [ ] **FinOps — Right-Sizing:** Resource utilization → recommendation mapping
 - [ ] **FinOps — Budget:** Budget alert integration documented
+- [ ] **FinOps — Reserved Coverage:** RI/包年包月覆盖率 analysis template
+- [ ] **FinOps — TCO Model:** Total Cost of Ownership model documented
 - [ ] **SecOps — Threat Detection:** HSS/WAF integration trigger conditions
 - [ ] **SecOps — Compliance:** Data protection alignment with industry standards
+- [ ] **SecOps — Zero Trust:** Zero Trust Architecture alignment guidance
+- [ ] **SecOps — Incident Response:** Security incident response runbook
+- [ ] **SecOps — Supply Chain:** SDK dependency security + SBOM guidance
+- [ ] **SecOps — Key Lifecycle:** KMS key lifecycle management strategy
 - [ ] **AIOps — Proactive Inspection:** Scheduled巡检 workflow defined
 - [ ] **AIOps — Alarm Storm:** Aggregation and suppression workflow
+- [ ] **AIOps — Change Correlation:** CTS-based change-anomaly correlation
+- [ ] **AIOps — Capacity Forecast:** 30-day capacity prediction methodology
+- [ ] **AIOps — Diagnosis Confidence:** Confidence score with uncertainty declaration
 - [ ] **Five Pillars — Multi-AZ:** Cross-AZ deployment recommendation
 - [ ] **Five Pillars — DR Runbook:** Phase 1/2/3 structure
 - [ ] **Five Pillars — Auto-Scaling:** Scaling trigger thresholds
+- [ ] **Efficiency — IaC:** Terraform/Ansible integration template
+- [ ] **Architecture — ADR:** Architecture Decision Records for key decisions
 - [ ] **Self-Reflection:** Round 1 + Round 2 self-reflection completed during generation
 
 ---

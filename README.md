@@ -26,22 +26,48 @@
 hcloud-skills/
 ├── README.md
 ├── LICENSE
-└── huaweicloud-skill-generator/          # Skill 生成器（Meta Skill）
-    ├── SKILL.md                          # 生成器主文件
-    ├── assets/
-    │   ├── eval_queries.json             # 触发准确率评估查询
-    │   └── example-config.yaml           # 配置示例
-    └── references/
-        ├── huaweicloud-skill-template.md # SKILL.md 模板
-        ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
-        ├── aiops-best-practices.md        # AIOps 最佳实践
-        ├── governance-and-adversarial-review.md # 治理与对抗审查
-        ├── enhanced-self-healing-framework.md   # 自愈框架
-        ├── execution-environment.md       # 执行环境配置
-        ├── cli-behavior.md               # CLI 行为参考
-        ├── user-experience-spec.md        # UX 规范
-        ├── optimization-analysis.md       # 优化分析框架
-        └── prompt-library.md             # 提示词手册
+├── huaweicloud-skill-generator/          # Skill 生成器（Meta Skill）
+│   ├── SKILL.md                          # 生成器主文件
+│   ├── assets/
+│   │   ├── eval_queries.json             # 触发准确率评估查询
+│   │   └── example-config.yaml           # 配置示例
+│   └── references/
+│       ├── huaweicloud-skill-template.md # SKILL.md 模板
+│       ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│       ├── aiops-best-practices.md        # AIOps 最佳实践
+│       ├── governance-and-adversarial-review.md # 治理与对抗审查
+│       ├── enhanced-self-healing-framework.md   # 自愈框架
+│       ├── execution-environment.md       # 执行环境配置
+│       ├── cli-behavior.md               # CLI 行为参考
+│       ├── user-experience-spec.md        # UX 规范
+│       ├── optimization-analysis.md       # 优化分析框架
+│       └── prompt-library.md             # 提示词手册
+├── huaweicloud-ces-ops/                  # 云监控服务 Skill
+│   ├── SKILL.md                          # 主文件：告警规则、指标查询、仪表盘
+│   ├── references/
+│   │   ├── core-concepts.md              # CES 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CES 自监控模式
+│   │   ├── integration.md                # JIT SDK 集成
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       └── eval_queries.json             # 触发准确率评估查询
+└── huaweicloud-vpc-ops/                  # 虚拟私有云 Skill
+    ├── SKILL.md                          # 主文件：VPC、子网、安全组、EIP、NAT
+    ├── references/
+    │   ├── core-concepts.md              # VPC 架构与网络概念
+    │   ├── api-sdk-usage.md              # API 与 SDK 使用
+    │   ├── cli-usage.md                  # CLI 命令映射
+    │   ├── troubleshooting.md            # 故障排查指南
+    │   ├── monitoring.md                 # 网络监控模式
+    │   ├── integration.md                # JIT SDK 集成
+    │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+    │   └── idempotency-checklist.md      # 幂等性检查清单
+    └── assets/
+        └── eval_queries.json             # 触发准确率评估查询
 ```
 
 ## 三支柱运维体系
@@ -103,11 +129,47 @@ export HW_REGION_ID="cn-north-4"
 export HW_PROJECT_ID="your-project-id"
 ```
 
-### 3. 生成新 Skill
+### 3. 使用现有 Skills
+
+**CES 云监控操作** — 引用 `huaweicloud-ces-ops`：
+```
+"创建告警规则：当ECS实例CPU使用率超过80%时告警，通过短信通知"
+"查询实例i-abc123最近1小时的CPU使用率"
+"列出cn-north-4区域的所有告警规则"
+```
+
+**VPC 网络操作** — 引用 `huaweicloud-vpc-ops`：
+```
+"创建VPC，CIDR为10.0.0.0/16，并创建生产子网"
+"添加安全组规则：允许10.0.0.0/8访问端口22"
+"创建弹性公网IP并绑定到ECS实例"
+"配置NAT网关使私有子网可以访问外网"
+```
+
+### 4. 生成新 Skill
 
 在 Agent Runtime 中引用生成器，然后提供提示词：
 
 > "生成 huaweicloud-ecs-ops Skill，核心功能：实例生命周期管理、磁盘、快照，包含 FinOps 成本优化和 SecOps 安全治理"
+
+## 可用 Skills
+
+> 以下 Skills 可通过 Agent Runtime 引用，用于华为云指定产品的运维操作。
+
+| Skill 名称 | 产品 | 核心功能 | 状态 |
+|-----------|------|---------|------|
+| `huaweicloud-ces-ops` | 云监控服务 (CES) | 告警规则、指标查询、仪表盘、事件监控 | ✅ 已生成 |
+| `huaweicloud-vpc-ops` | 虚拟私有云 (VPC) | VPC/子网/安全组/EIP/带宽/NAT网关/VPC对等连接 | ✅ 已生成 |
+| `huaweicloud-ecs-ops` | 弹性云服务器 (ECS) | 实例生命周期、磁盘、快照 | 📝 待生成 |
+| `huaweicloud-rds-ops` | 云数据库 RDS | 实例、备份、恢复 | 📝 待生成 |
+| `huaweicloud-elb-ops` | 弹性负载均衡 (ELB) | 监听器、后端池、健康检查 | 📝 待生成 |
+| `huaweicloud-cce-ops` | 云容器引擎 (CCE) | 集群、节点、插件 | 📝 待生成 |
+| `huaweicloud-dcs-ops` | 分布式缓存 (DCS) | 实例、备份、扩容 | 📝 待生成 |
+| `huaweicloud-hss-ops` | 主机安全服务 (HSS) | 主机、漏洞、事件 | 📝 待生成 |
+| `huaweicloud-waf-ops` | Web应用防火墙 (WAF) | 策略、规则、域名 | 📝 待生成 |
+| `huaweicloud-lts-ops` | 云日志服务 (LTS) | 日志组、日志流、搜索 | 📝 待生成 |
+| `huaweicloud-obs-ops` | 对象存储 (OBS) | 桶、对象、ACL | 📝 待生成 |
+| `huaweicloud-gaussdb-ops` | GaussDB | 实例、备份、监控 | 📝 待生成 |
 
 ## 华为云服务映射
 

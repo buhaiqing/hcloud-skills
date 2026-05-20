@@ -1,0 +1,67 @@
+{
+  "skill": "huaweicloud-ces-ops",
+  "should_match": [
+    {
+      "query": "Create an alarm rule for ECS CPU usage above 80%",
+      "reason": "Direct CES alarm creation request"
+    },
+    {
+      "query": "How to set up 云监控告警",
+      "reason": "Chinese reference to Cloud Eye alarm setup"
+    },
+    {
+      "query": "Query the CPU utilization of instance i-abc123 for the last hour",
+      "reason": "Metric data query request"
+    },
+    {
+      "query": "List all alarm rules in cn-north-4 region",
+      "reason": "Alarm listing request"
+    },
+    {
+      "query": "The alarm rule for production server is not sending notifications",
+      "reason": "CES alarm troubleshooting"
+    },
+    {
+      "query": "Create a dashboard to monitor all my ECS instances",
+      "reason": "Dashboard creation request"
+    },
+    {
+      "query": "为什么我的CPU告警没有触发",
+      "reason": "Chinese alarm troubleshooting"
+    },
+    {
+      "query": "Batch query metrics for 10 instances in SYS.ECS namespace",
+      "reason": "Batch metric query request"
+    },
+    {
+      "query": "Check the quota of alarm rules I can create",
+      "reason": "CES quota query"
+    },
+    {
+      "query": "Disable the alarm rule al-12345 temporarily",
+      "reason": "Alarm disable request"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "Create a new ECS instance",
+      "reason": "ECS resource creation, delegate to huaweicloud-ecs-ops"
+    },
+    {
+      "query": "How much did I spend on cloud monitoring this month",
+      "reason": "Billing question, delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "Grant a user permission to access CES",
+      "reason": "IAM permission management, delegate to huaweicloud-iam-ops"
+    },
+    {
+      "query": "Configure a VPC subnet for my application",
+      "reason": "VPC network configuration, delegate to huaweicloud-vpc-ops"
+    },
+    {
+      "query": "Set up RDS database backup policy",
+      "reason": "RDS backup management, delegate to huaweicloud-rds-ops"
+    }
+  ]
+}

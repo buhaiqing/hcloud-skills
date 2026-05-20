@@ -35,6 +35,46 @@
 4. **Knowledge Sharing:** Fault patterns visible across skills
 5. **Fault Tolerance:** Delegated skill unavailable → clear degradation path
 
+### 1.4 SLO/SLI 体系 (Service Level Objectives)
+
+Every monitoring/diagnostic skill MUST define SLO/SLI as the foundation for AIOps alerting.
+
+#### SLO 定义模板
+
+```markdown
+## SLO/SLI Definition — [Product]
+
+### SLI (Service Level Indicator) 指标选择
+| SLI 名称 | 计算公式 | 数据来源 | 采集频率 |
+|---------|---------|---------|---------|
+| 可用性 | 成功请求数 / 总请求数 × 100% | CES + ELB | 1min |
+| 延迟P99 | 第99百分位响应时间(ms) | AOM Trace | 1min |
+| 错误率 | 5xx响应数 / 总请求数 × 100% | ELB + AOM | 1min |
+| 饱和度 | CPU利用率 / 连接利用率 / 存储利用率 | CES | 5min |
+
+### SLO 目标
+| SLI | SLO 目标 | Error Budget (月度) | 告警阈值 |
+|-----|---------|--------------------| ---------|
+| 可用性 | ≥ 99.9% | 43.2min/月 | < 99.95% 触发Warning |
+| 延迟P99 | ≤ 200ms | — | > 300ms 触发Warning |
+| 错误率 | ≤ 0.1% | — | > 0.5% 触发Critical |
+| 饱和度 | ≤ 80% | — | > 85% 触发Warning |
+
+### Error Budget 燃烧率告警
+| 燃烧率 | 消耗速度 | 告警等级 | 含义 |
+|--------|---------|---------|------|
+| 1× | 正常消耗 (43.2min/月) | — | 正常 |
+| 2× | 21.6min耗尽 | Info | 需关注 |
+| 5× | 8.6min耗尽 | Warning | 需介入 |
+| 14.4× | 3h耗尽 | Critical | 立即行动 |
+```
+
+#### SLO 与 AIOps 的集成
+
+- AIOps告警应基于 SLO Error Budget 燃烧率，而非单一静态阈值
+- 多SLI联合违规 → 提升告警等级 (如: 可用性↓ + 延迟↑ → Critical)
+- SLO合规率纳入巡检报告，形成趋势分析
+
 ---
 
 ## 2. Multi-Metric Correlation Specs
@@ -352,9 +392,186 @@ If AOM/LTS skills unavailable:
 
 ---
 
-## 12. Compliance Checklists
+## 12. Change Correlation Analysis (变更关联分析)
 
-### 12.1 P0 — Must Pass
+### 12.1 变更事件收集
+
+```markdown
+## Change Correlation — Event Collection
+
+### 变更数据源
+| 变更类型 | 数据来源 | 采集方式 |
+|---------|---------|---------|
+| 配置变更 | CTS (Cloud Trace Service) | CTS ListTraces API |
+| 部署变更 | CCE / AOM | CCE ListClusters + AOM ListAlarms |
+| 规格变更 | 产品API变更记录 | DescribeInstance 对比 diff |
+| 网络变更 | VPC Flow Log | LTS Log Query |
+| 安全策略变更 | IAM / WAF | CTS ListTraces (iam/waf filter) |
+
+### 变更时间窗
+- 变更后 30min 内出现异常 → 高度关联
+- 变更后 2h 内出现异常 → 中度关联
+- 变更后 24h 内出现异常 → 低度关联
+```
+
+### 12.2 变更-异常关联决策树
+
+```
+[异常发现]
+    │
+    ├── Step 1: 查询变更历史 (CTS)
+    │   ├── 30min内有变更 → 高度怀疑变更导致
+    │   │   ├── 配置变更? → 回滚配置, 验证恢复
+    │   │   ├── 规格变更? → 评估是否回退规格
+    │   │   └── 部署变更? → 回滚版本, 验证恢复
+    │   └── 无近期变更 → 排除变更因素
+    │
+    ├── Step 2: 变更影响范围评估
+    │   ├── 受影响资源数 / 总资源数 → 影响面评估
+    │   └── 依赖拓扑分析 → 识别级联影响
+    │
+    └── Step 3: 生成变更关联报告
+        ├── 变更时间、类型、操作人
+        ├── 异常时间、指标、影响范围
+        └── 关联度评分: High / Medium / Low
+```
+
+---
+
+## 13. Chaos Engineering Integration (混沌工程集成)
+
+### 13.1 稳定性验证模式
+
+```markdown
+## Chaos Engineering — Stability Verification
+
+### 故障注入实验设计
+| 实验类型 | 注入方式 | 观测指标 | 预期行为 | 终止条件 |
+|---------|---------|---------|---------|---------|
+| 实例故障 | 停止主实例 | HA切换时间、服务可用性 | ≤ 60s切换, 可用性≥99.9% | 可用性<99%超5min |
+| 网络分区 | 安全组阻断AZ间流量 | 跨AZ请求成功率 | 降级但不断服 | 成功率<50%超2min |
+| 磁盘故障 | 填满磁盘至95% | 写入成功率、告警触发 | 告警触发≥告警 | 写入失败超1min |
+| 负载突增 | 压测工具打满CPU | AS扩容时间、服务延迟 | 5min内完成扩容 | 延迟>5s超10min |
+| 依赖故障 | 模拟下游服务超时 | 熔断触发、降级行为 | 熔断触发+降级响应 | 降级失败超3min |
+```
+
+### 13.2 韧性评分模型
+
+```markdown
+## Resilience Score
+
+### 评分维度 (每项0-10分)
+| 维度 | 评分标准 | 权重 |
+|------|---------|------|
+| 故障检测速度 | 从故障发生到告警触发的时间 | 20% |
+| 故障隔离能力 | 爆炸半径控制、级联防护 | 20% |
+| 恢复自动化 | 自愈成功率、MTTR | 25% |
+| 降级质量 | 降级后服务可用性 | 15% |
+| 数据一致性 | 故障恢复后数据完整性 | 20% |
+
+### 韧性等级
+| 分数区间 | 等级 | 建议 |
+|---------|------|------|
+| 8-10 | A (优秀) | 定期混沌验证, 持续保持 |
+| 6-8 | B (良好) | 补充缺失的故障场景验证 |
+| 4-6 | C (一般) | 增加自愈能力, 完善降级策略 |
+| 0-4 | D (薄弱) | 优先修复关键韧性缺口 |
+```
+
+---
+
+## 14. Capacity Forecasting (容量预测)
+
+### 14.1 预测模型选择
+
+| 模型 | 适用场景 | 准确度 | 实现复杂度 | 推荐度 |
+|------|---------|--------|----------|--------|
+| 线性外推 | 稳定增长型 | 中 | 低 | ★★★ |
+| 季节性分解 | 周期性负载 | 高 | 中 | ★★★★ |
+| 移动平均 | 平滑趋势 | 中 | 低 | ★★★ |
+| 指数平滑 | 短期预测 | 高 | 低 | ★★★★ |
+| ML模型 | 复杂模式 | 很高 | 高 | ★★ (高级场景) |
+
+### 14.2 容量规划工作流
+
+```
+[指标历史采集] (30-90天)
+    │
+    ├── Step 1: 识别增长趋势
+    │   线性回归 slope → 日均增长率
+    │   R² > 0.7 → 趋势可靠
+    │
+    ├── Step 2: 识别周期性模式
+    │   FFT/季节性分解 → 周/月周期
+    │   峰谷比 → 扩缩容空间
+    │
+    ├── Step 3: 计算资源天花板
+    │   当前用量 + (增长率 × 预测周期) = 预测用量
+    │   配额上限 / 预测用量 = 可用天数
+    │
+    ├── Step 4: 生成容量建议
+    │   可用天数 < 30天 → 立即扩容/申请配额
+    │   可用天数 30-90天 → 规划扩容
+    │   可用天数 > 90天 → 正常, 下次检查
+    │
+    └── Step 5: 输出容量报告
+        ├── 当前利用率趋势图
+        ├── 预测资源耗尽时间点
+        ├── 扩容/配额申请建议
+        └── 成本影响预估
+```
+
+### 14.3 容量告警规则
+
+| 指标 | Warning | Critical | 建议动作 |
+|------|---------|----------|---------|
+| CPU利用率趋势 | 30天内预测>80% | 14天内预测>90% | 扩容/优化 |
+| 存储增长率 | 60天内预测>85% | 30天内预测>95% | 扩容/清理 |
+| 连接数趋势 | 30天内预测>80% | 14天内预测>90% | 增加最大连接数/扩容 |
+| 配额余量 | 剩余<30% | 剩余<15% | 申请配额提升 |
+
+---
+
+## 15. Diagnosis Confidence Scoring (诊断置信度评分)
+
+### 15.1 置信度计算模型
+
+```
+Confidence = Σ(Evidence_i × Weight_i) / Σ(Weight_i)
+
+Evidence来源与权重:
+| 证据类型 | 权重 | 说明 |
+|---------|------|------|
+| 直接指标异常 | 0.30 | CES指标超阈值，确认异常存在 |
+| 关联指标异常 | 0.20 | 多指标联合异常，增强诊断信心 |
+| 变更时间关联 | 0.15 | 异常前有变更，提供因果线索 |
+| 知识库匹配 | 0.15 | 历史故障模式匹配，提供经验依据 |
+| 依赖资源异常 | 0.10 | 下游/上游异常，提供传播路径 |
+| 日志证据 | 0.10 | LTS日志中的错误/异常，提供直接证据 |
+```
+
+### 15.2 置信度等级与动作
+
+| 置信度 | 等级 | 诊断行为 | 报告措辞 |
+|--------|------|---------|---------|
+| 0.8-1.0 | 高 | 直接给出根因+修复建议 | "根因确认: ..." |
+| 0.5-0.8 | 中 | 给出最可能根因+备选假设+进一步排查步骤 | "最可能根因: ... (置信度: XX%), 建议进一步验证: ..." |
+| 0.2-0.5 | 低 | 列出多个假设+各自排查步骤 | "疑似根因 (需验证): 1)... 2)... 3)..." |
+| 0-0.2 | 极低 | 仅描述异常现象+建议人工排查 | "异常已确认但根因未明, 建议人工排查以下方向: ..." |
+
+### 15.3 不确定性声明 (Uncertainty Declaration)
+
+所有诊断报告 MUST 包含不确定性声明:
+- 明确标注哪些结论是确定的、哪些是推测的
+- 推测性结论标注置信度百分比
+- 列出未覆盖的排查方向
+- 如果关键数据缺失(如LTS/AOM不可用), 必须声明数据盲区
+
+---
+
+## 16. Compliance Checklists
+
+### 16.1 P0 — Must Pass
 
 - [ ] **Multi-Metric Inspection:** ≥ 4 anomaly patterns with CLI + SDK implementation
 - [ ] **Cross-Skill Decision Tree:** Verify → Check → Correlate → Diagnose → Report
@@ -365,14 +582,19 @@ If AOM/LTS skills unavailable:
 - [ ] **AOM/LTS Integration:** Delegation triggers for applicable skills
 - [ ] **Knowledge Base:** `references/knowledge-base.md` with ≥ 3 fault patterns
 - [ ] **Multi-Round Reflection:** 3-round review process defined in troubleshooting
+- [ ] **SLO/SLI Definition:** At least 1 SLO with SLI, Error Budget, and burn rate alerting
 
-### 12.2 P1 — Should Pass
+### 16.2 P1 — Should Pass
 
 - [ ] **Cascade Patterns:** ≥ 2 cross-product cascade fault patterns
 - [ ] **Observability Trinity:** Metrics→Logs→Traces linkage rules in `references/observability.md`
 - [ ] **Prompt Handbook:** `references/prompts.md` with ≥ 20 categorized prompts
 - [ ] **Trend Detection:** Slope, acceleration, sudden-change algorithms implemented
 - [ ] **Diagnosis Confidence:** Confidence score for each root cause judgment
+- [ ] **Change Correlation:** CTS-based change event correlation with anomaly timeline
+- [ ] **Capacity Forecasting:** 30-day capacity prediction with exhaustion date
+- [ ] **Chaos Engineering:** At least 1 fault injection experiment design documented
+- [ ] **Resilience Score:** Product-specific resilience scoring model defined
 
 ---
 

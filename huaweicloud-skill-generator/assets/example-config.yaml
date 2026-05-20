@@ -59,6 +59,23 @@ finops:
     downgrade_mem: 30
     upgrade_cpu: 80
     upgrade_mem: 85
+  unit_economics:
+    - metric: "cost_per_vcpu_hour"
+      formula: "monthly_cost / (vcpu_count * 730)"
+      source: "BSS + Product API"
+    - metric: "cost_per_request"
+      formula: "monthly_cost / monthly_request_count"
+      source: "BSS + CES QPS"
+  cost_anomaly_detection:
+    spike_threshold: 1.5  # daily cost > 7-day average * 1.5
+    dip_threshold: 0.5    # daily cost < 7-day average * 0.5
+    budget_deviation_percent: 110
+  reserved_coverage:
+    optimal_range: "60-85%"
+    breakeven_formula: "reserved_total / (on_demand_monthly - reserved_monthly_avg)"
+  tco:
+    categories: ["compute", "storage", "network", "operations", "labor"]
+    cost_driver_top_n: 5
 
 secops:
   credential_rotation_days: 90
@@ -69,6 +86,24 @@ secops:
   threat_detection:
     hss_enabled: true
     waf_integration: true
+  zero_trust:
+    enabled: true
+    principles: ["never_trust_always_verify", "least_privilege", "minimal_exposure", "assume_breach", "continuous_monitor"]
+  incident_response:
+    p0_response_minutes: 15
+    p1_response_minutes: 60
+    forensics_retention_days: 90
+  supply_chain:
+    sdk_vulnerability_scan: true
+    sbom_enabled: true
+    goproxy: "https://goproxy.cn,direct"
+  key_lifecycle:
+    kms_rotation_days: 365
+    key_separation: true  # admin, user, auditor roles separated
+    cts_audit_enabled: true
+  compliance_automation:
+    等保2.0: true
+    gdpr: false  # set true for EU-facing products
 
 aiops:
   min_anomaly_patterns: 4
@@ -81,6 +116,38 @@ aiops:
     target_success_rate: 80
     target_duration_seconds: 30
     max_user_intervention_percent: 20
+  slo_sli:
+    availability_target: 99.9
+    latency_p99_ms: 200
+    error_rate_target_percent: 0.1
+    error_budget_burn_rate_alert: [2, 5, 14.4]  # Info, Warning, Critical
+  change_correlation:
+    cts_enabled: true
+    high_correlation_window_min: 30
+    medium_correlation_window_min: 120
+  capacity_forecast:
+    prediction_horizon_days: 30
+    models: ["linear", "seasonal", "exponential_smoothing"]
+    critical_days_remaining: 14
+    warning_days_remaining: 30
+  diagnosis_confidence:
+    evidence_weights:
+      direct_metric: 0.30
+      correlated_metric: 0.20
+      change_correlation: 0.15
+      knowledge_base_match: 0.15
+      dependency_anomaly: 0.10
+      log_evidence: 0.10
+    high_threshold: 0.8
+    medium_threshold: 0.5
+    low_threshold: 0.2
+
+well_architected:
+  maturity_scorecard_enabled: true
+  trade_off_matrix_enabled: true
+  adr_enabled: true
+  sustainability_enabled: false  # set true for P2 compliance
+  iac_integration: "terraform"   # terraform | ansible | none
 
 ux:
   max_onboarding_seconds: 60
