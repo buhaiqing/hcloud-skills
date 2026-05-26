@@ -528,3 +528,61 @@ This skill's operations are evaluated against:
 - **FinOps**: [Cost Optimization](references/well-architected-assessment.md#3) — billing models, right-sizing, idle detection
 - **SecOps**: [Security Operations](references/well-architected-assessment.md#4) — IAM, network, encryption, HSS
 - **AIOps**: [Intelligent Operations](references/aiops-best-practices.md) multi-metric correlation, cross-skill diagnosis
+
+## FinOps — ECS Cost Optimization
+
+This skill provides ECS-specific cost optimization guidance. For cross-resource cost analysis, delegate to `huaweicloud-billing-ops` (when available).
+
+### Quick Cost Queries
+
+```bash
+# List ECS monthly costs
+hcloud bss list-bills --resource-type ecs --region {{env.HW_REGION_ID}}
+
+# Query specific instance daily cost
+hcloud bss query-daily-cost --resource-id {{user.instance_id}}
+
+# Check subscription renewal costs
+hcloud bss list-orders --resource-type ecs
+```
+
+### Idle Instance Detection & Action
+
+| Condition | Detection Method | Recommended Action | Savings Potential |
+|-----------|-----------------|-------------------|-------------------|
+| `cpu_util` < 10% for 7+ days | CES DescribeMetricData | Stop or delete | 30-100% of ECS cost |
+| Stopped for > 30 days | ListServersDetail status | Delete (snapshot first) | 100% + EVS release |
+| Flavor oversized (avg CPU < 20%) | CES 7-day average | Downgrade flavor | 30-60% |
+
+**⚠️ Important**: Stopping ECS does NOT stop EVS billing. See [FinOps Cost Optimization](references/well-architected-assessment.md#3) for detailed impact analysis.
+
+### Spot Instance Cost Optimization
+
+| Billing Type | Savings | Risk Level | Best For |
+|--------------|---------|------------|----------|
+| 按需 (Pay-per-use) | Baseline | None | Dev/test, short-term |
+| 包年包月 (Subscription) | Up to 83% | Low | Production 24/7 |
+| 竞价 (Spot) | Up to 90% | Medium (5-15% reclaim rate) | Batch, stateless, AS |
+
+For Spot instance pre-reclaim detection and recovery, see [Knowledge Base: Pattern ECS-006](references/knowledge-base.md).
+
+### Right-Sizing Recommendations
+
+Based on 7-day CES metrics:
+
+| CPU avg(7d) | MEM avg(7d) | Current Flavor → Recommended | Savings |
+|-------------|------------|------------------------------|---------|
+| < 20% | < 30% | s3.large → s3.medium | 30-60% |
+| < 20% | > 80% | c3.xlarge → m3.xlarge | Better fit |
+| > 80% | > 80% | Upgrade or scale out | N/A |
+
+### Cost Tagging
+
+Tag new instances with:
+- `cost_center`: Department/project code
+- `project`: Project identifier
+- `environment`: prod/staging/dev
+- `owner`: Responsible user
+- `ttl`: Auto-decommission date (optional)
+
+See [Well-Architected Assessment](references/well-architected-assessment.md#3) for complete FinOps patterns.

@@ -40,6 +40,9 @@ export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
 | Upload file | `hcloud ecs cloud-cell-upload --server-id ID --local-path P --remote-path P` | File to ECS |
 | Download file | `hcloud ecs cloud-cell-download --server-id ID --remote-path P --local-path P` | File from ECS |
 | Describe CloudCell | `hcloud ecs describe-server-cloud-cell --server-id ID` | Agent status |
+| List costs | `hcloud bss list-bills --resource-type ecs --region CN` | Monthly ECS billing |
+| Query daily cost | `hcloud bss query-daily-cost --resource-id ID` | Daily cost breakdown |
+| List orders | `hcloud bss list-orders --resource-type ecs` | Order history |
 
 ## CLI vs API Coverage Gap
 
@@ -71,3 +74,61 @@ export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
 | ListInstances | `$.servers[].id` | Array of instance IDs |
 | DescribeCloudCell | `$.server_cloud_cell_detail.is_install` | Agent installed |
 | DescribeCloudCell | `$.server_cloud_cell_detail.status` | RUNNING/STOPPED/ERROR |
+
+## Cost & Billing Commands
+
+The BSS (Business Support System) CLI provides cost analysis and billing management for ECS resources.
+
+### Common Cost Operations
+
+```bash
+# List monthly ECS bills
+hcloud bss list-bills --resource-type ecs --region CN --cycle 2024-01
+
+# Query daily cost breakdown for specific instance
+hcloud bss query-daily-cost --resource-id "ecs-instance-id" --start-time 2024-01-01 --end-time 2024-01-31
+
+# List all ECS-related orders
+hcloud bss list-orders --resource-type ecs --status completed
+
+# Check subscription renewal status
+hcloud bss query-subscription --resource-id "ecs-instance-id"
+
+# View quota balance for subscription resources
+hcloud bss query-quota --product-line ecs
+```
+
+### Cost Analysis Output Paths
+
+| Operation | Key Path | Description |
+|-----------|---------|-------------|
+| ListBills | `$.bills[].bill_id` | Monthly bill identifier |
+| ListBills | `$.bills[].total_amount` | Total monthly cost (CNY) |
+| ListBills | `$.bills[].resource_ids[]` | ECS instance IDs in bill |
+| QueryDailyCost | `$.daily_costs[].amount` | Daily cost amount |
+| QueryDailyCost | `$.daily_costs[].resource_id` | Instance ID |
+| ListOrders | `$.orders[].order_id` | Order identifier |
+| ListOrders | `$.orders[].status` | Order status (completed/pending) |
+
+### FinOps Integration
+
+Use BSS commands with CES metrics for idle resource detection:
+
+```bash
+# Identify low-utilization instances (CPU < 10% for 7 days)
+hcloud ecs list-instances --output json | jq '.servers[].id' | while read id; do
+  utilization=$(hcloud ces show-metric-data --namespace SYS.ECS --metric_name cpu_util --dim.0=instance_id,$id --output json | jq '.datapoints[-1].average')
+  if [ "$utilization" -lt 10 ]; then
+    # Get billing info for recommendation
+    hcloud bss query-daily-cost --resource-id "$id" --output json | jq '{resource_id: .daily_costs[0].resource_id, daily_cost: .daily_costs[0].amount}'
+  fi
+done
+```
+
+### Billing Model Detection
+
+```bash
+# Determine billing model from instance metadata
+hcloud ecs describe-server --server-id ID --output json | jq '{billing_type: .server.metadata.__billing_type, charging_mode: .server.charging_mode}'
+# Values: "0" = pay-per-use (按需), "1" = subscription (包年包月), "2" = spot (竞价)
+```

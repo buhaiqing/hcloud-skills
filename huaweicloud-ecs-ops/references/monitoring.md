@@ -40,6 +40,78 @@ Namespace: `SYS.ECS`
 | network_storm | `net_bits`, `net_pps` | pps > 10× baseline | Critical |
 | disk_fill_acceleration | `diskUsage_percent` (1h) | fill rate increasing (half1 < half2 rate) | Critical |
 
+## Predictive AIOps Patterns
+
+### Capacity Forecasting Patterns
+
+| Pattern | Detection Method | Prediction Window | Accuracy | Action |
+|---------|-----------------|-------------------|----------|--------|
+| disk_fill_forecast | Linear regression on diskUsage | 24-72h before 90% | ±10% | Preemptive cleanup |
+| memory_exhaustion_forecast | ARIMA model on mem_usedPercent | 48h before OOM | ±15% | Scale recommendation |
+| cpu_saturation_forecast | Holt-Winters smoothing on cpu_util | 7d before 100% | ±20% | Right-size alert |
+| cost_spike_forecast | Billing trend analysis | Next billing cycle | ±25% | Budget alert |
+
+### Forecast-Based Alert Rules
+
+```bash
+# Disk capacity exhaustion prediction
+hcloud ces create-alarm-rule \
+  --name "ECS-Disk-Forecast-90" \
+  --metric diskUsage_percent \
+  --namespace SYS.ECS \
+  --condition "forecast_linear(72h) >= 90" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
+
+# Memory exhaustion prediction
+hcloud ces create-alarm-rule \
+  --name "ECS-Memory-OOM-Forecast" \
+  --metric mem_usedPercent \
+  --namespace SYS.ECS \
+  --condition "forecast_arima(48h) >= 95" \
+  --alarm-level critical
+```
+
+## ML Feature Metadata
+
+### Feature Engineering for Anomaly Detection
+
+| Pattern | ML Feature | Type | Training Window | Normalization |
+|---------|-----------|------|-----------------|---------------|
+| cpu_mem_dual_high | `cpu_util`, `mem_usedPercent` | float (0-100) | Real-time (5s) | Percentage |
+| mem_leak_trend | Slope coefficient | float | 30 min sliding | Rate per minute |
+| disk_fill_acceleration | Fill rate half1, half2 | float | 1h window (2 × 30min) | Rate per hour |
+| network_storm | `net_pps` baseline_ratio | float | 7d baseline | Ratio (current/baseline) |
+| sudden_cpu_spike | `cpu_util` delta_5min | float | 5min × 2 | Absolute delta |
+
+### Model Input Schema (JSON)
+
+```json
+{
+  "instance_id": "{{user.instance_id}}",
+  "timestamp": "2026-05-26T10:00:00Z",
+  "features": {
+    "cpu_util": 75.2,
+    "mem_usedPercent": 82.1,
+    "diskUsage_percent": 67.5,
+    "read_iops": 1200,
+    "write_iops": 800,
+    "net_bits": 50000000,
+    "net_pps": 5000,
+    "load1": 2.5,
+    "load5": 2.2,
+    "load15": 2.0
+  },
+  "derived_features": {
+    "cpu_mem_ratio": 0.91,
+    "cpu_delta_5min": 12.5,
+    "mem_slope_30min": 0.8,
+    "disk_fill_rate": 0.15,
+    "net_pps_baseline_ratio": 1.2
+  }
+}
+```
+
 ## Dashboards
 
 - CES Console: `https://console.huaweicloud.com/ces/#/metricView/instances`

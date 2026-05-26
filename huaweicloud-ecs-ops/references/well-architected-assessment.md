@@ -80,6 +80,26 @@ This file contains ECS-specific well-architessed assessment patterns. The genera
 | Zombie EIP | Not bound to any resource | VPC ListPublicIps | Release |
 | Orphaned snapshot | No associated image/volume | EVS ListSnapshots | Delete if > retention |
 
+### Idle Instance Financial Impact
+
+**Critical**: Stopping an ECS instance does NOT stop EVS billing!
+
+| Billing Model | ECS Stop Impact | EVS Billing | Recommended Action |
+|---------------|-----------------|-------------|-------------------|
+| Pay-per-use | CPU cost = 0 | EVS continues | Delete if > 30 days idle |
+| Subscription | No savings until term ends | Included | Resize immediately |
+| Spot | Terminated, no billing | Released | Already reclaimed |
+
+**Cost Calculation**:
+- Monthly savings from stop: `flavor_hourly_rate × 24 × 30`
+- EVS monthly cost continues: `disk_size_gb × gb_monthly_rate`
+- Net savings = ECS savings - EVS cost (may be negative!)
+
+**Recommendation**:
+- Pay-per-use idle (< 30 days): Stop (temporary savings)
+- Pay-per-use idle (> 30 days): Delete (full savings, snapshot first)
+- Subscription idle: Resize immediately for term savings
+
 ### Right-Sizing Matrix
 
 | CPU avg(7d) | MEM avg(7d) | Action | Savings |
