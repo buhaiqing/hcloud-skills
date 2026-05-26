@@ -1,0 +1,184 @@
+# docker-compose.yml for Huawei Cloud Ops Skills Sandbox
+# Provides complete environment for running all hcloud-skills
+
+version: '3.8'
+
+services:
+  # Main skills sandbox - CLI operations
+  hcloud-skills:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hcloud-skills:latest
+    container_name: hcloud-skills-sandbox
+
+    # Interactive mode for CLI operations
+    stdin_open: true
+    tty: true
+
+    # Mount skills directory (read-only for safety)
+    volumes:
+      - ./:/workspace/hcloud-skills:ro
+      - ./docker/.credentials:/workspace/.credentials:ro
+      - ./docker/.outputs:/workspace/.outputs
+      - ./docker/logs:/workspace/logs
+      - ./docker/scripts:/workspace/scripts
+
+    # Environment variables (configure in .env file)
+    environment:
+      - HW_ACCESS_KEY_ID=${HW_ACCESS_KEY_ID}
+      - HW_SECRET_ACCESS_KEY=${HW_SECRET_ACCESS_KEY}
+      - HW_REGION_ID=${HW_REGION_ID:-cn-north-4}
+      - HW_PROJECT_ID=${HW_PROJECT_ID}
+      - TZ=${TZ:-Asia/Shanghai}
+
+    # Network mode: bridge for isolation
+    networks:
+      - hcloud-net
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Skill execution worker - for automated/scheduled tasks
+  hcloud-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hcloud-skills:latest
+    container_name: hcloud-skills-worker
+
+    # Worker mode - non-interactive
+    stdin_open: false
+    tty: false
+
+    # Mounts
+    volumes:
+      - ./:/workspace/hcloud-skills:ro
+      - ./docker/.credentials:/workspace/.credentials:ro
+      - ./docker/.outputs:/workspace/.outputs
+      - ./docker/logs:/workspace/logs
+      - ./docker/scripts:/workspace/scripts:ro
+
+    # Environment
+    environment:
+      - HW_ACCESS_KEY_ID=${HW_ACCESS_KEY_ID}
+      - HW_SECRET_ACCESS_KEY=${HW_SECRET_ACCESS_KEY}
+      - HW_REGION_ID=${HW_REGION_ID:-cn-north-4}
+      - HW_PROJECT_ID=${HW_PROJECT_ID}
+      - TZ=${TZ:-Asia/Shanghai}
+      - WORKER_MODE=true
+
+    # Default: sleep waiting for commands via docker exec
+    command: ["sleep", "infinity"]
+
+    networks:
+      - hcloud-net
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+    restart: unless-stopped
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Test runner - isolated environment for skill testing
+  hcloud-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hcloud-skills:latest
+    container_name: hcloud-skills-test
+
+    # Test mode
+    volumes:
+      - ./:/workspace/hcloud-skills:ro
+      - ./docker/test-output:/workspace/.outputs
+      - ./docker/scripts:/workspace/scripts:ro
+
+    environment:
+      - HW_ACCESS_KEY_ID=${HW_ACCESS_KEY_ID}
+      - HW_SECRET_ACCESS_KEY=${HW_SECRET_ACCESS_KEY}
+      - HW_REGION_ID=${HW_REGION_ID:-cn-north-4}
+      - HW_PROJECT_ID=${HW_PROJECT_ID}
+      - TEST_MODE=true
+      - TZ=${TZ:-Asia/Shanghai}
+
+    # Run tests and exit
+    command: ["bash", "-c", "echo 'Test runner ready. Use: docker exec hcloud-skills-test bash /workspace/scripts/run-tests.sh'"]
+
+    networks:
+      - hcloud-net
+
+    profiles:
+      - test
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # Go SDK build environment - for JIT script compilation
+  hcloud-sdk-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hcloud-skills:latest
+    container_name: hcloud-sdk-builder
+
+    volumes:
+      - ./:/workspace/hcloud-skills
+      - ./docker/go-cache:/root/go
+
+    environment:
+      - GOPATH=/root/go
+      - GOCACHE=/root/go/cache
+      - GOMODCACHE=/root/go/mod
+
+    command: ["bash", "-c", "go version && echo 'SDK builder ready'"]
+
+    networks:
+      - hcloud-net
+
+    profiles:
+      - build
+
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+networks:
+  hcloud-net:
+    driver: bridge
+    name: hcloud-network
+
+# Named volumes for persistent data
+volumes:
+  go-cache:
+    name: hcloud-go-cache
