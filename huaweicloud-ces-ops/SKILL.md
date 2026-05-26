@@ -458,6 +458,317 @@ hcloud ces show-quotas \
   --region "{{user.region}}"
 ```
 
+### Operation: Self-Healing — Auto Re-enable Alarms After Deployment
+
+**Context**: During deployments, alarms are often disabled to prevent false alerts from resource restarts. This self-healing flow ensures alarms are automatically re-enabled after deployment completes.
+
+#### Pre-flight Checks
+
+| Check | Method | Expected | On Failure |
+|-------|--------|----------|------------|
+| Deployment status | Check deployment workflow completion signal | `deployment_complete=true` | HALT; deployment still in progress |
+| Disabled alarms list | Query alarms with `alarm_enabled=false` | Non-empty list | No action needed; all alarms enabled |
+| Deployment window elapsed | Check timestamp since disable | Within grace period (≤ 30 min) | Manual intervention; alarm stuck disabled |
+
+#### Execution — CLI (Auto Re-enable Flow)
+
+```bash
+#!/bin/bash
+# Self-healing: Auto re-enable alarms after deployment
+# Trigger: Post-deployment webhook or scheduled check
+
+REGION="{{env.HW_REGION_ID}}"
+DEPLOYMENT_ID="{{output.deployment_id}}"
+GRACE_PERIOD_MINUTES=30
+
+# Step 1: List disabled alarms (filtered by deployment tag if available)
+DISABLED_ALARMS=$(hcloud ces list-alarms \
+  --region "$REGION" \
+  --alarm-enabled false \
+  --output json)
+
+# Step 2: Check deployment completion (via external system or deployment skill)
+# Placeholder: This should delegate to deployment skill or CI/CD system
+# DEPLOYMENT_STATUS=$(curl -s "https://ci.company.com/api/deployments/$DEPLOYMENT_ID/status")
+
+# Step 3: For each disabled alarm, re-enable if deployment complete
+for ALARM_ID in $(echo "$DISABLED_ALARMS" | jq -r '.alarms[].alarm_id'); do
+  ALARM_NAME=$(echo "$DISABLED_ALARMS" | jq -r ".alarms[] | select(.alarm_id == \"$ALARM_ID\") | .alarm_name")
+  
+  echo "🔄 Re-enabling alarm: $ALARM_NAME ($ALARM_ID)"
+  
+  # Enable alarm
+  hcloud ces enable-alarm \
+    --region "$REGION" \
+    --alarm-id "$ALARM_ID"
+  
+  # Step 4: Validate re-enable success
+  ALARM_STATE=$(hcloud ces describe-alarm \
+    --region "$REGION" \
+    --alarm-id "$ALARM_ID" \
+    --query "alarm_enabled")
+  
+  if [ "$ALARM_STATE" = "true" ]; then
+    echo "✅ Alarm $ALARM_NAME successfully re-enabled"
+    # Log to incident system
+    echo "{\"event\":\"alarm_re-enabled\",\"alarm_id\":\"$ALARM_ID\",\"deployment_id\":\"$DEPLOYMENT_ID\"}" | \
+      curl -X POST -H "Content-Type: application/json" \
+        -d @- "https://logs.company.com/api/events"
+  else
+    echo "❌ Failed to re-enable alarm $ALARM_NAME"
+    # Escalate to incident system
+    echo "{\"event\":\"alarm_re-enable-failed\",\"alarm_id\":\"$ALARM_ID\",\"severity\":\"high\"}" | \
+      curl -X POST -H "Content-Type: application/json" \
+        -d @- "https://alerts.company.com/api/incidents"
+  fi
+done
+
+# Step 5: Summary report
+TOTAL_RE_ENABLED=$(echo "$DISABLED_ALARMS" | jq 'length')
+echo "📊 Self-healing complete: $TOTAL_RE_ENABLED alarms processed"
+```
+
+#### Execution — SDK (Go Implementation)
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "os"
+    "time"
+
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1"
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1/model"
+)
+
+type SelfHealingConfig struct {
+    Region            string
+    DeploymentID      string
+    GracePeriodMinutes int
+    IncidentLogURL    string // Webhook for logging
+    AlertEscalationURL string // Webhook for failures
+}
+
+func AutoReEnableAlarms(cfg SelfHealingConfig) error {
+    ak := os.Getenv("HW_ACCESS_KEY_ID")
+    sk := os.Getenv("HW_SECRET_ACCESS_KEY")
+
+    client := v1.CesClientBuilder().
+        WithEndpoint(fmt.Sprintf("ces.%s.myhuaweicloud.com", cfg.Region)).
+        WithCredential(basic.NewCredentialsBuilder().
+            WithAk(ak).WithSk(sk).Build()).
+        WithHttpConfig(config.DefaultHttpConfig()).Build()
+
+    // Step 1: List disabled alarms
+    listReq := &model.ListAlarmsRequest{
+        Region: cfg.Region,
+    }
+    listResp, err := client.ListAlarms(listReq)
+    if err != nil {
+        return fmt.Errorf("ListAlarms failed: %v", err)
+    }
+
+    // Filter disabled alarms
+    var disabledAlarms []string
+    for _, alarm := range listResp.Alarms {
+        if !alarm.AlarmEnabled {
+            disabledAlarms = append(disabledAlarms, alarm.AlarmId)
+        }
+    }
+
+    if len(disabledAlarms) == 0 {
+        fmt.Println("✅ No disabled alarms found; all alarms enabled")
+        return nil
+    }
+
+    // Step 2-3: Re-enable each alarm
+    successCount := 0
+    failureCount := 0
+
+    for _, alarmID := range disabledAlarms {
+        enableReq := &model.EnableAlarmRequest{
+            Region:  cfg.Region,
+            AlarmId: alarmID,
+            Body: &model.EnableAlarmRequestBody{
+                AlarmEnabled: true,
+            },
+        }
+
+        _, err := client.EnableAlarm(enableReq)
+        if err != nil {
+            failureCount++
+            log.Printf("❌ Failed to re-enable alarm %s: %v", alarmID, err)
+            // Escalate failure
+            escalateFailure(cfg.AlertEscalationURL, alarmID, err.Error())
+            continue
+        }
+
+        // Step 4: Validate
+        describeReq := &model.ShowAlarmRequest{
+            Region:  cfg.Region,
+            AlarmId: alarmID,
+        }
+        describeResp, err := client.ShowAlarm(describeReq)
+        if err != nil || !describeResp.AlarmEnabled {
+            failureCount++
+            log.Printf("❌ Validation failed for alarm %s", alarmID)
+            escalateFailure(cfg.AlertEscalationURL, alarmID, "validation_failed")
+            continue
+        }
+
+        successCount++
+        log.Printf("✅ Alarm %s re-enabled successfully", alarmID)
+        logEvent(cfg.IncidentLogURL, alarmID, cfg.DeploymentID)
+    }
+
+    // Step 5: Summary
+    fmt.Printf("📊 Self-healing complete: %d success, %d failed\n", successCount, failureCount)
+    
+    if failureCount > 0 {
+        return fmt.Errorf("%d alarms failed to re-enable", failureCount)
+    }
+    return nil
+}
+
+func logEvent(url, alarmID, deploymentID string) {
+    // POST event to logging webhook (implementation depends on endpoint)
+}
+
+func escalateFailure(url, alarmID, reason string) {
+    // POST failure to alert webhook (implementation depends on endpoint)
+}
+
+func main() {
+    cfg := SelfHealingConfig{
+        Region:            os.Getenv("HW_REGION_ID"),
+        DeploymentID:      os.Getenv("DEPLOYMENT_ID"),
+        GracePeriodMinutes: 30,
+        IncidentLogURL:    os.Getenv("INCIDENT_LOG_URL"),
+        AlertEscalationURL: os.Getenv("ALERT_ESCALATION_URL"),
+    }
+
+    if err := AutoReEnableAlarms(cfg); err != nil {
+        log.Fatalf("Self-healing failed: %v", err)
+    }
+}
+```
+
+#### Post-execution Validation
+
+| Validation | Method | Expected | Action on Failure |
+|------------|--------|----------|-------------------|
+| All alarms enabled | List alarms with `alarm_enabled=false` | Empty list | Re-run or manual intervention |
+| Alarm evaluation active | Query alarm state for each re-enabled alarm | `alarm_enabled=true` | Escalate to incident system |
+| Metrics flowing | Query metric data for monitored resources | Non-empty datapoints within 5 min | Check agent connectivity |
+| Notifications working | Test SMN topic publish | Delivery confirmed | Verify SMN subscription |
+
+#### Failure Recovery
+
+| Error | Max retries | Backoff | Agent Action | UX Feedback |
+|-------|-------------|---------|--------------|-------------|
+| `CES.0011` AlarmNotFound | 0 | — | Alarm deleted during deployment | `⚠️ Alarm was deleted; skip re-enable` |
+| `CES.0016` Unauthorized | 0 | — | Check IAM permissions | `[ERROR] Unauthorized to enable alarm. Check IAM role.` |
+| API timeout | 3 | exponential | Retry; then escalate | `⚠️ API timeout. Retrying...` |
+| Network failure | 3 | 2s, 4s, 8s | Retry; then manual | `[ERROR] Network failure. Escalating to manual intervention.` |
+
+#### Idempotency
+
+- Enable alarm is idempotent: enabling an already-enabled alarm has no effect (returns success)
+- Multiple executions safe: re-running will only attempt to enable alarms still disabled
+
+### Operation: Self-Healing — Auto-adjust Alarm Thresholds
+
+**Context**: Alarms may trigger false positives due to temporary workload spikes. This flow analyzes historical baselines and adjusts thresholds to reduce noise while maintaining sensitivity.
+
+#### Pre-flight Checks
+
+| Check | Method | Expected | On Failure |
+|-------|--------|----------|------------|
+| Historical data available | Query 30-day metric data | ≥ 100 datapoints | HALT; insufficient baseline |
+| Current threshold | Describe alarm | Threshold value recorded | Proceed with adjustment |
+| Adjustment approved | Policy check or user consent | `auto_adjust_enabled=true` | HALT; manual adjustment only |
+
+#### Execution — CLI (Threshold Adjustment)
+
+```bash
+#!/bin/bash
+# Self-healing: Auto-adjust alarm thresholds based on historical baseline
+
+REGION="{{env.HW_REGION_ID}}"
+ALARM_ID="{{user.alarm_id}}"
+METRIC_NAMESPACE="{{user.metric_namespace}}"
+METRIC_NAME="{{user.metric_name}}"
+RESOURCE_ID="{{user.resource_id}}"
+BASELINE_DAYS=30
+
+# Step 1: Query historical metric data (30 days)
+METRIC_DATA=$(hcloud ces query-metric-data \
+  --region "$REGION" \
+  --metric-namespace "$METRIC_NAMESPACE" \
+  --metric-name "$METRIC_NAME" \
+  --metric-dimension.0.name "instance_id" \
+  --metric-dimension.0.value "$RESOURCE_ID" \
+  --from "$(date -d "-${BASELINE_DAYS} days" +%s)000" \
+  --to "$(date +%s)000" \
+  --filter "average,max" \
+  --period "3600" \
+  --output json)
+
+# Step 2: Calculate baseline statistics
+AVG_VALUE=$(echo "$METRIC_DATA" | jq '[.datapoints[].average] | add / length')
+MAX_VALUE=$(echo "$METRIC_DATA" | jq '[.datapoints[].max] | max')
+P95_VALUE=$(echo "$METRIC_DATA" | jq '[.datapoints[].average] | sort | .[int(length * 0.95)]')
+
+# Step 3: Get current threshold
+CURRENT_THRESHOLD=$(hcloud ces describe-alarm \
+  --region "$REGION" \
+  --alarm-id "$ALARM_ID" \
+  --query "threshold")
+
+# Step 4: Calculate new threshold (P95 + 10% buffer)
+NEW_THRESHOLD=$(echo "$P95_VALUE * 1.10" | bc | cut -c1-5)
+NEW_THRESHOLD_INT=${NEW_THRESHOLD%.*}  # Floor for integer thresholds
+
+# Step 5: Validate adjustment (must not decrease sensitivity)
+if [ "$NEW_THRESHOLD_INT" -lt "$CURRENT_THRESHOLD" ]; then
+  echo "⚠️ New threshold would decrease sensitivity; skipping adjustment"
+  echo "   Current: $CURRENT_THRESHOLD, Proposed: $NEW_THRESHOLD_INT"
+  exit 0
+fi
+
+# Step 6: Apply threshold adjustment
+echo "🔧 Adjusting threshold from $CURRENT_THRESHOLD to $NEW_THRESHOLD_INT"
+
+hcloud ces update-alarm \
+  --region "$REGION" \
+  --alarm-id "$ALARM_ID" \
+  --threshold "$NEW_THRESHOLD_INT"
+
+# Step 7: Validate update
+UPDATED_THRESHOLD=$(hcloud ces describe-alarm \
+  --region "$REGION" \
+  --alarm-id "$ALARM_ID" \
+  --query "threshold")
+
+if [ "$UPDATED_THRESHOLD" = "$NEW_THRESHOLD_INT" ]; then
+  echo "✅ Threshold successfully adjusted to $NEW_THRESHOLD_INT"
+else
+  echo "❌ Threshold adjustment failed"
+  exit 1
+fi
+```
+
+#### Post-execution Validation
+
+- Verify threshold changed as expected
+- Monitor alarm trigger rate over next 24 hours
+- Compare false positive rate before/after adjustment
+
 ## Prerequisites
 
 1. **Install KooCLI** (official binary):

@@ -61,7 +61,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 | 1 | **Clear Boundaries** | SHOULD/SHOULD NOT triggers with precise keywords, delegation rules to ECS/CES/WAF skills |
 | 2 | **Structured I/O** | `{{env.*}}` for credentials, `{{user.*}}` for LB config, `{{output.*}}` for API responses |
 | 3 | **Explicit Steps** | Every operation: Pre-flight → Execute → Validate → Recover with numbered imperative steps |
-| 4 | **Failure Strategies** | 14+ ELB-specific error codes with HALT vs retry distinction |
+| 4 | **Failure Strategies** | 20+ ELB-specific error codes with HALT vs retry distinction |
 | 5 | **Single Responsibility** | ELB lifecycle only; delegates ECS pool members to ECS skill, monitoring to CES skill |
 
 ## Trigger & Scope (Agent-Readable)
@@ -194,6 +194,7 @@ hcloud elb list-loadbalancers --region {{env.HW_REGION_ID}}
 | Quota sufficient | `hcloud elb show-quota` | Quota > 0 | HALT — request quota increase |
 | Credentials valid | `hcloud elb list-loadbalancers` | Non-401 response | HALT — user configures credentials |
 | EIP (if public LB) | Check EIP available | EIP exists or can create | Delegate to VPC skill for EIP |
+| TLS version compliance | Check listener protocol config | HTTPS uses TLS >= 1.2 (production) | HALT — require TLS 1.2+ for production HTTPS listeners |
 
 #### Execution — CLI (Primary Path)
 

@@ -6,15 +6,84 @@
 
 | Operation | IAM Action | Resource Scope |
 |-----------|-----------|---------------|
-| ListLoadBalancers | `elb:*List*` | `*` |
-| CreateLoadBalancer | `elb:*Create*`, `vpc:*Get*` | `*` |
-| DeleteLoadBalancer | `elb:*Delete*` | `elb:loadbalancer:*` |
-| CreateListener | `elb:*Create*` | `elb:listener:*` |
-| Certificate Management | `elb:*Certificate*` | `elb:certificate:*` |
+| ListLoadBalancers | `elb:loadbalancers:list` | `*` |
+| ShowLoadBalancer | `elb:loadbalancers:get` | `elb:loadbalancer:${lb_id}` |
+| CreateLoadBalancer | `elb:loadbalancers:create`, `vpc:vpcs:get`, `vpc:subnets:get` | `elb:loadbalancer:*`, `vpc:vpc:*` |
+| UpdateLoadBalancer | `elb:loadbalancers:update` | `elb:loadbalancer:${lb_id}` |
+| DeleteLoadBalancer | `elb:loadbalancers:delete` | `elb:loadbalancer:${lb_id}` |
+| ListListeners | `elb:listeners:list` | `*` |
+| CreateListener | `elb:listeners:create` | `elb:listener:*` |
+| UpdateListener | `elb:listeners:update` | `elb:listener:${listener_id}` |
+| DeleteListener | `elb:listeners:delete` | `elb:listener:${listener_id}` |
+| ListPools | `elb:pools:list` | `*` |
+| CreatePool | `elb:pools:create` | `elb:pool:*` |
+| UpdatePool | `elb:pools:update` | `elb:pool:${pool_id}` |
+| DeletePool | `elb:pools:delete` | `elb:pool:${pool_id}` |
+| ListMembers | `elb:members:list` | `*` |
+| CreateMember | `elb:members:create`, `ecs:servers:get` | `elb:pool:${pool_id}`, `ecs:server:*` |
+| UpdateMember | `elb:members:update` | `elb:member:${member_id}` |
+| DeleteMember | `elb:members:delete` | `elb:member:${member_id}` |
+| CreateHealthMonitor | `elb:healthmonitors:create` | `elb:healthmonitor:*` |
+| UpdateHealthMonitor | `elb:healthmonitors:update` | `elb:healthmonitor:${hm_id}` |
+| DeleteHealthMonitor | `elb:healthmonitors:delete` | `elb:healthmonitor:${hm_id}` |
+| ListCertificates | `elb:certificates:list` | `*` |
+| CreateCertificate | `elb:certificates:create` | `elb:certificate:*` |
+| DeleteCertificate | `elb:certificates:delete` | `elb:certificate:${cert_id}` |
+| ListAvailabilityZones | `elb:availability-zones:list` | `*` |
+| ShowQuota | `elb:quotas:get` | `*` |
 
 ### Credential Management
 - Use IAM agency for ELB → ECS cross-service health checks
 - Rotate AK/SK every 90 days
+
+### Certificate Expiry Monitoring
+
+Certificate expiry alarms prevent HTTPS listener failures due to expired SSL certificates.
+
+| Alarm Name | Threshold | Notification | Priority |
+|------------|-----------|--------------|----------|
+| cert-expiry-30d | ≤ 30 days remaining | Email | Warning |
+| cert-expiry-7d | ≤ 7 days remaining | SMS + Email | Critical |
+| cert-expiry-1d | ≤ 1 day remaining | All channels + Webhook | Emergency |
+
+#### CLI Configuration
+
+```bash
+# Create certificate expiry alarm (requires custom monitoring script)
+# Step 1: Create SMN topic for certificate alerts
+TOPIC_URN=$(hcloud smn topic create \
+  --name "elb-cert-expiry-alerts" \
+  --display-name "ELB证书过期告警" \
+  --query "topic_urn")
+
+# Step 2: Subscribe notifications
+hcloud smn subscription create --topic-urn "$TOPIC_URN" --endpoint "ops@company.com" --protocol "email"
+hcloud smn subscription create --topic-urn "$TOPIC_URN" --endpoint "+8613800138000" --protocol "sms"
+
+# Step 3: Certificate expiry check script (run daily via cron)
+#!/bin/bash
+# Check certificate expiry and send alerts
+for CERT_ID in $(hcloud elb list-certificates --region $REGION --query "certificates[].id"); do
+  EXPIRY_DATE=$(hcloud elb show-certificate --certificate-id "$CERT_ID" --query "expire_time")
+  DAYS_LEFT=$(( ($(date -d "$EXPIRY_DATE" +%s) - $(date +%s)) / 86400 ))
+
+  if [ $DAYS_LEFT -le 30 ]; then
+    hcloud smn message publish \
+      --topic-urn "$TOPIC_URN" \
+      --subject "ELB Certificate Expiry Warning: $DAYS_LEFT days" \
+      --message "Certificate $CERT_ID expires in $DAYS_LEFT days. Renew immediately."
+  fi
+done
+```
+
+#### Best Practices
+
+| Practice | Recommendation | Rationale |
+|----------|----------------|-----------|
+| Check frequency | Daily check via cron | Early detection of expiry |
+| Renewal buffer | Renew at 30 days remaining | Avoid last-minute emergencies |
+| Auto-renew | Enable auto-renew for managed certs | Eliminate manual renewal process |
+| Backup certificate | Keep backup cert ready | Instant swap if renewal delayed |
 
 ### Network Security
 - **Least privilege**: Only open required ports on listener

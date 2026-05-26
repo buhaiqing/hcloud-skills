@@ -117,6 +117,175 @@
 - Monitor CES API call volume to stay within free tier limits
 - Set budget alerts at 80%/90%/100% for custom metric spending
 
+### Budget Alert Configuration
+
+Budget alerts enable proactive cost monitoring for CES spending, preventing unexpected billing and enabling timely cost optimization decisions.
+
+#### Integration Architecture
+
+```
+CES Custom Metrics → BMS Budget Service → SMN Notifications → Email/SMS/Webhook
+```
+
+**Key Components:**
+- **BMS (Budget Management Service)**: Huawei Cloud's budget tracking service
+- **SMN (Simple Message Notification)**: Multi-channel notification delivery
+- **CES Metrics**: Custom metric usage data for budget tracking
+
+#### CLI Commands for Budget Setup
+
+**1. Create Budget with Thresholds:**
+
+```bash
+# Create budget for CES custom metrics spending
+hcloud bms budget create \
+  --budget-name "ces-custom-metrics-budget" \
+  --budget-type "COST" \
+  --budget-limit 100.00 \
+  --currency "CNY" \
+  --time-period "MONTHLY" \
+  --thresholds '[{"threshold_type":"ABSOLUTE","threshold_value":80.00,"notification_method":"EMAIL"},{"threshold_type":"ABSOLUTE","threshold_value":90.00,"notification_method":"SMS"},{"threshold_type":"ABSOLUTE","threshold_value":100.00,"notification_method":"ALL"}]'
+```
+
+**2. Configure SMN Topic for Notifications:**
+
+```bash
+# Create SMN topic for budget alerts
+hcloud smn topic create \
+  --name "ces-budget-alerts" \
+  --display-name "CES预算告警通知"
+
+# Subscribe email notification
+hcloud smn subscription create \
+  --topic-urn "urn:smn:cn-north-4:PROJECT_ID:ces-budget-alerts" \
+  --endpoint "ops-team@company.com" \
+  --protocol "email"
+
+# Subscribe SMS notification (for critical thresholds)
+hcloud smn subscription create \
+  --topic-urn "urn:smn:cn-north-4:PROJECT_ID:ces-budget-alerts" \
+  --endpoint "+8613800138000" \
+  --protocol "sms"
+```
+
+**3. Query Budget Status:**
+
+```bash
+# List all budgets
+hcloud bms budget list \
+  --query "budget_name=ces-custom-metrics-budget"
+
+# Get budget details and threshold status
+hcloud bms budget show \
+  --budget-id "BUDGET_ID"
+```
+
+#### Threshold Configuration Strategy
+
+| Threshold | Notification | Action Required | Priority |
+|-----------|--------------|-----------------|----------|
+| 80% | Email notification | Review custom metric usage; identify optimization opportunities | Medium |
+| 90% | SMS + Email | Immediate action: disable non-essential custom metrics; optimize granularity | High |
+| 100% | SMS + Email + Webhook | Emergency: disable all custom metrics; investigate unexpected spikes | Critical |
+
+#### Advanced Configuration: Webhook Integration
+
+For automated response to budget breaches, configure webhook notifications:
+
+```bash
+# Subscribe webhook for automated response
+hcloud smn subscription create \
+  --topic-urn "urn:smn:cn-north-4:PROJECT_ID:ces-budget-alerts" \
+  --endpoint "https://automation.company.com/budget-handler" \
+  --protocol "https"
+
+# Webhook payload structure
+{
+  "budget_name": "ces-custom-metrics-budget",
+  "threshold_triggered": 90,
+  "current_usage": 92.5,
+  "timestamp": "2026-05-26T10:30:00Z",
+  "notification_type": "BUDGET_THRESHOLD_EXCEEDED"
+}
+```
+
+#### Example Workflow: End-to-End Budget Setup
+
+**Scenario**: Team wants to monitor CES custom metrics spending with 100 CNY monthly budget.
+
+```bash
+# Step 1: Create SMN topic
+TOPIC_URN=$(hcloud smn topic create \
+  --name "ces-budget-alerts" \
+  --display-name "CES预算告警" \
+  --query "topic_urn")
+
+# Step 2: Subscribe notifications
+hcloud smn subscription create --topic-urn "$TOPIC_URN" --endpoint "ops@company.com" --protocol "email"
+hcloud smn subscription create --topic-urn "$TOPIC_URN" --endpoint "+8613800138000" --protocol "sms"
+
+# Step 3: Create budget with linked SMN topic
+BUDGET_ID=$(hcloud bms budget create \
+  --budget-name "ces-monthly-budget" \
+  --budget-type "COST" \
+  --budget-limit 100.00 \
+  --time-period "MONTHLY" \
+  --notification-topic "$TOPIC_URN" \
+  --thresholds '[
+    {"threshold":80,"notification":"EMAIL"},
+    {"threshold":90,"notification":"SMS"},
+    {"threshold":100,"notification":"ALL"}
+  ]' \
+  --query "budget_id")
+
+# Step 4: Verify setup
+hcloud bms budget show --budget-id "$BUDGET_ID"
+
+# Expected output:
+# Budget Name: ces-monthly-budget
+# Budget Limit: 100.00 CNY
+# Thresholds: 80% (Email), 90% (SMS), 100% (All channels)
+# Notification Topic: ces-budget-alerts
+```
+
+#### Best Practices
+
+| Practice | Recommendation | Rationale |
+|----------|----------------|-----------|
+| Budget scope | Project-specific budget for CES | Enables granular cost attribution per project |
+| Threshold spacing | 80/90/100 with escalating actions | Graduated response prevents over-reaction at minor usage |
+| Notification channels | Email for monitoring, SMS for critical | Reduces notification fatigue while ensuring critical alerts reach operators |
+| Budget review | Weekly budget status check during sprint review | Proactive monitoring prevents threshold surprises |
+| Integration | Link budget webhook to automation platform | Enables auto-disable of non-essential custom metrics at 90% threshold |
+
+#### Alternative: Manual Budget Monitoring
+
+If BMS is unavailable, implement manual budget monitoring via CES metrics:
+
+```bash
+# Query CES API call count (proxy for custom metric usage)
+hcloud ces metric-data list \
+  --namespace "SYS.CES" \
+  --metric-name "api_call_count" \
+  --dimensions '[{"name":"service","value":"ces"}]' \
+  --from "2026-05-01T00:00:00Z" \
+  --to "2026-05-26T00:00:00Z"
+
+# Manual threshold check script example
+#!/bin/bash
+API_CALLS=$(hcloud ces metric-data list --namespace SYS.CES --metric-name api_call_count --query "datapoints[0].avg")
+LIMIT=100000  # Free tier limit
+USAGE_PERCENT=$((API_CALLS * 100 / LIMIT))
+
+if [ $USAGE_PERCENT -ge 80 ]; then
+  echo "Warning: CES API usage at ${USAGE_PERCENT}%"
+  # Trigger notification via SMN
+  hcloud smn message publish --topic-urn "$TOPIC_URN" --subject "CES Budget Alert" --message "API usage: ${USAGE_PERCENT}%"
+fi
+```
+
+**Note**: BMS integration is recommended for production environments; manual monitoring is suitable for development/testing or environments without BMS access.
+
 ### Right-Sizing Guidance
 
 - Review alarm thresholds periodically to avoid over-monitoring
@@ -163,6 +332,16 @@
 
 ### Self-Healing
 
-- Auto-re-enable alarm rules after deployment completes
-- Auto-adjust thresholds based on historical baseline (advanced, requires custom logic)
-- Auto-create alarms for newly provisioned resources (CI/CD integration)
+#### Execution Flows (Implemented in SKILL.md)
+
+| Self-Healing Type | Trigger | Execution Flow | Validation |
+|-------------------|---------|----------------|------------|
+| **Auto Re-enable Alarms** | Post-deployment webhook or scheduled check | SKILL.md → "Operation: Self-Healing — Auto Re-enable Alarms" | List alarms with `alarm_enabled=false` → empty |
+| **Auto-adjust Thresholds** | False positive rate > 5% or manual trigger | SKILL.md → "Operation: Self-Healing — Auto-adjust Alarm Thresholds" | Monitor trigger rate 24h post-adjustment |
+| **Auto-create Alarms** | CI/CD resource provisioning event | Alarm templates + respective product skill integration | Verify alarm exists for new resource |
+
+#### Self-Healing Reference
+
+- **Auto Re-enable**: Full CLI + SDK execution flow in SKILL.md (lines 460-560)
+- **Auto-adjust Thresholds**: Historical baseline analysis + threshold calculation flow in SKILL.md (lines 560-620)
+- **Auto-create Alarms**: CI/CD integration via alarm templates; delegate to respective product skill for resource creation

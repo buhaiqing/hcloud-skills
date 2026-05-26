@@ -116,3 +116,563 @@ CES is the monitoring tool, but it also has operational metrics to track:
 | 带宽饱和 | SYS.VPC | huaweicloud-vpc-ops | huaweicloud-ces-ops (metrics) | Recommended |
 | ELB错误率 | SYS.ELB | huaweicloud-elb-ops | huaweicloud-ecs-ops (backend) | Recommended |
 | 安全告警 | SYS.HSS | huaweicloud-hss-ops | huaweicloud-ecs-ops (isolation) | Required |
+
+## Idle Alarm Detection Script (HIGH-1)
+
+**Purpose**: Identify alarm rules that have not triggered in extended periods, indicating potential monitoring gaps or over-monitoring.
+
+### Detection Criteria
+
+| Criterion | Threshold | Interpretation |
+|-----------|-----------|----------------|
+| No triggers in 90 days | `trigger_count == 0` | Alarm may be misconfigured or resource changed |
+| No triggers in 30 days | `trigger_count == 0` | Consider disabling if non-critical |
+| Last trigger > 60 days ago | `last_trigger_time` | Review threshold appropriateness |
+| Never triggered since creation | `trigger_count == 0 && age > 7 days` | High priority review |
+
+### Execution — CLI (Idle Alarm Detection)
+
+```bash
+#!/bin/bash
+# Idle alarm detection script
+# Identifies alarms that have not triggered recently
+
+REGION="{{env.HW_REGION_ID}}"
+IDLE_DAYS_THRESHOLD=90
+OUTPUT_FILE="idle-alarms-report.json"
+
+# Step 1: List all alarms with trigger statistics
+ALL_ALARMS=$(hcloud ces list-alarms \
+  --region "$REGION" \
+  --output json)
+
+# Step 2: Process each alarm
+IDLE_ALARMS=$(echo "$ALL_ALARMS" | jq --argjson threshold "$IDLE_DAYS_THRESHOLD" '
+  .alarms | map(select(
+    (.trigger_count == 0) or
+    ((now - (.last_trigger_time | strftime("%s") | tonumber)) / 86400 > $threshold)
+  )) | map({
+    alarm_id,
+    alarm_name,
+    alarm_enabled,
+    metric_namespace,
+    metric_name,
+    trigger_count,
+    last_trigger_time,
+    idle_days: (if .trigger_count == 0 then "never" else ((now - (.last_trigger_time | strftime("%s") | tonumber)) / 86400 | floor | tostring) end),
+    recommendation: (if .trigger_count == 0 then "review_or_disable" else "threshold_review" end)
+  })
+')
+
+# Step 3: Categorize by severity
+NEVER_TRIGGERED=$(echo "$IDLE_ALARMS" | jq 'map(select(.trigger_count == 0))')
+LONG_IDLE=$(echo "$IDLE_ALARMS" | jq 'map(select(.trigger_count > 0 and (.idle_days | tonumber) > 60))')
+
+# Step 4: Generate report
+REPORT=$(jq -n \
+  --argjson never "$NEVER_TRIGGERED" \
+  --argjson long_idle "$LONG_IDLE" \
+  --arg timestamp "$(date -Iseconds)" \
+  --arg region "$REGION" \
+  '{
+    generated_at: $timestamp,
+    region: $region,
+    summary: {
+      total_idle: ($never | length) + ($long_idle | length),
+      never_triggered: ($never | length),
+      long_idle: ($long_idle | length)
+    },
+    never_triggered_alarms: $never,
+    long_idle_alarms: $long_idle
+  }')
+
+echo "$REPORT" > "$OUTPUT_FILE"
+
+# Step 5: Summary output
+echo "📊 Idle Alarm Detection Report"
+echo "   Region: $REGION"
+echo "   Never triggered: $(echo "$NEVER_TRIGGERED" | jq 'length') alarms"
+echo "   Long idle (>60 days): $(echo "$LONG_IDLE" | jq 'length') alarms"
+echo "   Report saved to: $OUTPUT_FILE"
+
+# Step 6: Recommend actions
+if [ $(echo "$NEVER_TRIGGERED" | jq 'length') -gt 0 ]; then
+  echo "⚠️ Recommended actions:"
+  echo "   1. Review never-triggered alarms for misconfiguration"
+  echo "   2. Verify monitored resource still exists"
+  echo "   3. Consider disabling unused alarms to reduce quota usage"
+fi
+```
+
+### Execution — SDK (Go Implementation)
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "os"
+    "time"
+
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ces/v1/model"
+)
+
+type IdleAlarmReport struct {
+    GeneratedAt         string           `json:"generated_at"`
+    Region              string           `json:"region"`
+    Summary             Summary          `json:"summary"`
+    NeverTriggeredAlarms []AlarmInfo     `json:"never_triggered_alarms"`
+    LongIdleAlarms      []AlarmInfo      `json:"long_idle_alarms"`
+}
+
+type Summary struct {
+    TotalIdle       int `json:"total_idle"`
+    NeverTriggered  int `json:"never_triggered"`
+    LongIdle        int `json:"long_idle"`
+}
+
+type AlarmInfo struct {
+    AlarmID        string `json:"alarm_id"`
+    AlarmName      string `json:"alarm_name"`
+    AlarmEnabled   bool   `json:"alarm_enabled"`
+    MetricNamespace string `json:"metric_namespace"`
+    MetricName     string `json:"metric_name"`
+    TriggerCount   int    `json:"trigger_count"`
+    LastTriggerTime string `json:"last_trigger_time"`
+    IdleDays       string `json:"idle_days"`
+    Recommendation string `json:"recommendation"`
+}
+
+func DetectIdleAlarms(region string, idleThresholdDays int) (*IdleAlarmReport, error) {
+    // List all alarms (SDK call - implementation depends on client setup)
+    // listResp, err := client.ListAlarms(&model.ListAlarmsRequest{Region: region})
+    
+    var idleAlarms []AlarmInfo
+    var neverTriggered []AlarmInfo
+    var longIdle []AlarmInfo
+    
+    // Process alarms (pseudo-code - implement with actual SDK response)
+    // for _, alarm := range listResp.Alarms {
+    //     if alarm.TriggerCount == 0 {
+    //         neverTriggered = append(neverTriggered, buildAlarmInfo(alarm, "never", "review_or_disable"))
+    //     } else {
+    //         idleDays := calculateIdleDays(alarm.LastTriggerTime)
+    //         if idleDays > idleThresholdDays {
+    //             longIdle = append(longIdle, buildAlarmInfo(alarm, idleDays, "threshold_review"))
+    //         }
+    //     }
+    // }
+    
+    report := &IdleAlarmReport{
+        GeneratedAt:         time.Now().Format(time.RFC3339),
+        Region:              region,
+        Summary:             Summary{TotalIdle: len(neverTriggered) + len(longIdle), NeverTriggered: len(neverTriggered), LongIdle: len(longIdle)},
+        NeverTriggeredAlarms: neverTriggered,
+        LongIdleAlarms:      longIdle,
+    }
+    
+    return report, nil
+}
+
+func main() {
+    region := os.Getenv("HW_REGION_ID")
+    report, err := DetectIdleAlarms(region, 90)
+    if err != nil {
+        log.Fatalf("Detection failed: %v", err)
+    }
+    
+    output, _ := json.MarshalIndent(report, "", "  ")
+    fmt.Println(string(output))
+    
+    // Save to file
+    os.WriteFile("idle-alarms-report.json", output, 0644)
+}
+```
+
+### Post-Detection Actions
+
+| Category | Action | Priority |
+|----------|--------|----------|
+| Never triggered (critical alarm) | Verify threshold, resource existence, metric namespace | High |
+| Never triggered (non-critical) | Consider disabling; reduce quota usage | Medium |
+| Long idle (>90 days) | Review threshold appropriateness | Medium |
+| Resource deleted but alarm exists | Delete alarm | Required |
+
+## Alarm Storm Detection Script (HIGH-2)
+
+**Purpose**: Detect alarm storms (high-frequency alarm events) to trigger suppression workflow and prevent alert fatigue.
+
+### Detection Criteria
+
+| Criterion | Threshold | Detection Logic |
+|-----------|-----------|-----------------|
+| Alarm frequency | > 10 alarms / 5 minutes | Time-window counting |
+| Same resource spam | > 3 alarms on one instance within 5 min | Group by resource_id |
+| Namespace dominance | > 50% alarms from same namespace | Namespace distribution analysis |
+| Cascade pattern | Alarm A followed by B within 2 min | Sequential timing correlation |
+
+### Execution — CLI (Alarm Storm Detection)
+
+```bash
+#!/bin/bash
+# Alarm storm detection script
+# Detects high-frequency alarm events for suppression trigger
+
+REGION="{{env.HW_REGION_ID}}"
+STORM_WINDOW_MINUTES=5
+STORM_THRESHOLD=10
+SAME_RESOURCE_THRESHOLD=3
+
+# Step 1: Query recent alarm events (last 15 minutes for analysis)
+ALARM_EVENTS=$(hcloud ces list-alarm-history \
+  --region "$REGION" \
+  --from "$(date -d '-15 minutes' +%s)000" \
+  --to "$(date +%s)000" \
+  --output json)
+
+# Step 2: Count alarms in storm window (last 5 minutes)
+WINDOW_START=$(date -d "-${STORM_WINDOW_MINUTES} minutes" +%s)
+RECENT_ALARMS=$(echo "$ALARM_EVENTS" | jq --arg start "$WINDOW_START" '
+  [.alarm_histories[] | select((.alarm_time | strftime("%s") | tonumber) > ($start | tonumber))]
+')
+
+ALARM_COUNT=$(echo "$RECENT_ALARMS" | jq 'length')
+
+# Step 3: Storm detection - frequency check
+if [ "$ALARM_COUNT" -ge "$STORM_THRESHOLD" ]; then
+  echo "🚨 ALARM STORM DETECTED: $ALARM_COUNT alarms in last $STORM_WINDOW_MINUTES minutes"
+  
+  # Step 4: Resource spam analysis
+  RESOURCE_SPAM=$(echo "$RECENT_ALARMS" | jq --argjson threshold "$SAME_RESOURCE_THRESHOLD" '
+    group_by(.resource_id) | map(select(length > $threshold)) | map({
+      resource_id: .[0].resource_id,
+      alarm_count: length,
+      alarm_names: [.[].alarm_name]
+    })
+  ')
+  
+  SPAM_COUNT=$(echo "$RESOURCE_SPAM" | jq 'length')
+  if [ "$SPAM_COUNT" -gt 0 ]; then
+    echo "⚠️ Resource spam detected: $SPAM_COUNT resources with > $SAME_RESOURCE_THRESHOLD alarms"
+    echo "$RESOURCE_SPAM" | jq -r '.[] | "   Resource: \(.resource_id), Alarms: \(.alarm_count)"'
+  fi
+  
+  # Step 5: Namespace distribution analysis
+  NAMESPACE_DOMINANCE=$(echo "$RECENT_ALARMS" | jq '
+    group_by(.metric_namespace) | map({namespace: .[0].metric_namespace, count: length})
+    | sort_by(-.count) | .[0]
+  ')
+  
+  DOMINANT_NAMESPACE=$(echo "$NAMESPACE_DOMINANCE" | jq -r '.namespace')
+  DOMINANT_PERCENT=$(echo "$NAMESPACE_DOMINANCE" | jq --argjson total "$ALARM_COUNT" '.count * 100 / $total')
+  
+  if [ "$DOMINANT_PERCENT" -gt 50 ]; then
+    echo "📊 Namespace dominance: $DOMINANT_NAMESPACE accounts for ${DOMINANT_PERCENT}% of alarms"
+  fi
+  
+  # Step 6: Cascade pattern detection
+  CASCADE_PATTERN=$(echo "$RECENT_ALARMS" | jq '
+    sort_by(.alarm_time) | [.[]] | 
+    reduce .[] as $alarm (
+      {patterns: [], prev: null};
+      if .prev != null and (($alarm.alarm_time | strftime("%s") | tonumber) - (.prev.alarm_time | strftime("%s") | tonumber)) < 120
+      then .patterns += [{first: .prev.alarm_name, second: $alarm.alarm_name, time_diff_seconds: (($alarm.alarm_time | strftime("%s") | tonumber) - (.prev.alarm_time | strftime("%s") | tonumber))}]
+      else .
+      end |
+      .prev = $alarm
+    ) | .patterns
+  ')
+  
+  CASCADE_COUNT=$(echo "$CASCADE_PATTERN" | jq 'length')
+  if [ "$CASCADE_COUNT" -gt 0 ]; then
+    echo "🔗 Cascade patterns detected: $CASCADE_COUNT potential cascade sequences"
+    echo "$CASCADE_PATTERN" | jq -r '.[] | "   \(.first) → \(.second) (\(.time_diff_seconds)s)"'
+  fi
+  
+  # Step 7: Trigger suppression workflow
+  echo "📋 Triggering alarm suppression workflow..."
+  
+  # Identify root alarm (earliest in storm)
+  ROOT_ALARM=$(echo "$RECENT_ALARMS" | jq 'sort_by(.alarm_time) | .[0]')
+  ROOT_ALARM_ID=$(echo "$ROOT_ALARM" | jq -r '.alarm_id')
+  ROOT_ALARM_NAME=$(echo "$ROOT_ALARM" | jq -r '.alarm_name')
+  
+  echo "   Root alarm identified: $ROOT_ALARM_NAME ($ROOT_ALARM_ID)"
+  
+  # Output storm report for automation
+  jq -n \
+    --argjson storm_detected true \
+    --argjson alarm_count "$ALARM_COUNT" \
+    --argjson window_minutes "$STORM_WINDOW_MINUTES" \
+    --argjson resource_spam "$RESOURCE_SPAM" \
+    --arg dominant_namespace "$DOMINANT_NAMESPACE" \
+    --argjson cascade_patterns "$CASCADE_PATTERN" \
+    --arg root_alarm_id "$ROOT_ALARM_ID" \
+    --arg timestamp "$(date -Iseconds)" \
+    '{
+      storm_detected: $storm_detected,
+      alarm_count: $alarm_count,
+      window_minutes: $window_minutes,
+      resource_spam: $resource_spam,
+      dominant_namespace: $dominant_namespace,
+      cascade_patterns: $cascade_patterns,
+      root_alarm_id: $root_alarm_id,
+      timestamp: $timestamp,
+      action: "trigger_suppression_workflow"
+    }' | tee storm-detection-report.json
+  
+else
+  echo "✅ No alarm storm: $ALARM_COUNT alarms in last $STORM_WINDOW_MINUTES minutes (threshold: $STORM_THRESHOLD)"
+fi
+```
+
+### Storm Detection Output Format
+
+```json
+{
+  "storm_detected": true,
+  "alarm_count": 15,
+  "window_minutes": 5,
+  "resource_spam": [
+    {"resource_id": "i-abc123", "alarm_count": 5, "alarm_names": ["cpu_high", "mem_high", "disk_high"]}
+  ],
+  "dominant_namespace": "SYS.ECS",
+  "cascade_patterns": [
+    {"first": "cpu_high", "second": "mem_high", "time_diff_seconds": 45}
+  ],
+  "root_alarm_id": "alarm-001",
+  "timestamp": "2026-05-26T10:30:00Z",
+  "action": "trigger_suppression_workflow"
+}
+```
+
+### Integration with Suppression Workflow
+
+1. **Detect** → Storm detection script triggers
+2. **Correlate** → Group alarms by resource, service, time
+3. **Identify root** → Find earliest alarm or infrastructure-level alarm
+4. **Suppress** → Disable non-critical alarms for affected resources
+5. **Escalate** → Create incident with root cause analysis
+6. **Restore** → Re-enable suppressed alarms after resolution (see Self-Healing flow)
+
+## Cascade Pattern Correlation Algorithm (HIGH-3)
+
+**Purpose**: Identify cascading alarm patterns where one alarm triggers downstream alarms, enabling root cause identification and targeted suppression.
+
+### Cascade Pattern Definition
+
+| Pattern Type | Detection Logic | Root Cause Indicator |
+|--------------|-----------------|----------------------|
+| **Infrastructure → Application** | SYS.ECS alarm followed by SYS.RDS alarm within 2 min | Infrastructure likely root cause |
+| **Network → Service** | SYS.VPC alarm followed by SYS.ELB alarm within 2 min | Network issue upstream |
+| **Database → Application** | SYS.RDS alarm followed by app-level metric alarm within 3 min | Database bottleneck |
+| **Single Resource Cascade** | Multiple alarms on same resource in sequence | Single resource failure spreading |
+| **Cross-Resource Cascade** | Alarm on resource A triggers alarm on dependent resource B | Dependency chain failure |
+
+### Execution — CLI (Cascade Pattern Correlation)
+
+```bash
+#!/binbash
+# Cascade pattern correlation algorithm
+# Identifies cascading alarm sequences for root cause analysis
+
+REGION="{{env.HW_REGION_ID}}"
+CASCADE_WINDOW_SECONDS=180  # 3 minutes
+MIN_SEQUENCE_LENGTH=2
+
+# Step 1: Fetch alarm history for analysis period
+ALARM_HISTORY=$(hcloud ces list-alarm-history \
+  --region "$REGION" \
+  --from "$(date -d '-30 minutes' +%s)000" \
+  --to "$(date +%s)000" \
+  --output json)
+
+# Step 2: Sort alarms chronologically
+SORTED_ALARMS=$(echo "$ALARM_HISTORY" | jq '.alarm_histories | sort_by(.alarm_time)')
+
+# Step 3: Build cascade sequences
+# Algorithm: For each alarm, find subsequent alarms within cascade window
+# that involve related resources or namespaces
+
+CASCADE_SEQUENCES=$(echo "$SORTED_ALARMS" | jq --argjson window "$CASCADE_WINDOW_SECONDS" --argjson min_len "$MIN_SEQUENCE_LENGTH" '
+  # Define namespace hierarchy (infrastructure -> application)
+  def namespace_priority(ns):
+    if ns | startswith("SYS.ECS") or ns | startswith("SYS.VPC") then 1
+    elif ns | startswith("SYS.RDS") or ns | startswith("SYS.DCS") then 2
+    elif ns | startswith("SYS.ELB") then 3
+    else 4
+    end;
+  
+  # Build sequences
+  reduce .[] as $alarm (
+    {sequences: [], current_seq: []};
+    
+    # Check if this alarm continues current sequence
+    if (.current_seq | length) > 0 and
+       (($alarm.alarm_time | strftime("%s") | tonumber) - 
+        ((.current_seq | last).alarm_time | strftime("%s") | tonumber)) < $window and
+       (namespace_priority($alarm.metric_namespace) >= namespace_priority((.current_seq | last).metric_namespace))
+    then
+      # Continue sequence
+      .current_seq += [$alarm]
+    else
+      # Start new sequence
+      if (.current_seq | length) >= $min_len then
+        .sequences += [.current_seq]
+      end |
+      .current_seq = [$alarm]
+    end
+  ) |
+  
+  # Finalize
+  if (.current_seq | length) >= $min_len then
+    .sequences += [.current_seq]
+  end |
+  
+  # Format output
+  .sequences | map({
+    sequence_id: (.[0].alarm_id + "-" + (length | tostring)),
+    length: length,
+    start_time: .[0].alarm_time,
+    end_time: (last.alarm_time),
+    duration_seconds: ((last.alarm_time | strftime("%s") | tonumber) - (.[0].alarm_time | strftime("%s") | tonumber)),
+    root_alarm: {
+      alarm_id: .[0].alarm_id,
+      alarm_name: .[0].alarm_name,
+      namespace: .[0].metric_namespace,
+      resource_id: .[0].resource_id
+    },
+    downstream_alarms: .[1:] | map({
+      alarm_id,
+      alarm_name,
+      namespace: metric_namespace,
+      resource_id,
+      time_offset_seconds: ((alarm_time | strftime("%s") | tonumber) - (.[0].alarm_time | strftime("%s") | tonumber))
+    }),
+    cascade_type: (
+      if (.[0].metric_namespace | startswith("SYS.ECS")) and (.[1:].[].metric_namespace | any(startswith("SYS.RDS"))) then "infra_to_db"
+      elif (.[0].metric_namespace | startswith("SYS.VPC")) and (.[1:].[].metric_namespace | any(startswith("SYS.ELB"))) then "network_to_lb"
+      elif (map(.resource_id) | unique | length) == 1 then "single_resource"
+      else "cross_resource"
+      end
+    ),
+    root_cause_probability: (
+      if .cascade_type == "infra_to_db" or .cascade_type == "network_to_lb" then 0.9
+      elif .cascade_type == "single_resource" then 0.85
+      else 0.7
+      end
+    )
+  })
+')
+
+# Step 4: Output cascade analysis
+SEQUENCE_COUNT=$(echo "$CASCADE_SEQUENCES" | jq 'length')
+echo "🔗 Cascade Pattern Analysis"
+echo "   Detected: $SEQUENCE_COUNT cascade sequences"
+
+if [ "$SEQUENCE_COUNT" -gt 0 ]; then
+  echo "$CASCADE_SEQUENCES" | jq -r '.[] |
+    "   Sequence: \(.sequence_id) (\(.length) alarms, \(.duration_seconds)s)\n" +
+    "   Root alarm: \(.root_alarm.alarm_name) [\(.root_alarm.namespace)]\n" +
+    "   Cascade type: \(.cascade_type) (probability: \(.root_cause_probability))\n" +
+    "   Downstream: \(.downstream_alarms | map("\(.alarm_name")") | join(", "))"
+  '
+  
+  # Step 5: Identify highest probability root cause
+  TOP_ROOT_CAUSE=$(echo "$CASCADE_SEQUENCES" | jq 'sort_by(-.root_cause_probability) | .[0]')
+  ROOT_CAUSE_ALARM_ID=$(echo "$TOP_ROOT_CAUSE" | jq -r '.root_alarm.alarm_id')
+  ROOT_CAUSE_ALARM_NAME=$(echo "$TOP_ROOT_CAUSE" | jq -r '.root_alarm.alarm_name')
+  PROBABILITY=$(echo "$TOP_ROOT_CAUSE" | jq -r '.root_cause_probability')
+  
+  echo ""
+  echo "🎯 Most Likely Root Cause:"
+  echo "   Alarm: $ROOT_CAUSE_ALARM_NAME ($ROOT_CAUSE_ALARM_ID)"
+  echo "   Probability: $PROBABILITY"
+  echo "   Recommended: Focus diagnosis on this alarm first"
+  
+  # Step 6: Generate incident report
+  jq -n \
+    --argjson sequences "$CASCADE_SEQUENCES" \
+    --arg top_root_cause_id "$ROOT_CAUSE_ALARM_ID" \
+    --arg top_root_cause_name "$ROOT_CAUSE_ALARM_NAME" \
+    --argjson top_probability "$PROBABILITY" \
+    --arg timestamp "$(date -Iseconds)" \
+    '{
+      cascade_sequences: $sequences,
+      analysis_summary: {
+        total_sequences: ($sequences | length),
+        top_root_cause: {
+          alarm_id: $top_root_cause_id,
+          alarm_name: $top_root_cause_name,
+          probability: $top_probability
+        }
+      },
+      timestamp: $timestamp,
+      recommended_action: "diagnose_root_cause_first"
+    }' | tee cascade-analysis-report.json
+fi
+```
+
+### Cascade Pattern Output Format
+
+```json
+{
+  "cascade_sequences": [
+    {
+      "sequence_id": "alarm-001-3",
+      "length": 3,
+      "start_time": "2026-05-26T10:00:00Z",
+      "end_time": "2026-05-26T10:02:30Z",
+      "duration_seconds": 150,
+      "root_alarm": {
+        "alarm_id": "alarm-001",
+        "alarm_name": "ecs_cpu_high",
+        "namespace": "SYS.ECS",
+        "resource_id": "i-abc123"
+      },
+      "downstream_alarms": [
+        {"alarm_id": "alarm-002", "alarm_name": "rds_conn_high", "namespace": "SYS.RDS", "resource_id": "rds-def456", "time_offset_seconds": 45},
+        {"alarm_id": "alarm-003", "alarm_name": "app_latency_high", "namespace": "CUSTOM.APP", "resource_id": "app-xyz789", "time_offset_seconds": 120}
+      ],
+      "cascade_type": "infra_to_db",
+      "root_cause_probability": 0.9
+    }
+  ],
+  "analysis_summary": {
+    "total_sequences": 1,
+    "top_root_cause": {
+      "alarm_id": "alarm-001",
+      "alarm_name": "ecs_cpu_high",
+      "probability": 0.9
+    }
+  },
+  "timestamp": "2026-05-26T10:30:00Z",
+  "recommended_action": "diagnose_root_cause_first"
+}
+```
+
+### Cascade Pattern Types Reference
+
+| Cascade Type | Pattern | Root Cause Probability | Diagnostic Priority |
+|--------------|---------|------------------------|---------------------|
+| `infra_to_db` | ECS → RDS | 0.9 | Diagnose ECS first |
+| `network_to_lb` | VPC → ELB | 0.9 | Diagnose VPC first |
+| `infra_to_app` | ECS → Custom App | 0.85 | Diagnose ECS first |
+| `db_to_app` | RDS → Custom App | 0.85 | Diagnose RDS first |
+| `single_resource` | Multiple alarms same resource | 0.85 | Single resource diagnosis |
+| `cross_resource` | Multiple resources affected | 0.7 | Dependency mapping required |
+
+### Integration with Cross-Skill Delegation
+
+When cascade pattern detected, delegate diagnosis to appropriate skills:
+
+| Cascade Type | Primary Diagnosis Skill | Secondary Skill |
+|--------------|------------------------|-----------------|
+| `infra_to_db` | huaweicloud-ecs-ops | huaweicloud-rds-ops |
+| `network_to_lb` | huaweicloud-vpc-ops | huaweicloud-elb-ops |
+| `infra_to_app` | huaweicloud-ecs-ops | huaweicloud-aom-ops |
+| `db_to_app` | huaweicloud-rds-ops | huaweicloud-aom-ops |
+| `single_resource` | Resource-specific skill | huaweicloud-ces-ops (metrics) |
+| `cross_resource` | Multi-skill parallel diagnosis | Orchestrated via CES skill |

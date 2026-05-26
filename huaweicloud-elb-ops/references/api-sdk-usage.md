@@ -151,3 +151,82 @@ request := &model.ListLoadBalancersRequest{
 - Listener: port + protocol + LB uniqueness
 - Member: address + port + pool uniqueness — duplicate returns `ELB.3002`
 - Delete: idempotent — deleting non-existent resource returns 404
+
+## Idempotency Implementation
+
+Use `X-Client-Token` header for idempotent creation operations. This prevents duplicate resource creation when retrying failed requests.
+
+### Why Idempotency Matters
+
+| Scenario | Without Token | With Token |
+|----------|--------------|------------|
+| Network timeout retry | Creates duplicate LB | Returns same LB ID |
+| API 500 error retry | Creates duplicate listener | Returns original listener |
+| Concurrent requests | Race condition duplicates | Only one succeeds |
+
+### CLI Implementation
+
+```bash
+# Generate unique client token for each operation
+CLIENT_TOKEN=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+# Create load balancer with idempotency token
+hcloud elb create-loadbalancer \
+  --client-token "$CLIENT_TOKEN" \
+  --name "prod-lb-01" \
+  --vpc-id "vpc-xxx" \
+  --elb-virsubnet-ids "subnet-xxx" \
+  --loadbalancer-type "dedicated"
+
+# For retries, use the SAME token
+hcloud elb create-loadbalancer \
+  --client-token "$CLIENT_TOKEN" \  # Same token for retry
+  --name "prod-lb-01" \
+  ...
+```
+
+### SDK Implementation (Go)
+
+```go
+import "github.com/google/uuid"
+
+func createLoadBalancerIdempotent(client *elb.ElbClient, name string) (*model.CreateLoadBalancerResponse, error) {
+    // Generate unique token per operation
+    clientToken := uuid.New().String()
+
+    request := &model.CreateLoadBalancerRequest{
+        Body: &model.CreateLoadBalancerRequestBody{
+            ClientToken: &clientToken,  // Set idempotency token
+            Loadbalancer: &model.CreateLoadBalancerOption{
+                Name: &name,
+                ...
+            },
+        },
+    }
+
+    // First attempt
+    resp, err := client.CreateLoadBalancer(context.TODO(), request)
+    if err != nil {
+        // Retry with SAME token - will return original LB if already created
+        return client.CreateLoadBalancer(context.TODO(), request)
+    }
+    return resp, nil
+}
+```
+
+### Best Practices
+
+| Practice | Recommendation | Rationale |
+|----------|----------------|-----------|
+| Token generation | Use UUID or unique string | Prevents collisions |
+| Token reuse | Reuse same token for retries | Ensures idempotency |
+| Token storage | Store token in request context | Enables proper retry handling |
+| Token validity | 24 hours from first request | Huawei Cloud limitation |
+| Scope | Per-operation, not per-session | Different operations need different tokens |
+
+### Token Scope Rules
+
+- Each **create operation** needs a **new unique token**
+- **Retries of the same operation** must use the **same token**
+- Token is valid for **24 hours**
+- Token scope is **per resource type** (LB, Listener, Pool are separate)
