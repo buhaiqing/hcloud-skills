@@ -1,0 +1,103 @@
+{
+  "should_trigger": [
+    {
+      "query": "创建一个华为云Elasticsearch集群",
+      "reason": "Direct mention of Elasticsearch on Huawei Cloud"
+    },
+    {
+      "query": "CSS集群怎么创建快照",
+      "reason": "Direct CSS product mention with snapshot operation"
+    },
+    {
+      "query": "我的云搜索服务集群状态变红了",
+      "reason": "CSS Chinese name with health issue"
+    },
+    {
+      "query": "Elasticsearch 搜索延迟很高",
+      "reason": "Elasticsearch performance issue"
+    },
+    {
+      "query": "OpenSearch集群磁盘满了",
+      "reason": "OpenSearch with operational issue"
+    },
+    {
+      "query": "如何备份CSS集群数据",
+      "reason": "CSS backup operation"
+    },
+    {
+      "query": "搜索集群分片分配失败",
+      "reason": "Search cluster with shard allocation issue"
+    },
+    {
+      "query": "华为云CSS集群扩容",
+      "reason": "CSS scaling operation"
+    },
+    {
+      "query": "Elasticsearch快照恢复",
+      "reason": "Elasticsearch snapshot restore"
+    },
+    {
+      "query": "CSS集群配置IK分词词库",
+      "reason": "CSS dictionary management"
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "query": "阿里云Elasticsearch怎么创建",
+      "reason": "Different cloud provider (Alibaba Cloud)"
+    },
+    {
+      "query": "AWS OpenSearch Service配置",
+      "reason": "Different cloud provider (AWS)"
+    },
+    {
+      "query": "华为云ECS实例创建",
+      "reason": "Different product (ECS), delegate to huaweicloud-ecs-ops"
+    },
+    {
+      "query": "CSS样式怎么写",
+      "reason": "CSS refers to Cascading Style Sheets, not Cloud Search Service"
+    },
+    {
+      "query": "华为云账单查询",
+      "reason": "Billing operation, delegate to billing skill"
+    },
+    {
+      "query": "IAM用户权限配置",
+      "reason": "IAM only, delegate to huaweicloud-iam-ops"
+    },
+    {
+      "query": "LTS日志服务配置",
+      "reason": "Different product (LTS), delegate to huaweicloud-lts-ops"
+    },
+    {
+      "query": "本地部署Elasticsearch",
+      "reason": "On-premises deployment, not Huawei Cloud CSS"
+    },
+    {
+      "query": "Docker运行Elasticsearch",
+      "reason": "Container deployment, not Huawei Cloud CSS"
+    },
+    {
+      "query": "Kubernetes部署OpenSearch",
+      "reason": "Self-managed K8s, not Huawei Cloud CSS"
+    }
+  ],
+  "edge_cases": [
+    {
+      "query": "华为云搜索服务怎么用",
+      "reason": "Chinese name for CSS, should trigger",
+      "expected": "trigger"
+    },
+    {
+      "query": "从OBS恢复CSS快照",
+      "reason": "CSS snapshot with OBS, primary skill is CSS",
+      "expected": "trigger"
+    },
+    {
+      "query": "CSS集群监控告警配置",
+      "reason": "CSS monitoring, may delegate to CES for alarm setup",
+      "expected": "trigger_with_delegation"
+    }
+  ]
+}
