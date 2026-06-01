@@ -2,6 +2,25 @@
 
 华为云（Huawei Cloud）运维 Agent Skills 集合。
 
+## 目录
+
+- [概述](#概述)
+- [核心价值](#核心价值)
+- [项目结构](#项目结构)
+- [三支柱运维体系](#三支柱运维体系)
+  - [FinOps（财务运营）](#finops财务运营)
+  - [SecOps（安全运营）](#secops安全运营)
+  - [AIOps（智能运营）](#aiops智能运营)
+- [快速开始](#快速开始)
+  - [1. 安装 Huawei Cloud CLI](#1-安装-huawei-cloud-cli)
+  - [2. 配置凭证](#2-配置凭证)
+  - [3. 使用现有 Skills](#3-使用现有-skills)
+  - [4. 生成新 Skill](#4-生成新-skill)
+- [可用 Skills](#可用-skills)
+- [华为云服务映射](#华为云服务映射)
+- [生成质量门](#生成质量门)
+- [参考资源](#参考资源)
+
 ## 概述
 
 本项目是华为云运维 Agent Skills 的生成器与集合。提供云产品的自动化运维、监控、成本管理、安全治理和智能诊断能力。
@@ -181,10 +200,104 @@ hcloud-skills/
 │   └── assets/
 │       ├── eval_queries.json             # 触发准确率评估查询
 │       └── example-config.yaml           # 配置示例
-├── huaweicloud-dms-ops/                   # 分布式消息服务 Skill
-├── huaweicloud-cbr-ops/                   # 云备份 Skill
-├── huaweicloud-swr-ops/                   # 容器镜像服务 Skill
+├── huaweicloud-dms-ops/                  # 分布式消息服务 Skill
+│   ├── SKILL.md                          # 主文件：Kafka/RabbitMQ实例生命周期、Topic/Queue管理、消费组、消息查询
+│   ├── references/
+│   │   ├── core-concepts.md              # DMS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # DMS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-cbr-ops/                  # 云备份 Skill
+│   ├── SKILL.md                          # 主文件：备份存储库、备份策略、备份执行/恢复、跨区域复制
+│   ├── references/
+│   │   ├── core-concepts.md              # CBR 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CBR 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
+├── huaweicloud-swr-ops/                  # 容器镜像服务 Skill
+│   ├── SKILL.md                          # 主文件：组织管理、仓库管理、镜像标签管理、保留策略、跨区域同步
+│   ├── references/
+│   │   ├── core-concepts.md              # SWR 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # SWR 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
 ├── huaweicloud-gaussdb-ops/              # GaussDB Skill
+│   ├── SKILL.md                          # 主文件：实例生命周期、备份/恢复、参数模板、数据库/账户管理
+│   ├── references/
+│   │   ├── api-navigation.md             # API 导航与调用规范
+│   │   ├── cli-syntax-reference.md       # CLI 语法参考
+│   │   ├── cost-optimization.md          # 成本优化指南
+│   │   ├── security-best-practices.md    # 安全最佳实践
+│   │   ├── aiops-patterns.md             # AIOps 模式
+│   │   ├── common-faults.md              # 常见故障处理
+│   │   ├── error-handling.md             # 错误处理规范
+│   │   └── safety-gates.md               # 安全门控
+│   └── assets/
+│       ├── example-config.yaml           # 配置示例
+│       └── example-output.json           # 输出示例
+├── huaweicloud-hss-ops/                  # 主机安全服务 Skill
+│   ├── SKILL.md                          # 主文件：主机管理、资产采集、告警事件、漏洞管理、基线检查
+│   ├── references/
+│   │   ├── api-navigation.md             # API 导航与调用规范
+│   │   ├── cli-syntax-reference.md       # CLI 语法参考
+│   │   ├── cost-optimization.md          # 成本优化指南
+│   │   ├── security-best-practices.md    # 安全最佳实践
+│   │   ├── aiops-patterns.md             # AIOps 模式
+│   │   ├── common-faults.md              # 常见故障处理
+│   │   ├── error-handling.md             # 错误处理规范
+│   │   └── safety-gates.md               # 安全门控
+│   └── assets/
+│       ├── example-config.yaml           # 配置示例
+│       └── example-output.json           # 输出示例
+├── huaweicloud-waf-ops/                  # Web应用防火墙 Skill
+│   ├── SKILL.md                          # 主文件：策略、规则、域名、证书、攻击事件、引用表
+│   ├── references/
+│   │   ├── api-navigation.md             # API 导航与调用规范
+│   │   ├── cli-syntax-reference.md       # CLI 语法参考
+│   │   ├── cost-optimization.md          # 成本优化指南
+│   │   ├── security-best-practices.md    # 安全最佳实践
+│   │   ├── aiops-patterns.md             # AIOps 模式
+│   │   ├── common-faults.md              # 常见故障处理
+│   │   ├── error-handling.md             # 错误处理规范
+│   │   └── safety-gates.md               # 安全门控
+│   └── assets/
+│       ├── example-config.yaml           # 配置示例
+│       └── example-output.json           # 输出示例
+├── huaweicloud-lts-ops/                  # 云日志服务 Skill
+│   ├── SKILL.md                          # 主文件：日志组/日志流生命周期、日志搜索/查询、日志转储、结构化解析
+│   ├── references/
+│   │   ├── core-concepts.md              # LTS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # LTS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   └── idempotency-checklist.md      # 幂等性检查清单
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
 └── huaweicloud-functiongraph-ops/        # 函数工作流 Skill
     ├── SKILL.md                          # 主文件：函数生命周期、触发器、版本管理、诊断
     ├── references/
