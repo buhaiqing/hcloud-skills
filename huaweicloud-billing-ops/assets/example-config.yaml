@@ -1,0 +1,179 @@
+# =============================================================================
+# huaweicloud-billing-ops — Example Configuration
+# =============================================================================
+# This file defines default configuration for billing operations.
+# Users should copy this to ~/.hcloud/config.yaml and modify as needed.
+
+# =============================================================================
+# FinOps Configuration
+# =============================================================================
+finops:
+
+  # ---------------------------------------------------------------------------
+  # Budget Alerts
+  # ---------------------------------------------------------------------------
+  budget_alerts:
+    enabled: true
+    monthly_thresholds: [80, 90, 100]
+    notification_channels: ["email", "sms"]
+    alert_cooldown_hours: 24
+
+  # ---------------------------------------------------------------------------
+  # Default Budget (applied to newly created budgets)
+  # ---------------------------------------------------------------------------
+  default_budget:
+    amount_cny: 10000
+    name_prefix: "MonthlyBudget"
+
+  # ---------------------------------------------------------------------------
+  # Optimization Mining — Op 12
+  # ---------------------------------------------------------------------------
+  optimization_mining:
+    enabled: true
+    scan_window_days: 90
+    min_savings_threshold_cny: 100
+    backlog_path: "~/.hcloud/optimization_backlog/"
+
+    # --- Mining Patterns ---
+    patterns:
+      P1_idle_ecs:
+        enabled: true
+        max_cpu_utilization: 5
+        min_idle_days: 7
+        action: delegate:huaweicloud-ecs-ops
+
+      P1_idle_rds:
+        enabled: true
+        max_cpu_utilization: 5
+        min_idle_days: 14
+        action: delegate:huaweicloud-rds-ops
+
+      P2_rightsize_down:
+        enabled: true
+        max_cpu_utilization: 20
+        lookback_days: 30
+        action: delegate:huaweicloud-ecs-ops
+
+      P2_rightsize_up:
+        enabled: true
+        min_cpu_utilization: 80
+        lookback_days: 30
+        action: delegate:huaweicloud-ecs-ops
+
+      P3_reserved_1y:
+        enabled: true
+        min_coverage_gap_pct: 30
+        min_monthly_spend_cny: 1000
+        discount_estimate_1y: 0.7
+        action: "buy_reserved"
+
+      P4_resource_package:
+        enabled: true
+        min_utilization_gap_pct: 40
+        action: "buy_package"
+
+      P5_storage_tiering:
+        enabled: true
+        old_data_days: 90
+        action: delegate:huaweicloud-obs-ops
+
+      P6_retention:
+        enabled: true
+        max_log_retention_days: 30
+        action: delegate:huaweicloud-lts-ops
+
+      P7_idle_package:
+        enabled: true
+        min_unused_ratio: 0.7
+        action: "refund_package"
+
+      P8_zombie:
+        enabled: true
+        no_activity_days: 30
+        action: delegate:huaweicloud-ecs-ops
+
+  # ---------------------------------------------------------------------------
+  # Closed-Loop Optimization Tracker — Op 14
+  # ---------------------------------------------------------------------------
+  closed_loop_tracker:
+    enabled: true
+    log_path: "~/.hcloud/optimization_tracker.jsonl"
+    auto_approve: false
+    measurement_window_days: 7
+    validation_threshold: 0.80
+    regression_threshold: 0.50
+
+    # --- State Machine ---
+    state_machine:
+      - DETECTED
+      - PENDING_REVIEW
+      - APPROVED
+      - APPLIED
+      - MEASURING
+      - VALIDATED
+      - REGRESSED
+      - ROLLED_BACK
+      - CLOSED
+      - ARCHIVED
+
+    # --- Loop SLOs ---
+    slo:
+      DETECTED_to_APPROVED_p50: "24h"
+      DETECTED_to_APPROVED_p99: "72h"
+      APPROVED_to_APPLIED_p50: "4h"
+      MEASURING_duration: "7d"
+      REGRESSED_to_ROLLED_BACK_p50: "2h"
+      REGRESSED_to_ROLLED_BACK_p99: "8h"
+      REGRESSED_to_LESSON_p50: "1h"
+      LESSON_to_PLAYBOOK_p50: "24h"
+
+    # --- Feedback (self-improvement) ---
+    feedback:
+      lessons_path: "~/.hcloud/regressed_lessons.json"
+      playbook_path: "~/.hcloud/playbook.json"
+      auto_tune_detector: false  # L5 feature — enable only after 3+ cycles validated
+
+  # ---------------------------------------------------------------------------
+  # Reserved Capacity Coverage Target — Op 13
+  # ---------------------------------------------------------------------------
+  reserved_coverage_target:
+    enabled: true
+    target_coverage_pct: 80
+    preferred_term: "1y"
+    volatility_rejection_cv: 0.30
+    discount_assumptions:
+      1y: 0.70
+      3y: 0.50
+
+  # ---------------------------------------------------------------------------
+  # Currency
+  # ---------------------------------------------------------------------------
+  default_currency: "CNY"
+
+# =============================================================================
+# AIOps Configuration
+# =============================================================================
+aiops:
+  anomaly_detection:
+    spike_threshold: 1.5
+    drop_threshold: 0.5
+    burn_rate_window: "7d"
+    comparison_periods: 3
+
+# =============================================================================
+# SecOps Configuration
+# =============================================================================
+secops:
+  iam_permissions:
+    billing_read_only: "bss:balance:view, bss:bill:view, bss:budget:view"
+    billing_analyst: "bss:balance:view, bss:bill:view, bss:budget:view, bss:cost:view"
+    billing_admin: "bss:*:*"
+
+# =============================================================================
+# General Settings
+# =============================================================================
+general:
+  page_size: 100
+  max_retries: 3
+  backoff_strategy: "exponential"
+  backoff_initial_seconds: 2

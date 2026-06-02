@@ -45,6 +45,20 @@
 hcloud-skills/
 ├── README.md
 ├── LICENSE
+├── huaweicloud-billing-ops/              # 费用中心 Skill（FinOps）
+│   ├── SKILL.md                          # 主文件：账单查询、费用分析、预算告警、优化挖掘、闭环跟踪
+│   ├── references/
+│   │   ├── core-concepts.md              # BSS 架构与计费模型
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # BSS 监控与闭环跟踪
+│   │   ├── integration.md                # 跨技能 FinOps 委派
+│   │   ├── knowledge-base.md             # 费用故障模式知识库
+│   │   └── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
 ├── huaweicloud-skill-generator/          # Skill 生成器（Meta Skill）
 │   ├── SKILL.md                          # 生成器主文件
 │   ├── assets/
@@ -380,6 +394,14 @@ export HW_PROJECT_ID="your-project-id"
 "列出cn-north-4区域的所有告警规则"
 ```
 
+**BSS 费用中心操作** — 引用 `huaweicloud-billing-ops`：
+```
+"查询本月的账单总览和按产品汇总"
+"分析过去30天内是否存在闲置ECS实例（CPU使用率<5%）"
+"创建预算告警，当本月支出超过预算80%时通知"
+"给出下个月云资源采购建议——哪些按需实例应该转包年包月"
+```
+
 **VPC 网络操作** — 引用 `huaweicloud-vpc-ops`：
 ```
 "创建VPC，CIDR为10.0.0.0/16，并创建生产子网"
@@ -400,6 +422,7 @@ export HW_PROJECT_ID="your-project-id"
 
 | Skill 名称 | 产品 | 核心功能 | 状态 |
 |-----------|------|---------|------|
+| `huaweicloud-billing-ops` | 费用中心 (BSS) | 账单查询、费用分析、预算告警、优化挖掘（闲置/Reserved/Sizing）、闭环跟踪、成熟度自评 | ✅ 已生成 |
 | `huaweicloud-ces-ops` | 云监控服务 (CES) | 告警规则、指标查询、仪表盘、事件监控 | ✅ 已生成 |
 | `huaweicloud-vpc-ops` | 虚拟私有云 (VPC) | VPC/子网/安全组/EIP/带宽/NAT网关/VPC对等连接 | ✅ 已生成 |
 | `huaweicloud-ecs-ops` | 弹性云服务器 (ECS) | 实例生命周期、磁盘、快照、CloudShell远程执行 | ✅ 已生成 |
