@@ -30,6 +30,21 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 CCE/Kubernetes-specific Safety rules, including drain-before-delete, PDB guard, StatefulSet scale, privileged manifest, master cordon) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-20"
+        change: "Initial skill release."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -647,6 +662,66 @@ hcloud cce list-addon-templates \
 
 4. **Verify Configuration**: `hcloud cce list-clusters --region {{env.HW_REGION_ID}}`
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every CCE (Kubernetes) mutating operation
+— cluster create / delete, node create / delete / drain / cordon, node-pool create / update /
+delete, `kubectl apply` / `delete` — runs through the **Generator-Critic-Loop** before its
+result is returned. Read-only are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-cluster` / `delete-node` / `drain` / `delete-pool`) | `ShowCluster` / `ShowNode` / `kubectl get` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S17 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create; see also `references/idempotency-checklist.md` |
+| 4 | Traceability | ≥ 0.5 | kubeconfig token / `Authorization: Bearer` MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | K8s version / network mode / CIDR / name regex |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1 / S2 / S3** — `delete-cluster` confirmation / workloads present / prePaid refund
+- **S4** — `delete-node` without first running `kubectl drain` (graceful)
+- **S5** — `delete-node` in ASG pool without checking `desired_size`
+- **S6** — `drain` without PDB / DaemonSet check
+- **S7** — `delete-node-pool` with running non-replicated workloads
+- **S8** — `scale` DOWN forcing StatefulSet `replicas: 0`
+- **S9** — `delete-namespace` with running workloads, no force, no confirm
+- **S11** — `delete-pod` in `kube-system` / `cce-system` / monitoring
+- **S12** — `apply-yaml` with `privileged: true` / `hostNetwork: true` / `hostPID: true`
+- **S16** — `cordon` / `drain` on control-plane node when cluster has < 3 masters
+- **S17** — `delete-cluster` while `status == Available` AND HA is degraded
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md)
@@ -661,6 +736,8 @@ hcloud cce list-addon-templates \
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)
 - [Well-Architected Assessment](references/well-architected-assessment.md)
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 CCE/Kubernetes-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

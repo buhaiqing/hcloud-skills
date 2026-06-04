@@ -32,6 +32,21 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 FunctionGraph-specific Safety rules, including active-trigger guard / $LATEST deploy / destructive inline code / env var secret / SDK-only path) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-20"
+        change: "Initial skill release."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -456,6 +471,70 @@ request := &model.UpdateAliasRequest{
     test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
     ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every FunctionGraph mutating operation —
+function create / delete / code deploy / invoke, version publish / delete, alias create /
+delete, trigger create / enable / disable / delete, config update — runs through the
+**Generator-Critic-Loop** before its result is returned. Read-only are GCL-**exempt**.
+
+> **Path note**: FunctionGraph is `cli_applicability: sdk-only` — there is no `hcloud
+> functiongraph` command group. All Generator operations go through JIT Go SDK
+> (`huaweicloud-sdk-go-v3/services/functiongraph/v2`).
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-function` / `delete-version` / `disable-trigger`) | `ShowFunctionConfig` / `ListTriggers` / `ShowAlias` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S17 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | `password` / env var secret MUST be `<masked>`; `code_sha256` only (not content) |
+| 5 | Spec Compliance | ≥ 0.5 | Runtime / memory (≤3008MB) / timeout (≤900s) / name regex |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1 / S2 / S3** — `delete-function` confirmation / active triggers / alias with `additional_version_weights > 0` on `$LATEST`
+- **S4** — `delete-version` while version referenced by alias
+- **S5 / S6** — `disable-trigger` / `delete-trigger` while `status == ACTIVE` (live traffic cut)
+- **S7 / S8** — `deploy-function-code` to `$LATEST` with alias traffic / destructive inline shell
+- **S9 / S10** — `memory > 3008` MB / `timeout > 900` s (API limits)
+- **S11** — env var with `*SECRET*` / `*PASSWORD*` plaintext (anti-pattern; suggest KMS)
+- **S13** — unsupported runtime (Node.js 14.18 / 16.17 / 18.15, Python 3.9-3.11, Java 8/11/17, Go 1.x)
+- **S15** — invoke payload > 6 MB (sync) or > 50 MB (async)
+- **S16** — TIMER cron more frequent than every 1 minute
+- **S17** — memory decrease without warning (cold-start risk)
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- [`references/api-sdk-usage.md`](references/api-sdk-usage.md) — SDK patterns (since SDK-only path)
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — FunctionGraph architecture, limits, quotas
@@ -464,6 +543,8 @@ request := &model.UpdateAliasRequest{
 - [Monitoring & Alerts](references/monitoring.md) — CES metrics, dashboards, alarm patterns
 - [Integration](references/integration.md) — JIT SDK setup, cross-skill delegation matrix
 - [Well-Architected Assessment](references/well-architected-assessment.md) — Five pillars + FinOps + SecOps + AIOps
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 FunctionGraph-specific Safety rules; SDK-only path)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

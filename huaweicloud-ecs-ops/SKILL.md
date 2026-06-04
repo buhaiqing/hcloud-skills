@@ -15,8 +15,8 @@ compatibility: >-
   Huawei Cloud endpoints.
 metadata:
   author: huaweicloud
-  version: "1.0.0"
-  last_updated: "2026-05-20"
+  version: "1.1.0"
+  last_updated: "2026-06-04"
   cli_applicability: "dual-path"
   cli_version: "4.1.6"
   sdk_version: "v0.1.191"
@@ -26,6 +26,22 @@ metadata:
   cli_support_evidence: >-
     Huawei Cloud ECS is supported via `hcloud ecs` CLI commands and
     huaweicloud-sdk-go-v3/services/ecs/v2 Go SDK package.
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    pilot: true
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL pilot rollout: added references/rubric.md (v1, 5-dim, S1–S10 safety rules) and references/prompt-templates.md (Generator + Critic + Orchestrator skeletons). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-20"
+        change: "Initial skill release."
     CloudShell remote execution via Cloud-Cell Agent (云主机助手) API and OpenStack remote-exec extension.
   environment:
     - HW_ACCESS_KEY_ID
@@ -508,6 +524,77 @@ export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
 test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
 ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every mutating operation — create / start /
+stop / reboot / resize / delete / attach / detach / CloudShell `run-command` /
+`install-cloudcell-agent` — runs through the **Generator-Critic-Loop** before its result is
+returned to the user. Read-only `describe*` / `list*` operations are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (pilot, 2026-06-04) |
+| `max_iter` | **2** (overridable per-op; do not raise above 2 for `delete-server`) |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic run in **isolated** sub-agent / session contexts (no shared prompt) |
+
+### Five-Dimension Rubric (summary; full version in `references/rubric.md`)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete` / `stop` / `reboot` / `resize`) | Verified against `ShowServerDetail` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | See S1–S10 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check state machine; deterministic names |
+| 4 | Traceability | ≥ 0.5 | Full command + args + response + request_id; no credential leak |
+| 5 | Spec Compliance | ≥ 0.5 | Region, flavor regex, image prefix, SG rules, name regex, quota |
+
+### Per-Operation Safety Anchors (binding — `references/rubric.md` §2)
+
+These are the most common Safety = 0 triggers for ECS. Agents MUST self-check before
+submitting to the Critic:
+
+- **S1** — `delete-server` without explicit user confirmation quoting the instance ID
+- **S2** — `stop` / `reboot` / `delete` on prod-named instance (regex: `(?i)(prod|prd|production|online|pay)`) without **two-step** confirmation
+- **S3** — `delete-server` while EIP still attached (orphan EIP keeps billing)
+- **S4** — `delete-server` while EVS volumes attached (co-delete or block)
+- **S5** — Trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / `sk-…` value
+- **S6** — `resize` DOWN on a running instance (Huawei requires stop first)
+- **S7** — `run-command` payload contains `rm -rf /`, `mkfs`, `dd if=`, or destructive shell
+- **S8** — `resize` to flavor with less local disk than current EVS count, no detach first
+- **S9** — `region` / `project_id` not in env contract (typo or default substitution)
+- **S10** — `delete-server` on `prePaid` instance with > 7 days remaining, no refund-warning
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` with the schema in
+`references/prompt-templates.md` §3. The trace is **append-only**; sanitize secrets before
+write (see `prompt-templates.md` §4). The path `./audit-results/` MUST be in `.gitignore`.
+
+### Failure Recovery (Orchestrator-level)
+
+| Failure | Action |
+|---------|--------|
+| Generator sub-agent timeout (> 120s) | Re-invoke once with validation skipped; if still fails → MAX_ITER |
+| Critic sub-agent timeout | Treated as `blocking=true` → MAX_ITER with `unresolved=["all"]` |
+| Sub-agent returns non-JSON | Re-prompt with "JSON object only"; MAX_ITER if still bad |
+| Trace file write fails | Retry once; surface a warning but do not silently continue |
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S10 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator prompt skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — ECS architecture, limits, regions, flavors
@@ -520,6 +607,8 @@ test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
 - [Observability](references/observability.md) — CES→LTS→AOM linkage
 - [Well-Architected Assessment](references/well-architected-assessment.md) — Five pillars + FinOps + SecOps + AIOps
 - [User Experience Specification](references/user-experience-spec.md) — UX compliance
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 2026-06-04)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

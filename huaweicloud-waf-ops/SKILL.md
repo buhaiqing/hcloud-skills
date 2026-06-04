@@ -32,6 +32,21 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 WAF-specific Safety rules, including policy downgrade / proxy disable / rule bypass / system rule / private key leak guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-21"
+        change: "Initial skill release."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -551,6 +566,64 @@ func main() {
 }
 ```
 
+## 质量门 (GCL)
+
+本 skill 强制 GCL(参见 `AGENTS.md` §8)。所有 WAF 变更操作(策略创建/更新/删除、防护域名创建/更新/删除、规则创建/更新/删除/禁用、证书删除)均需经过 **Generator-Critic-Loop** 后才能返回结果。只读操作为 GCL-豁免。
+
+| 字段 | 值 |
+|------|-----|
+| Rubric 版本 | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric 实例 | [`references/rubric.md`](references/rubric.md) |
+| Prompt 模板 | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace 路径 | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| 独立性 | Generator 与 Critic 必须在 **隔离** 的子代理/会话中运行 |
+
+### 五维评分(摘要)
+
+| # | 维度 | 阈值 | 备注 |
+|---|------|------|------|
+| 1 | Correctness | ≥ 0.5(`delete-policy` / `delete-host` / `delete-rule` / `disable-rule` 要求 = 1) | `ShowPolicy` / `ShowHost` / `ShowRule` post-state |
+| 2 | Safety | **= 1**(任一 S-rule 命中 → ABORT) | rubric §2 中 S1–S17 |
+| 3 | Idempotency | ≥ 0.5 | 创建前先检查 |
+| 4 | Traceability | ≥ 0.5 | `password` / 证书私钥必须为 `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | 防护等级 (1/2/3) / 规则动作 / 域名协议 / 证书格式 |
+
+### 每操作 Safety 锚点(强制)
+
+- **S1 / S2 / S3** — `delete-policy` 确认 / 仍有防护域名引用 / 是默认或最后一条策略
+- **S4 / S5** — `delete-host` 确认 / 生产域名二次确认
+- **S6 / S7** — `delete-rule` / `disable-rule` 二次确认
+- **S8** — `update-policy` 防护等级降到 1(宽松)
+- **S9** — `update-host` 关闭 proxy (禁用 WAF 隧道)
+- **S10** — `delete-certificate` 仍有域名引用
+- **S11** — `create-host` 私网地址 + 关闭 proxy 错配
+- **S12** — `create-rule` 动作 pass(绕过检查)
+- **S13** — `create/update-policy` 关闭全检测
+- **S14** — trace 包含私钥 (`BEGIN PRIVATE KEY`)
+- **S16** — 删除 `sys_` 前缀系统规则
+- **S17** — `update-host` 改 `policyid` 未二次确认
+
+### 终止契约(参见 `AGENTS.md` §5)
+
+| 条件 | 状态 | 返回 |
+|------|------|------|
+| 所有维度达标 | **PASS** | Generator 结果 + 分数 + trace 路径 |
+| `iter == max_iter` (2) 且仍有维度未达标 | **MAX_ITER** | 当前最佳结果 + 未达标清单 |
+| `Safety == 0` | **SAFETY_FAIL** | 违规 S-rule id;**绝不**返回部分结果 |
+
+### Trace 持久化(强制)
+
+每次 GCL 运行写入 `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`(schema 见
+`references/prompt-templates.md` §3)。Trace 追加写,不入 Git;落盘前做脱敏
+(参见 `prompt-templates.md` §4)。
+
+### 参见
+
+- [`references/rubric.md`](references/rubric.md) — 完整 rubric、S1–S17 规则、按操作阈值
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator 模板
+- 仓库根 [`AGENTS.md`](../../AGENTS.md) §3、§5、§7、§8 — GCL 规范
+
 ## 参考文档
 
 | 文档 | 说明 |
@@ -563,3 +636,5 @@ func main() {
 | [智能运维](references/aiops-patterns.md) | AIOps 异常检测与自愈 |
 | [安全门](references/safety-gates.md) | 高危操作审批流程 |
 | [错误处理](references/error-handling.md) | 标准化错误诊断流程 |
+| [GCL Rubric](references/rubric.md) | 对抗式质量门 (v1, 5 维, S1–S17 WAF 特定 Safety 规则) |
+| [GCL Prompt 模板](references/prompt-templates.md) | Generator / Critic / Orchestrator 模板 |

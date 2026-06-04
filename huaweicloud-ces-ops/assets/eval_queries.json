@@ -40,6 +40,14 @@
     {
       "query": "Disable the alarm rule al-12345 temporarily",
       "reason": "Alarm disable request"
+    },
+    {
+      "query": "Set up monitoring for GCL pass rate, create CES alarm rules from trace data",
+      "reason": "GCL monitoring with CES alarm creation"
+    },
+    {
+      "query": "Push custom GCL metrics to Cloud Eye and alert when pass rate drops below 90%",
+      "reason": "GCL custom metric push + alarm setup"
     }
   ],
   "should_not_match": [
@@ -62,6 +70,10 @@
     {
       "query": "Set up RDS database backup policy",
       "reason": "RDS backup management, delegate to huaweicloud-rds-ops"
+    },
+    {
+      "query": "Run GCL on ECS delete operations and check the trace",
+      "reason": "GCL execution + trace, delegate to huaweicloud-ecs-ops; CES-ops only handles the monitoring/alarm dimension"
     }
   ]
 }

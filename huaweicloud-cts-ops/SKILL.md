@@ -29,6 +29,18 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: false
+    rubric_version: "v1"
+    max_iter: 3
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 3 rollout: added references/rubric.md (v1, 5-dim, S1–S8 CTS-specific Safety rules, including tracker-delete-without-confirmation / tracker-disable-lose-audit / obs-bucket-inaccessible / credential-leak guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -365,6 +377,58 @@ Verify `ShowTrail(trail_id)` returns 404 Not Found.
     test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
     ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-recommended** (per `AGENTS.md` §8). Every CTS mutating operation — audit trail (tracker) create / delete / update — runs through the **Generator-Critic-Loop** before its result is returned. Read-only event query and list operations are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 3, 2026-06-04) |
+| `max_iter` | **3** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 | `ShowTracker` / `ListTraces` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S8 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | Credential MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | Tracker type / OBS bucket / retention / log file validation |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-tracker` without explicit user confirmation quoting the tracker name
+- **S2** — `delete-tracker` when it is the ONLY active tracker for the project (audit loss)
+- **S3** — `update-tracker` (disable/stop) the only tracker for a compliance-mandated project
+- **S4** — `create-tracker` / `update-tracker` pointing to a non-existent or inaccessible OBS bucket
+- **S5** — `update-tracker` with log file validation disabled (tampering risk)
+- **S6** — `update-tracker` reducing retention period below compliance minimum (< 180 days)
+- **S7** — any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / password plaintext
+- **S8** — `delete-tracker` while it is actively used by CTS-dependent compliance workflows
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (3) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write. The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S8 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — CTS architecture, limits, delivery targets
@@ -374,6 +438,8 @@ Verify `ShowTrail(trail_id)` returns 404 Not Found.
 - [Monitoring & Alerts](references/monitoring.md) — trace health metrics, log review patterns
 - [Integration](references/integration.md) — cross-skill delegation, IAM requirements
 - [Well-Architected Assessment](references/well-architected-assessment.md) — Five pillars + FinOps + SecOps + AIOps
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S8 CTS-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

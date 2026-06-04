@@ -56,6 +56,7 @@ metadata:
 | 3 | **Explicit Actionable Steps** | Every operation: Pre-flight → Execute → Validate → Recover |
 | 4 | **Complete Failure Strategies** | Error taxonomy ≥ 10 codes; HALT vs retry per error type |
 | 5 | **Absolute Single Responsibility** | One product, one resource model; cross-product delegation to other skills |
+| 6 | **GCL Adversarial Rubric** | `## Quality Gate (GCL)` chapter with ≥5-dimension rubric; `references/prompt-templates.md` with G + C prompt skeletons (required for `huaweicloud-{ecs,evs,eip,vpc,rds,gaussdb,dcs,dms,css,cce,cbr,iam,obs,swr,functiongraph,waf,hss}-ops`; recommended for `{elb,ces,lts,cts}-ops`). See root `AGENTS.md` §3, §7, §8. |
 
 ### Three-Pillar Ops Integration (FinOps + SecOps + AIOps)
 

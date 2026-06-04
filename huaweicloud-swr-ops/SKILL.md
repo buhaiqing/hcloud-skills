@@ -23,6 +23,21 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S15 SWR-specific Safety rules, including CCE/CCI image-in-use cross-check and cross-tenant share guard) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-21"
+        change: "Initial skill release."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -412,6 +427,62 @@ This skill follows the Huawei Cloud Well-Architected Framework across five pilla
 - **Integration:** [`references/integration.md`](references/integration.md)
 - **Idempotency Checklist:** [`references/idempotency-checklist.md`](references/idempotency-checklist.md)
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every SWR (container image registry)
+mutating operation — organization create / delete, repository create / delete, image / tag
+delete, retention policy create / update, cross-tenant share — runs through the
+**Generator-Critic-Loop** before its result is returned. Read-only are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-org` / `delete-repo` / `delete-image-tag`) | `ListOrganizations` / `ListRepositories` / `ListImageTags` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S15 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create; see also `references/idempotency-checklist.md` |
+| 4 | Traceability | ≥ 0.5 | `password` / docker registry password MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | Org / repo / tag name regex; retention range |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1 / S2 / S3** — `delete-organization` confirmation / org has repos / last default org
+- **S4 / S5** — `delete-repository` confirmation + namespace / **CCE/CCI image-in-use cross-check**
+- **S6 / S7** — `delete-image` two-step / `delete-image-tag` per-tag CCE/CCI check
+- **S8 / S9** — retention `retention_days < 1` / `tag_count < 5` on prod repo
+- **S10 / S13** — reserved `library` org / `library/*` repo name
+- **S14** — `delete-image-tag` for hot image (pull_count_last_30d > 0)
+- **S15** — `share-repository` without explicit `account_id` confirmation
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S15 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Appendices
 
 ### A. References
@@ -420,6 +491,8 @@ This skill follows the Huawei Cloud Well-Architected Framework across five pilla
 - [Huawei Cloud Go SDK](https://github.com/huaweicloud/huaweicloud-sdk-go-v3)
 - [Huawei Cloud CLI](https://support.huaweicloud.com/hcli/index.html)
 - [Docker CLI Documentation](https://docs.docker.com/engine/reference/commandline/)
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S15 SWR-specific Safety rules; CCE/CCI image-in-use cross-check)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ### B. Changelog
 

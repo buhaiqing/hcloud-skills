@@ -28,6 +28,21 @@ metadata:
     matches the API Explorer name: ListClusters, ShowClusterDetail,
     CreateCluster, DeleteCluster, RestartCluster, ExtendCluster,
     ListSnapshots, CreateSnapshot, RestoreSnapshot, etc.
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S16 CSS/ES-specific Safety rules, including wildcard index delete / match_all / system index / forcemerge guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-27"
+        change: "Initial skill release."
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY
@@ -701,6 +716,67 @@ budget_alerts:
     hcloud CSS ListClusters --cli-region="{{env.HW_REGION_ID}}"
     ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every CSS (Elasticsearch / OpenSearch)
+mutating operation — cluster create / delete / scale, snapshot create / restore, ES REST ops
+(DELETE/PUT index, forcemerge, reindex, _delete_by_query, _update_by_query, _cluster/settings)
+— runs through the **Generator-Critic-Loop** before its result is returned. Read-only are
+GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-cluster` / `restore-snapshot` / index delete) | `ShowClusterDetail` / `ShowSnapshot` / ES HEAD post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S16 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | `password` / `security_admin` MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | ES version / node flavor / index name regex |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1 / S2 / S3 / S4** — `delete-cluster` confirmation / state check / snapshot pre-check / prePaid refund
+- **S5 / S6** — `restore-snapshot` cross-cluster / same-active-source
+- **S7** — ES `DELETE /<index>` with wildcard `*` or `*,-.kibana*`
+- **S8** — ES `_delete_by_query` with `query: {"match_all": {}}` on non-test index
+- **S9** — ES `_update_by_query` with `query: {"match_all": {}}`
+- **S10** — ES `_forcemerge` with `max_num_segments: 1` on prod index
+- **S11** — ES `_close` / `_delete` on `.kibana*` / `.security*` / `.tasks`
+- **S12** — ES `PUT /_cluster/settings` `cluster.routing.allocation.enable: none` without maintenance window
+- **S15** — ES `_reindex` on large index with `wait_for_completion: true`
+- **S16** — `update-snapshot-policy` `retention.days < 7`
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S16 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- [`references/safety-gates.md`](references/safety-gates.md) — pre-existing high-risk operation controls
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — CSS architecture, engine types, node types
@@ -713,6 +789,8 @@ budget_alerts:
 - [Security Best Practices](references/security-best-practices.md) — SecOps guidance
 - [AIOps Patterns](references/aiops-patterns.md) — Anomaly detection, self-healing
 - [Well-Architected Assessment](references/well-architected-assessment.md)
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S16 CSS/ES-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

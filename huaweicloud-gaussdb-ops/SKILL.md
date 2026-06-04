@@ -28,6 +28,21 @@ metadata:
     CreateInstance, DeleteInstance, ListBackups, CreateManualBackup,
     ListConfigurations, ApplyConfiguration, ListDatabases, CreateDatabase,
     ListDbUsers, CreateDbUser, etc.
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 GaussDB-specific Safety rules, with flavor-gated S12/S13 for DWS) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-21"
+        change: "Initial skill release."
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY
@@ -272,6 +287,71 @@ echo "CONFIRM: Type 'yes' to proceed"; read -r ans; [ "$ans" = "yes" ] || exit 1
 
 ---
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every GaussDB mutating operation — instance
+create / delete / resize, backup create / delete, parameter change, account / database admin,
+shard rebalance (DWS) — runs through the **Generator-Critic-Loop** before its result is returned.
+Read-only `show*` / `list*` are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+| Flavor gating | Critic applies S12 / S13 ONLY when `deployment == "dws"` |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `DeleteInstance` / DDL / shard rebalance) | `ShowInstanceDetail` / `ShowBackup` / `ShowClusterTopology` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S17 in rubric §2; S12/S13 flavor-gated |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | `password` MUST be `<masked>`; never in CLI args |
+| 5 | Spec Compliance | ≥ 0.5 | Engine version / flavor regex / node count / db & user name regex |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1 / S2** — `DeleteInstance` without explicit confirmation / while `status != ACTIVE`
+- **S3** — `DeleteInstance` for prePaid instance with > 7 days remaining
+- **S4** — `DeleteInstance` while latest automated backup is missing / failed
+- **S5** — `ResizeInstanceFlavor` (downsize) without verifying `ACTIVE` first
+- **S6** — `ApplyConfiguration` restart-required on prod-tagged instance, no maintenance window
+- **S7** — `DeleteManualBackup` while `status != COMPLETED` or only valid backup
+- **S8** — `ResetPwd` with password in CLI args or in trace
+- **S9** — `CreateAccount` `ALL PRIVILEGES + GRANT + *.*` to non-admin
+- **S10 / S11** — `CreateDatabase` SQL injection in name / `DeleteDatabase` for system DB
+- **S12** *(DWS only)* — Shard rebalance without two-step confirmation
+- **S13** *(DWS only)* — `UpdateInstance` decreasing DN/CN below `min_replicas` floor
+- **S14** — Any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / `sk-…` / `password`
+- **S15** — `CreateInstance` with `region` / `project_id` not in env contract
+- **S16** — `ApplyConfiguration` `wal_level` change on active primary
+- **S17** — `DeleteInstance` while read-replica count > 0
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## References
 
 - [API Navigation](references/api-navigation.md) — Full API catalog
@@ -284,3 +364,5 @@ echo "CONFIRM: Type 'yes' to proceed"; read -r ans; [ "$ans" = "yes" ] || exit 1
 - [Safety Gates](references/safety-gates.md) — High-risk operation controls
 - [Example Config](assets/example-config.yaml) — Reference configuration
 - [Example Output](assets/example-output.json) — Sample API responses
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 GaussDB-specific Safety rules; S12/S13 DWS-gated)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons

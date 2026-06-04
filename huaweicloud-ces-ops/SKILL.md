@@ -29,6 +29,18 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: false
+    rubric_version: "v1"
+    max_iter: 3
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 3 rollout: added references/rubric.md (v1, 5-dim, S1–S10 CES-specific Safety rules, including alarm-rule-delete-without-confirmation / alarm-without-notification / dashboard-delete-with-metrics / credential-leak guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -82,6 +94,7 @@ Huawei Cloud Cloud Eye Service (CES / 云监控服务) provides comprehensive mo
 - Task involves event management: list events, add event data
 - Task keywords: 告警规则, 监控指标, 仪表盘, 告警风暴, CPU使用率告警, 内存告警
 - User asks to configure, troubleshoot, or monitor CES resources via API, SDK, CLI, or automation
+- Task involves GCL (Generator-Critic-Loop) pass-rate monitoring: trace parsing, custom metric push to `CUSTOM.GCL`, or creating CES alarm rules for GCL health (`gcl-overall-pass-rate-critical`, `gcl-safety-fail-detected`, etc.) → refer to `references/gcl-monitoring.md`
 
 ### SHOULD NOT Use This Skill When
 
@@ -805,6 +818,60 @@ fi
 
 4. **Verify Configuration**: `hcloud ces list-alarms --region {{env.HW_REGION_ID}}`
 
+## Quality Gate (GCL)
+
+This skill is **GCL-recommended** (per `AGENTS.md` §8). Every CES mutating operation — alarm rule create / delete / enable / disable, dashboard create / delete — runs through the **Generator-Critic-Loop** before its result is returned. Read-only metric queries and list operations are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 3, 2026-06-04) |
+| `max_iter` | **3** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 | `ShowAlarm` / `ShowDashboard` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S10 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | Credential MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | Alarm type / metric namespace / evaluation period |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-alarm-rule` without explicit user confirmation quoting the rule ID
+- **S2** — `delete-alarm-rule` that is currently firing (alerting) without acknowledgement
+- **S3** — `disable-alarm` when it is the only alerting rule for an important metric
+- **S4** — `create-alarm-rule` with empty `alarm_actions` (no notification) for critical metrics
+- **S5** — `create-alarm-rule` with evaluation period < 1 minute for non-critical metrics
+- **S6** — `delete-dashboard` without checking if metrics/widgets reference it
+- **S7** — `create-alarm-rule` referencing a non-existent resource ID (silent failure)
+- **S8** — any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / password plaintext
+- **S9** — `create-alarm-rule` with threshold = 0 (trigger-immediately) for CPU / memory
+- **S10** — `delete-dashboard` that is shared with other users/teams without confirmation
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (3) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write (see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S10 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md)
@@ -818,6 +885,9 @@ fi
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)
 - [Well-Architected Assessment](references/well-architected-assessment.md)
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S10 CES-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- [GCL Monitoring](references/gcl-monitoring.md) — GCL pass-rate monitoring design: trace parser script, CES alarm rules, custom metric push via SDK, dashboards, and threshold optimization (Phase 4)
 
 ## Well-Architected + Three-Pillar Assessment
 

@@ -35,6 +35,21 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 HSS-specific Safety rules, including version downgrade / prod process kill / system process / private IP block / false-positive-ignore guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains '质量门 (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-21"
+        change: "Initial skill release."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -446,6 +461,61 @@ func main() {
     }
 }
 ```
+
+## 质量门 (GCL)
+
+本 skill 强制 GCL(参见 `AGENTS.md` §8)。所有 HSS 变更操作(主机防护版本切换、告警事件处理、隔离文件恢复/删除、基线策略增删改、网页防篡改策略增删改、漏洞处理)均需经过 **Generator-Critic-Loop** 后才能返回结果。只读操作为 GCL-豁免。
+
+| 字段 | 值 |
+|------|-----|
+| Rubric 版本 | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric 实例 | [`references/rubric.md`](references/rubric.md) |
+| Prompt 模板 | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace 路径 | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| 独立性 | Generator 与 Critic 必须在 **隔离** 的子代理/会话中运行 |
+
+### 五维评分(摘要)
+
+| # | 维度 | 阈值 | 备注 |
+|---|------|------|------|
+| 1 | Correctness | ≥ 0.5(`switch-protect-status` / `isolate_and_kill` / `delete-policy` 要求 = 1) | `ShowHost` / `ShowAlarmEvent` / `ShowPolicy` post-state |
+| 2 | Safety | **= 1**(任一 S-rule 命中 → ABORT) | rubric §2 中 S1–S17 |
+| 3 | Idempotency | ≥ 0.5 | 创建前先检查 |
+| 4 | Traceability | ≥ 0.5 | `password` / 文件 hash 必须为 `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | HSS 版本 (basic/enterprise/premium/wtp) / 告警严重度 |
+
+### 每操作 Safety 锚点(强制)
+
+- **S1 / S2 / S3** — `switch-protect-status` 降级(premium/enterprise → basic)/ prePaid 退款 / 存在未关告警
+- **S4 / S5** — `isolate_and_kill` 生产主机 / 系统进程 (systemd / kubelet / dockerd)
+- **S6** — `block_ip` 私网 IP
+- **S7 / S17** — 标记 critical 事件 / 低置信度检测为 ignore
+- **S8 / S9** — `delete-isolated-file`(证据销毁)/ `recover-isolated-file`(恢复恶意文件)需二次确认
+- **S10 / S11** — `delete-baseline-policy` / `delete-web-tamper-policy` 仍有绑定
+- **S12** — `ignore-vulnerability` critical CVE 需二次确认
+- **S13** — `fix-vulnerability` 生产主机重启需维护窗口
+- **S16** — `update-baseline-policy` 关闭 `auto_check`
+
+### 终止契约(参见 `AGENTS.md` §5)
+
+| 条件 | 状态 | 返回 |
+|------|------|------|
+| 所有维度达标 | **PASS** | Generator 结果 + 分数 + trace 路径 |
+| `iter == max_iter` (2) 且仍有维度未达标 | **MAX_ITER** | 当前最佳结果 + 未达标清单 |
+| `Safety == 0` | **SAFETY_FAIL** | 违规 S-rule id;**绝不**返回部分结果 |
+
+### Trace 持久化(强制)
+
+每次 GCL 运行写入 `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`(schema 见
+`references/prompt-templates.md` §3)。Trace 追加写,不入 Git;落盘前做脱敏
+(参见 `prompt-templates.md` §4)。
+
+### 参见
+
+- [`references/rubric.md`](references/rubric.md) — 完整 rubric、S1–S17 规则、按操作阈值
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator 模板
+- 仓库根 [`AGENTS.md`](../../AGENTS.md) §3、§5、§7、§8 — GCL 规范
 
 ## 参考文档
 

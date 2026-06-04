@@ -25,6 +25,21 @@ metadata:
   cli_support_evidence: >-
     VPC product fully supported by hcloud CLI. Use `hcloud vpc --help` and
     `hcloud eip --help` to verify available commands.
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 VPC/Subnet/SG/EIP/NAT-specific Safety rules) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-20"
+        change: "Initial skill release."
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY
@@ -514,6 +529,70 @@ hcloud vpc delete \
 3. **Configure Credentials**: Set `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`, `HW_REGION_ID`, `HW_PROJECT_ID`.
 4. **Verify**: `hcloud vpc list --region {{env.HW_REGION_ID}}`
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every VPC / Subnet / Security-Group / EIP /
+NAT mutating operation runs through the **Generator-Critic-Loop** before its result is returned.
+Read-only `list*` / `get*` / `describe*` are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-vpc` / `delete-subnet` / `delete-security-group` / `release-eip` / `disassociate-eip`) | `ShowVpc` / `ShowSubnet` / `ShowSecurityGroup` / `ShowEip` / `ShowNat` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S17 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create / add |
+| 4 | Traceability | ≥ 0.5 | Full request/response; no credential leak |
+| 5 | Spec Compliance | ≥ 0.5 | CIDR / SG rule syntax / EIP type / NAT spec |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-vpc` while subnets / NAT / VPN / peerings still present
+- **S2** — `delete-subnet` while instances / ENIs / ELB / NAT / private-IP still use it
+- **S3** — `delete-security-group` while it's the **default** SG or referenced by others
+- **S4** — `add-security-group-rule` opening all protocols from `0.0.0.0/0`
+- **S5** — `add-security-group-rule` opening 22/3389/3306/5432/1433/6379 from `0.0.0.0/0`
+- **S6** — `add-security-group-rule` as the **only** egress rule (lock-out)
+- **S7** — `delete-security-group-rule` closing the last ingress 22/3389 for prod instance
+- **S8 / S9** — `release-eip` while `status == BOUND` or in shared-bandwidth package with others
+- **S10** — `disassociate-eip` on prod-named instance without two-step confirmation
+- **S11** — `create-vpc` with `cidr` overlapping existing VPC in same region
+- **S12** — `create-subnet` with `cidr` not ⊂ parent VPC
+- **S13** — `create-nat-gateway` without private subnet or bound EIP
+- **S14** — `delete-nat-gateway` with SNAT/DNAT rules or routing dependencies
+- **S15** — Any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / `sk-…` / `password`
+- **S16** — `add-security-group-rule` with protocol ∉ {tcp,udp,icmp,icmpv6,any} or port > 65535
+- **S17** — `create-vpc` with `region` / `project_id` not in env contract
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md)
@@ -527,6 +606,8 @@ hcloud vpc delete \
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)
 - [Well-Architected Assessment](references/well-architected-assessment.md)
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 VPC/Subnet/SG/EIP/NAT Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

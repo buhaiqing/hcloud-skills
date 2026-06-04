@@ -28,6 +28,18 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: false
+    rubric_version: "v1"
+    max_iter: 5
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 3 rollout: added references/rubric.md (v1, 5-dim, S1–S7 BSS-specific Safety rules, including budget-delete-without-confirmation / refund-without-cost-impact / quota-exceeded-silent-fail / credential-leak guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
 ---
 
 # huaweicloud-billing-ops — 华为云费用中心 (BSS) 运维 Skill
@@ -731,6 +743,57 @@ File: `~/.hcloud/optimization_tracker.jsonl`
 | "容器集群成本优化" | Container optimization | Cluster cost via Op 8+12 | huaweicloud-cce-ops (node pool) | D |
 | "综合FinOps报告" | Full FinOps report | All Ops combined | Cross-skill aggregation | H |
 
+## Quality Gate (GCL)
+
+This skill is **GCL-optional** (per `AGENTS.md` §8). Most BSS operations are read-only (bill queries, cost analysis) and GCL-**exempt**. Mutating operations — budget alert create / update / delete, resource package refund — run through the **Generator-Critic-Loop** before their result is returned.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 3, 2026-06-04) |
+| `max_iter` | **5** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 | Bill data matches query params / budget state matches request |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S7 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Read queries are trivially idempotent; create check before budget creation |
+| 4 | Traceability | ≥ 0.5 | Credential MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | Billing model / budget threshold / time range / currency |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-budget` without explicit user confirmation quoting the budget name
+- **S2** — `delete-budget` when it is the only budget alert for a cost center
+- **S3** — `update-budget` reducing threshold below current spend without warning (immediate alarm)
+- **S4** — `refund-package` without calculating remaining value and cost impact
+- **S5** — `create-budget` with threshold = 0% (trigger-immediately, alarm storm)
+- **S6** — any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / password plaintext
+- **S7** — any operation that silently fails due to billing account quota/status without user-visible error
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (5) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write. The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S7 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## References
 
 - [references/core-concepts.md](references/core-concepts.md) — BSS architecture, billing models, quotas, endpoints
@@ -741,3 +804,5 @@ File: `~/.hcloud/optimization_tracker.jsonl`
 - [references/integration.md](references/integration.md) — JIT SDK bootstrap, env vars, cross-skill delegation matrix
 - [references/well-architected-assessment.md](references/well-architected-assessment.md) — Five pillars, FinOps workflow (§3.1), AIOps maturity (§5.2), maturity scorecard (§7)
 - [references/knowledge-base.md](references/knowledge-base.md) — Common billing fault patterns
+- [references/rubric.md](references/rubric.md) — GCL rubric (v1, 5-dim, S1–S7 BSS-specific Safety rules)
+- [references/prompt-templates.md](references/prompt-templates.md) — GCL Generator / Critic / Orchestrator skeletons

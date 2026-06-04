@@ -26,6 +26,21 @@ metadata:
     hcloud supports IAM operations via `hcloud iam` command group.
     JIT Go SDK fallback available via huaweicloud-sdk-go-v3/services/iam/v3
     for operations not exposed in CLI or for complex batch operations.
+  gcl:
+    enabled: true
+    required: true
+    rubric_version: "v1"
+    max_iter: 2
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S14 IAM-specific Safety rules) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
+      - version: "1.0.0"
+        date: "2026-05-20"
+        change: "Initial skill release."
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY
@@ -507,6 +522,66 @@ hcloud iam delete-policy \
     hcloud iam list-users --domain-id {{env.HW_DOMAIN_ID}}
     ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-required** (per `AGENTS.md` §8). Every IAM mutating operation — user / group /
+policy / agency / access-key / MFA / password / domain — runs through the **Generator-Critic-Loop**
+before its result is returned to the user. Read-only `list*` / `get*` / `describe*` are
+GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 2, 2026-06-04) |
+| `max_iter` | **2** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic run in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-user` / `delete-policy` / `detach-policy` / `delete-access-key` / `create-access-key`) | Verified via `ShowUser` / `ShowPolicy` / `ListAttachedPolicies` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S14 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create / attach; S4 cap on AK count |
+| 4 | Traceability | ≥ 0.5 | Full request/response; `secret_access_key` MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | Policy JSON syntax; principal patterns; password policy; name regex |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-user` while policies / group memberships / keys still attached
+- **S2 / S3** — Detach / attach `AdministratorAccess` / `*:*:*` without two-step confirmation
+- **S4** — `create-access-key` when user already has ≥ 2 active keys (Huawei default limit)
+- **S5 / S9 / S13** — AK / SK / password plaintext anywhere in trace
+- **S6** — `create-policy` with `Action: *` + `Resource: *` + `Effect: Allow` without flag
+- **S7** — `create-agency` with `Principal: { IAM: ["*"] }` or service principal `*`
+- **S8** — `delete-policy` while `AttachmentCount > 0`
+- **S10** — `update-user` / `create-user` with password plaintext
+- **S11** — `delete-domain` / `delete-project` from non-`account-level` token
+- **S12** — `mfa-disable` for account root or `password_reset`-capable user
+- **S14** — `update-password-policy` disabling MFA OR min_length < 8
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
+(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S14 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — IAM architecture, identity model, permission model
@@ -516,6 +591,8 @@ hcloud iam delete-policy \
 - [Monitoring & Alerts](references/monitoring.md) — CTS events, AIOps patterns
 - [Integration](references/integration.md) — Cross-skill delegation, SDK setup
 - [Well-Architected Assessment](references/well-architected-assessment.md) — Five pillars + FinOps + SecOps + AIOps
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S14 IAM-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## FinOps Integration (财务运营)
 

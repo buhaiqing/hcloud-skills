@@ -30,6 +30,18 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    enabled: true
+    required: false
+    rubric_version: "v1"
+    max_iter: 3
+    rubric_ref: "references/rubric.md"
+    prompts_ref: "references/prompt-templates.md"
+    trace_dir: "./audit-results/"
+    changelog:
+      - version: "1.1.0"
+        date: "2026-06-04"
+        change: "GCL Phase 3 rollout: added references/rubric.md (v1, 5-dim, S1–S13 ELB-specific Safety rules, including delete-without-confirmation / listener-orphan / backend-quorum-loss / cert-expiry-nudging guards) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
 ---
 
 > This skill follows the [Agent Skill Open Specification](https://agentskills.io/specification).
@@ -468,6 +480,63 @@ hcloud elb list-availability-zones --region {{env.HW_REGION_ID}}
     test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
     ```
 
+## Quality Gate (GCL)
+
+This skill is **GCL-recommended** (per `AGENTS.md` §8). Every ELB mutating operation — load balancer create / delete, listener create / update / delete, backend pool create / delete / member add-remove, certificate replace — runs through the **Generator-Critic-Loop** before its result is returned. Read-only `describe*` / `list*` are GCL-**exempt**.
+
+| Field | Value |
+|-------|-------|
+| Rubric version | v1 (Phase 3, 2026-06-04) |
+| `max_iter` | **3** |
+| Rubric instance | [`references/rubric.md`](references/rubric.md) |
+| Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Independence | Generator and Critic in **isolated** sub-agent / session contexts |
+
+### Five-Dimension Rubric (summary)
+
+| # | Dimension | Threshold | Notes |
+|---|-----------|-----------|-------|
+| 1 | Correctness | ≥ 0.5 (1.0 for `delete-lb` / `delete-listener` / `delete-pool`) | `ShowLoadBalancer` / `ShowListener` post-state |
+| 2 | Safety | **= 1** (any S-rule hit → ABORT) | S1–S13 in rubric §2 |
+| 3 | Idempotency | ≥ 0.5 | Pre-check before create |
+| 4 | Traceability | ≥ 0.5 | Credential MUST be `<masked>` |
+| 5 | Spec Compliance | ≥ 0.5 | ELB type / protocol / port / health check params |
+
+### Per-Operation Safety Anchors (binding)
+
+- **S1** — `delete-lb` without explicit user confirmation quoting the LB ID
+- **S2** — `delete-lb` while the LB still has active listeners (orphaned)
+- **S3** — `delete-lb` while the LB still has active backend pools
+- **S4** — `delete-lb` with active EIP bound without warning (EIP orphan)
+- **S5** — `create-listener` referencing a non-existent or protocol-mismatched pool
+- **S6** — `update-listener` switching to a pool incompatible with listener protocol
+- **S7** — `delete-pool` while member servers have active connections (connection drop)
+- **S8** — `add-member` with invalid subnet or unreachable IP address
+- **S9** — `delete-member` without checking if it is the last healthy member (quorum loss)
+- **S10** — `update-certificate` (replace SSL/TLS) on a listener without maintenance window
+- **S11** — `create-listener` with `protocol_port` already in use on the same LB
+- **S12** — any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / password plaintext
+- **S13** — `delete-certificate` while it is actively bound to an HTTPS listener
+
+### Termination Contract (per `AGENTS.md` §5)
+
+| Condition | Status | Returned |
+|-----------|--------|----------|
+| All dimensions pass | **PASS** | Generator result + scores + trace path |
+| `iter == max_iter` (3) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
+| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
+
+### Trace Persistence (mandatory)
+
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write (see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
+
+### See also
+
+- [`references/rubric.md`](references/rubric.md) — full rubric, S1–S13 rules, per-op thresholds
+- [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — ELB types, architecture, limits
@@ -477,6 +546,8 @@ hcloud elb list-availability-zones --region {{env.HW_REGION_ID}}
 - [Monitoring & Alerts](references/monitoring.md) — CES metrics, dashboards, alarm patterns
 - [Integration](references/integration.md) — JIT SDK setup, cross-skill delegation matrix
 - [Well-Architected Assessment](references/well-architected-assessment.md) — Five pillars + FinOps + SecOps + AIOps
+- [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S13 ELB-specific Safety rules)
+- [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 
 ## Well-Architected + Three-Pillar Assessment
 

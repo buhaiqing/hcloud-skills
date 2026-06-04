@@ -222,5 +222,13 @@ __marimo__/
 .agents/
 .lingma/
 .codebuddy/
+
+# GCL (Generator-Critic-Loop) trace persistence
+# Append-only audit logs; never tracked by git
+audit-results/
+**/audit-results/
+gcl-trace-*.json
+**/gcl-trace-*.json
+
 # macOS
 .DS_Store
