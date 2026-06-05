@@ -1,0 +1,87 @@
+[
+  {
+    "query": "创建一个 GaussDB for openGauss 实例,4C16G",
+    "should_activate": true,
+    "reason": "GaussDB instance creation"
+  },
+  {
+    "query": "查看 GaussDB 实例列表和状态",
+    "should_activate": true,
+    "reason": "List GaussDB instances"
+  },
+  {
+    "query": "GaussDB 实例磁盘满了,需要扩容",
+    "should_activate": true,
+    "reason": "GaussDB volume resize (destructive, needs safety gate)"
+  },
+  {
+    "query": "在 GaussDB 上创建一个新的数据库和用户",
+    "should_activate": true,
+    "reason": "Database / user management"
+  },
+  {
+    "query": "设置 GaussDB 每天凌晨 3 点自动备份",
+    "should_activate": true,
+    "reason": "Backup policy configuration"
+  },
+  {
+    "query": "从 7 天前的备份恢复 GaussDB",
+    "should_activate": true,
+    "reason": "Restore from backup (destructive, needs safety gate)"
+  },
+  {
+    "query": "GaussDB 连接被拒绝,实例状态是 DOWN",
+    "should_activate": true,
+    "reason": "GaussDB diagnosis - check instance status"
+  },
+  {
+    "query": "应用 GaussDB 参数模板并重启实例",
+    "should_activate": true,
+    "reason": "Parameter template apply + restart"
+  },
+  {
+    "query": "DWS 集群分片需要重新平衡",
+    "should_activate": true,
+    "reason": "DWS shard rebalance (flavor-gated, GCL-required)"
+  },
+  {
+    "query": "删除这个 GaussDB 测试实例 (手工确认)",
+    "should_activate": true,
+    "reason": "GaussDB instance deletion with safety gate"
+  },
+  {
+    "query": "修改 GaussDB 账户密码",
+    "should_activate": true,
+    "reason": "Account password reset"
+  },
+  {
+    "query": "列出所有可用的参数模板",
+    "should_activate": true,
+    "reason": "List parameter templates"
+  },
+  {
+    "query": "创建一台 RDS MySQL",
+    "should_activate": false,
+    "reason": "RDS for MySQL - delegate to huaweicloud-rds-ops"
+  },
+  {
+    "query": "ECS 实例磁盘扩容",
+    "should_activate": false,
+    "reason": "ECS - delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "查一下 OBS 桶的存储用量",
+    "should_activate": false,
+    "reason": "OBS - delegate to huaweicloud-obs-ops"
+  },
+  {
+    "query": "设置 VPC 安全组规则",
+    "should_activate": false,
+    "reason": "VPC/SG - delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "查看 Redis 集群状态",
+    "should_activate": false,
+    "reason": "DCS Redis - delegate to huaweicloud-dcs-ops"
+  }
+]

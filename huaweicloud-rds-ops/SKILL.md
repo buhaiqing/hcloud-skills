@@ -82,7 +82,7 @@ In addition to the Five Core Standards, this skill integrates three operational 
 |--------|-------------------|-----------|
 | **FinOps (财务运营)** | Cost visibility, right-sizing, billing model comparison, waste detection | `references/well-architected-assessment.md` §3 |
 | **SecOps (安全运营)** | IAM minimum permissions, network isolation, encryption, threat detection | `references/well-architected-assessment.md` §4 |
-| **AIOps (智能运营)** | Multi-metric correlation, cross-skill diagnosis, knowledge base, self-healing | `references/aiops-best-practices.md` |
+| **AIOps (智能运营)** | Multi-metric correlation, cross-skill diagnosis, knowledge base, self-healing | `references/advanced/aiops-best-practices.md` |
 
 ### Well-Architected Framework Integration (卓越架构)
 
@@ -551,7 +551,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S15 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -665,4 +665,4 @@ This skill's operations are evaluated against Huawei Cloud's Well-Architected Fr
 - [Performance Assessment](references/well-architected-assessment.md#25-性能支柱-performance)
 - [FinOps Integration](references/well-architected-assessment.md#3-finops-)
 - [SecOps Integration](references/well-architected-assessment.md#4-secops-)
-- [AIOps Integration](references/aiops-best-practices.md)
+- [AIOps Integration](references/advanced/aiops-best-practices.md)

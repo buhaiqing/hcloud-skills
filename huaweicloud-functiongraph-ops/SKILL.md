@@ -69,7 +69,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 - [Security Assessment](references/well-architected-assessment.md#21)
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3)
 - [SecOps Security Operations](references/well-architected-assessment.md#4)
-- [AIOps Integration](references/aiops-best-practices.md)
+- [AIOps Integration](references/advanced/aiops-best-practices.md)
 
 ## Five Core Standards (Quality Gates)
 
@@ -533,7 +533,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
 - [`references/api-sdk-usage.md`](references/api-sdk-usage.md) — SDK patterns (since SDK-only path)
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -556,4 +556,4 @@ This skill's operations are evaluated against Huawei Cloud's Well-Architected Fr
 - [Performance Assessment](references/well-architected-assessment.md#25)
 - [FinOps Integration](references/well-architected-assessment.md#3)
 - [SecOps Integration](references/well-architected-assessment.md#4)
-- [AIOps Integration](references/aiops-best-practices.md)
+- [AIOps Integration](references/advanced/aiops-best-practices.md)

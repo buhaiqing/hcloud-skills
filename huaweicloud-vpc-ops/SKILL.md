@@ -75,7 +75,7 @@ Huawei Cloud Virtual Private Cloud (VPC / 虚拟私有云) provides isolated, cu
 |--------|-------------------|-----------|
 | **FinOps** | Bandwidth cost optimization, EIP billing modes, idle IP detection | `references/well-architected-assessment.md` §3 |
 | **SecOps** | Security group least-privilege rules, VPC isolation, encryption | `references/well-architected-assessment.md` §4 |
-| **AIOps** | ≥ 5 anomaly patterns, cross-skill diagnosis for network issues | `references/aiops-best-practices.md` and §5 |
+| **AIOps** | ≥ 5 anomaly patterns, cross-skill diagnosis for network issues | `references/advanced/aiops-best-practices.md` and §5 |
 
 ### Well-Architected Framework Integration (卓越架构)
 
@@ -591,7 +591,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -602,7 +602,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 - [Monitoring & Alerts](references/monitoring.md)
 - [Integration](references/integration.md)
 - [Knowledge Base](references/knowledge-base.md)
-- [AIOps Best Practices](references/aiops-best-practices.md)
+- [AIOps Best Practices](references/advanced/aiops-best-practices.md)
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)
 - [Well-Architected Assessment](references/well-architected-assessment.md)
@@ -619,4 +619,4 @@ This skill's operations are evaluated against Huawei Cloud's Well-Architected Fr
 - [Performance Assessment](references/well-architected-assessment.md#25-性能支柱-performance)
 - [FinOps Integration](references/well-architected-assessment.md#3-finops-)
 - [SecOps Integration](references/well-architected-assessment.md#4-secops-)
-- [AIOps Integration](references/aiops-best-practices.md)
+- [AIOps Integration](references/advanced/aiops-best-practices.md)

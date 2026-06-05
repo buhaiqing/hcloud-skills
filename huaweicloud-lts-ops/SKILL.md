@@ -360,26 +360,26 @@ hcloud LTS UpdateLogGroup \
 
 ## Error Taxonomy
 
-| Code | Meaning | Agent Action | UX Feedback | Max Retries | Backoff |
-|------|---------|-------------|-------------|-------------|---------|
-| `LTS.0001` | Invalid parameter | Validate inputs (name, TTL, etc.) | Show validation error | 0 (HALT) | — |
-| `LTS.0101` | Resource quota exceeded | Suggest deleting unused resources | Show quota limits and usage | 0 (HALT) | — |
-| `LTS.0102` | Resource name conflict | Suggest unique name | Show conflict details | 0 (HALT) | — |
-| `LTS.0201` | Authentication failed | Check AK/SK validity | Show auth error | 0 (HALT) | — |
-| `LTS.0202` | Insufficient permissions | Suggest IAM policy review | Show missing permissions | 0 (HALT) | — |
-| `LTS.0301` | Log group not found | Re-list groups and verify ID | Show group resolution | 1 | 2s |
-| `LTS.0302` | Log stream not found | Re-list streams and verify ID | Show stream resolution | 1 | 2s |
-| `LTS.0401` | Group not found (delete) | Confirm already deleted | Show not-found message | 0 (HALT) | — |
-| `LTS.0402` | Active transfer exists | List and delete transfers first | Show active transfers | 0 (HALT) | — |
-| `LTS.0501` | Invalid time range | Ensure start < end, correct format | Show time format | 0 (HALT) | — |
-| `LTS.0502` | Keywords too long | Trim to 2048 chars | Show limit info | 1 | 1s |
-| `LTS.0503` | Index not configured | Guide user to configure indexing | Show indexing guidance | 0 (HALT) | — |
-| `LTS.0601` | OBS bucket not found | Verify OBS bucket | Show bucket error | 1 | 3s |
-| `LTS.0602` | Transfer already exists | Offer to update existing rule | Show transfer conflict | 0 (HALT) | — |
-| `LTS.0603` | Invalid OBS bucket policy | Check bucket ACL/permissions | Show policy error | 0 (HALT) | — |
-| `LTS.0701` | TTL out of range | Confirm 1–365 | Show accepted range | 0 (HALT) | — |
-| `LTS.0801` | Internal server error | Retry with backoff | Show retry status | 3 | 5s, 10s, 20s |
-| `LTS.0802` | Service unavailable | Check region/service status | Show service status | 3 | 10s, 30s, 60s |
+| Code | Agent Action | UX Feedback |
+|------|--------------|-------------|
+| `LTS.0001` | HALT — Validate inputs (name, TTL, etc.) | Show validation error |
+| `LTS.0101` | HALT — Suggest deleting unused resources | Show quota limits and usage |
+| `LTS.0102` | HALT — Suggest unique name | Show conflict details |
+| `LTS.0201` | HALT — Check AK/SK validity | Show auth error |
+| `LTS.0202` | HALT — Suggest IAM policy review | Show missing permissions |
+| `LTS.0301` | Re-list groups and verify ID (retry 1×, 2s) | Show group resolution |
+| `LTS.0302` | Re-list streams and verify ID (retry 1×, 2s) | Show stream resolution |
+| `LTS.0401` | HALT — Confirm already deleted | Show not-found message |
+| `LTS.0402` | HALT — List and delete transfers first | Show active transfers |
+| `LTS.0501` | HALT — Ensure start < end, correct format | Show time format |
+| `LTS.0502` | Trim to 2048 chars (retry 1×, 1s) | Show limit info |
+| `LTS.0503` | HALT — Guide user to configure indexing | Show indexing guidance |
+| `LTS.0601` | Verify OBS bucket (retry 1×, 3s) | Show bucket error |
+| `LTS.0602` | HALT — Offer to update existing rule | Show transfer conflict |
+| `LTS.0603` | HALT — Check bucket ACL/permissions | Show policy error |
+| `LTS.0701` | HALT — Confirm 1–365 | Show accepted range |
+| `LTS.0801` | Retry with backoff 3× (5s, 10s, 20s) | Show retry status |
+| `LTS.0802` | Retry with backoff 3× (10s, 30s, 60s) | Show service status |
 
 ## IAM Minimum Permissions
 
@@ -451,7 +451,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S9 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 

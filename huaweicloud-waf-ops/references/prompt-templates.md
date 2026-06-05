@@ -296,5 +296,5 @@ Before writing `gcl-trace-*.json` to `audit-results/`:
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S17 rules
 - `references/api-navigation.md` — API anchors
-- `references/safety-gates.md` — pre-existing high-risk operation controls
-- `references/security-best-practices.md` — WAF-specific hardening
+- `references/advanced/safety-gates.md` — pre-existing high-risk operation controls
+- `references/advanced/security-best-practices.md` — WAF-specific hardening

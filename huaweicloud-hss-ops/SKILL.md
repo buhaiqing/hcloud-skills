@@ -78,9 +78,9 @@ Host Security Service (HSS) provides server security including intrusion detecti
 
 | Pillar | Skill Integration | Reference |
 |--------|-------------------|-----------|
-| **FinOps** | Version tier optimization, host grading for cost efficiency | `references/cost-optimization.md` |
-| **SecOps** | Core HSS function — intrusion detection, vulnerability, baseline, WTP | `references/security-best-practices.md` |
-| **AIOps** | 4 anomaly patterns (alert storm, unhandled backlog, vuln fix progress, host health) | `references/aiops-patterns.md` |
+| **FinOps** | Version tier optimization, host grading for cost efficiency | `references/advanced/cost-optimization.md` |
+| **SecOps** | Core HSS function — intrusion detection, vulnerability, baseline, WTP | `references/advanced/security-best-practices.md` |
+| **AIOps** | 4 anomaly patterns (alert storm, unhandled backlog, vuln fix progress, host health) | `references/advanced/aiops-patterns.md` |
 
 ### Well-Architected Framework Integration (卓越架构)
 
@@ -515,7 +515,7 @@ func main() {
 
 - [`references/rubric.md`](references/rubric.md) — 完整 rubric、S1–S17 规则、按操作阈值
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator 模板
-- 仓库根 [`AGENTS.md`](../../AGENTS.md) §3、§5、§7、§8 — GCL 规范
+- 仓库根 [`AGENTS.md`](../AGENTS.md) §3、§5、§7、§8 — GCL 规范
 
 ## 参考文档
 
@@ -524,8 +524,8 @@ func main() {
 | [API 导航](references/api-navigation.md) | HSS v5 API 完整接口列表 |
 | [CLI 语法参考](references/cli-syntax-reference.md) | KooCLI 命令参数速查 |
 | [常见故障处理](references/common-faults.md) | 常见错误及处理方案 |
-| [成本优化](references/cost-optimization.md) | FinOps 费用优化指南 |
-| [安全最佳实践](references/security-best-practices.md) | SecOps 安全加固方案 |
-| [智能运维](references/aiops-patterns.md) | AIOps 异常检测与自愈 |
-| [安全门](references/safety-gates.md) | 高危操作审批流程 |
+| [成本优化](references/advanced/cost-optimization.md) | FinOps 费用优化指南 |
+| [安全最佳实践](references/advanced/security-best-practices.md) | SecOps 安全加固方案 |
+| [智能运维](references/advanced/aiops-patterns.md) | AIOps 异常检测与自愈 |
+| [安全门](references/advanced/safety-gates.md) | 高危操作审批流程 |
 | [错误处理](references/error-handling.md) | 标准化错误诊断流程 |

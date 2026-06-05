@@ -1,0 +1,92 @@
+[
+  {
+    "query": "创建一台 4C8G 的 ECS 弹性云服务器",
+    "should_activate": true,
+    "reason": "ECS instance creation - core lifecycle"
+  },
+  {
+    "query": "把这台 ECS 实例 stop 掉",
+    "should_activate": true,
+    "reason": "ECS stop operation"
+  },
+  {
+    "query": "ECS 实例磁盘空间不够了,帮忙扩容到 200G",
+    "should_activate": true,
+    "reason": "EVS disk resize attached to ECS"
+  },
+  {
+    "query": "列出所有 running 状态的 ECS 实例",
+    "should_activate": true,
+    "reason": "List ECS instances filtered by state"
+  },
+  {
+    "query": "通过 CloudShell 在 ECS 上执行命令 uname -a",
+    "should_activate": true,
+    "reason": "CloudShell remote execution"
+  },
+  {
+    "query": "查一下 ECS 是不是安装了云主机助手 (Cloud-Cell Agent)",
+    "should_activate": true,
+    "reason": "Cloud-Cell Agent installation verification"
+  },
+  {
+    "query": "修改 ECS 安全组规则,放通 8080 端口",
+    "should_activate": true,
+    "reason": "Security group rule update (destructive, requires safety gate)"
+  },
+  {
+    "query": "把这台 ECS 重启一下",
+    "should_activate": true,
+    "reason": "ECS restart (destructive - interrupt running services)"
+  },
+  {
+    "query": "把 ECS 镜像导出成私有镜像",
+    "should_activate": true,
+    "reason": "ECS image export / IMS interaction"
+  },
+  {
+    "query": "ECS 实例 unreachable / 远程连不上",
+    "should_activate": true,
+    "reason": "ECS diagnosis flow - delegate to monitoring if metrics needed"
+  },
+  {
+    "query": "创建一台 RDS for MySQL 实例",
+    "should_activate": false,
+    "reason": "RDS creation - delegate to huaweicloud-rds-ops"
+  },
+  {
+    "query": "我需要配置一个 ELB 负载均衡器",
+    "should_activate": false,
+    "reason": "ELB - delegate to huaweicloud-elb-ops"
+  },
+  {
+    "query": "帮我创建 VPC 和子网",
+    "should_activate": false,
+    "reason": "VPC/subnet - delegate to huaweicloud-vpc-ops"
+  },
+  {
+    "query": "配置告警规则监控 ECS CPU",
+    "should_activate": false,
+    "reason": "CES alarm - delegate to huaweicloud-ces-ops (but ECS can read metrics)"
+  },
+  {
+    "query": "查看本月账单和消费明细",
+    "should_activate": false,
+    "reason": "Billing - delegate to huaweicloud-billing-ops"
+  },
+  {
+    "query": "创建一个 IAM 用户",
+    "should_activate": false,
+    "reason": "IAM - delegate to huaweicloud-iam-ops"
+  },
+  {
+    "query": "OSS 对象存储的桶创建",
+    "should_activate": false,
+    "reason": "OBS - delegate to huaweicloud-obs-ops"
+  },
+  {
+    "query": "今天天气怎么样",
+    "should_activate": false,
+    "reason": "Out of scope"
+  }
+]

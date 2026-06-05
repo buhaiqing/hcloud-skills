@@ -720,7 +720,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -731,7 +731,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 - [Monitoring & Alerts](references/monitoring.md)
 - [Integration](references/integration.md)
 - [Knowledge Base](references/knowledge-base.md)
-- [Observability Integration](references/observability.md)
+- [Observability Integration](references/advanced/observability.md)
 - [Idempotency Checklist](references/idempotency-checklist.md)
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)

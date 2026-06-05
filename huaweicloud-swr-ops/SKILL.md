@@ -371,20 +371,20 @@ hcloud CES ShowMetricData \
 
 ### Error Code Taxonomy
 
-| Code | Error | Category | Retry | Action |
-|------|-------|----------|-------|--------|
-| `SWR.0001` | Organization already exists | Conflict | No | Choose different organization name |
-| `SWR.0002` | Organization not found | NotFound | No | Verify organization name is correct |
-| `SWR.0003` | Repository already exists | Conflict | No | Use different repository name |
-| `SWR.0004` | Repository not found | NotFound | No | Verify repository name is correct |
-| `SWR.0005` | Image not found | NotFound | No | Verify image tag exists in repository |
-| `SWR.0006` | Organization quota exceeded | Quota | No | Delete unused organizations or request limit increase |
-| `SWR.0007` | Repository quota exceeded | Quota | No | Delete unused repositories or request limit increase |
-| `SWR.0008` | Image storage quota exceeded | Quota | No | Delete old images or increase storage quota |
-| `SWR.0009` | Invalid image name format | Config | No | Verify image name follows Docker naming conventions |
-| `SWR.0010` | Sync rule already exists | Conflict | No | Modify existing sync rule or delete and recreate |
-| `SWR.0011` | Target region not supported | Config | No | Verify SWR is available in target region |
-| `SWR.0012` | Retention policy conflict | Config | No | Remove existing policy before creating new one |
+| Code | Category | Action |
+|------|----------|--------|
+| `SWR.0001` | Conflict | Choose different organization name |
+| `SWR.0002` | NotFound | Verify organization name is correct |
+| `SWR.0003` | Conflict | Use different repository name |
+| `SWR.0004` | NotFound | Verify repository name is correct |
+| `SWR.0005` | NotFound | Verify image tag exists in repository |
+| `SWR.0006` | Quota | Delete unused organizations or request limit increase |
+| `SWR.0007` | Quota | Delete unused repositories or request limit increase |
+| `SWR.0008` | Quota | Delete old images or increase storage quota |
+| `SWR.0009` | Config | Verify image name follows Docker naming conventions |
+| `SWR.0010` | Conflict | Modify existing sync rule or delete and recreate |
+| `SWR.0011` | Config | Verify SWR is available in target region |
+| `SWR.0012` | Config | Remove existing policy before creating new one |
 
 ### Diagnostic Flow (Image Pull Failure)
 
@@ -481,7 +481,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S15 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Appendices
 

@@ -1,5 +1,18 @@
 # 智能运维（AIOps）
 
+> **JSON paths**: Centralized below — inline `jq` calls in scripts use these.
+> `.total`             — total event count (ListEvents top-level)
+> `.items[]`           — event/item array
+> `.items[].rule`      — rule ID per event
+> `.items[].sip`       — source IP per event
+> `.items[].attack`    — attack type per event
+> `.items[].host`      — protected hostname per event
+> `.items | length`    — array size
+> `.server[0].front_protocol` — front-end protocol of a host
+> `.certificateid`     — TLS cert ID bound to a host
+> `.policyid`          — protection policy ID bound to a host
+> `.name`, `.expire_time` — cert name / expiry
+
 ## 异常检测模式
 
 ### 模式 1：攻击流量突增检测

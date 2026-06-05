@@ -88,9 +88,9 @@ Cloud Search Service (CSS) is Huawei Cloud's fully managed search engine service
 
 | Pillar | Skill Integration | Reference |
 |--------|-------------------|-----------|
-| **FinOps** | Cluster sizing, storage optimization, snapshot lifecycle, idle detection | `references/cost-optimization.md` |
-| **SecOps** | IAM policies, KMS encryption, VPC isolation, HTTPS enforcement | `references/security-best-practices.md` |
-| **AIOps** | 4 anomaly patterns (cluster health, query latency, shard allocation, storage growth) | `references/aiops-patterns.md` |
+| **FinOps** | Cluster sizing, storage optimization, snapshot lifecycle, idle detection | `references/advanced/cost-optimization.md` |
+| **SecOps** | IAM policies, KMS encryption, VPC isolation, HTTPS enforcement | `references/advanced/security-best-practices.md` |
+| **AIOps** | 4 anomaly patterns (cluster health, query latency, shard allocation, storage growth) | `references/advanced/aiops-best-practices.md` |
 
 ### Well-Architected Framework Integration (卓越架构)
 
@@ -774,8 +774,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S16 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- [`references/safety-gates.md`](references/safety-gates.md) — pre-existing high-risk operation controls
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -785,9 +784,9 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 - [Troubleshooting](references/troubleshooting.md) — Error codes, diagnostics, recovery
 - [Monitoring & Alerts](references/monitoring.md) — CES metrics, dashboards
 - [Integration](references/integration.md) — Go bootstrap, cross-skill delegation
-- [Cost Optimization](references/cost-optimization.md) — FinOps patterns
-- [Security Best Practices](references/security-best-practices.md) — SecOps guidance
-- [AIOps Patterns](references/aiops-patterns.md) — Anomaly detection, self-healing
+- [Cost Optimization](references/advanced/cost-optimization.md) — FinOps patterns
+- [Security Best Practices](references/advanced/security-best-practices.md) — SecOps guidance
+- [AIOps Best Practices](references/advanced/aiops-best-practices.md) — Anomaly detection, self-healing
 - [Well-Architected Assessment](references/well-architected-assessment.md)
 - [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S16 CSS/ES-specific Safety rules)
 - [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons

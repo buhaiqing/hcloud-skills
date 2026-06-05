@@ -459,20 +459,20 @@ hcloud CES ShowMetricData \
 
 ### Error Code Taxonomy
 
-| Code | Error | Category | Retry | Action |
-|------|-------|----------|-------|--------|
-| `DMS.00400001` | Resource quota exceeded | Quota | No | Request quota increase; delete unused instances |
-| `DMS.00400002` | Invalid specification | Config | No | Verify spec code matches engine/version |
-| `DMS.00400003` | VPC/subnet/SG not found | Config | No | Verify network resources exist in same region |
-| `DMS.00400004` | Instance not found | NotFound | No | Verify instance ID is correct |
-| `DMS.00400005` | Instance status not available | State | Yes (3x, 30s backoff) | Wait for instance to reach `RUNNING` |
-| `DMS.00400006` | Operation not allowed in current status | State | No | Check instance status; wait for completion |
-| `DMS.00400007` | Topic already exists | Conflict | No | Use different topic name or modify existing |
-| `DMS.00400008` | Partition limit exceeded | Quota | No | Increase partition quota or reduce partition count |
-| `DMS.00400009` | Insufficient storage space | Resource | No | Resize storage or clean old messages |
-| `DMS.00400010` | Backup in progress | State | Yes (3x, 60s backoff) | Wait for current backup to complete |
-| `DMS.00400011` | Invalid engine version | Config | No | Verify engine version is supported in target region |
-| `DMS.00400012` | Security group rule conflict | Config | No | Check security group rules for port conflicts |
+| Code | Category | Action |
+|------|----------|--------|
+| `DMS.00400001` | Quota | HALT — Request quota increase; delete unused instances |
+| `DMS.00400002` | Config | Verify spec code matches engine/version |
+| `DMS.00400003` | Config | Verify network resources (VPC/subnet/SG) exist in same region |
+| `DMS.00400004` | NotFound | Verify instance ID is correct |
+| `DMS.00400005` | State | Wait for instance to reach `RUNNING` (retry 3×, 30s backoff) |
+| `DMS.00400006` | State | Check instance status; wait for completion |
+| `DMS.00400007` | Conflict | Use different topic name or modify existing |
+| `DMS.00400008` | Quota | Increase partition quota or reduce partition count |
+| `DMS.00400009` | Resource | Resize storage or clean old messages |
+| `DMS.00400010` | State | Wait for current backup to complete (retry 3×, 60s backoff) |
+| `DMS.00400011` | Config | Verify engine version is supported in target region |
+| `DMS.00400012` | Config | Check security group rules for port conflicts |
 
 ### Diagnostic Flow (Producer Timeout / Connection Failure)
 
@@ -573,7 +573,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S15 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Appendices
 

@@ -232,3 +232,4 @@ gcl-trace-*.json
 
 # macOS
 .DS_Store
+.audit/

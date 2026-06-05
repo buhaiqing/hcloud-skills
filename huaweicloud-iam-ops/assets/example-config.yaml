@@ -4,6 +4,10 @@
 > **Version:** 1.0.0
 > **Last Updated:** 2026-05-20
 
+> **YAML anchors**: A `_base: &base` anchor captures shared values (IAM endpoint,
+> incident response policy, common password rules). Environments override only
+> what differs. `<<: *base` merges the anchor into the active block.
+
 ---
 
 ## Environment: Production
@@ -11,16 +15,28 @@
 ```yaml
 # huaweicloud-iam-ops/config/production.yaml
 
+_base: &base
+  metadata:
+    version: "1.0.0"
+    last_updated: "2026-05-20"
+  iam:
+    endpoint: "https://iam.myhuaweicloud.com"
+    domain_id: "{{env.HW_DOMAIN_ID}}"
+  incident_response: &incident_response
+    compromised_ak_sk: "disable_immediately"
+    unauthorized_access: "revoke_permissions"
+    brute_force: "lock_account"
+  password_rules: &password_rules
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: true
+    history_count: 5
+
 metadata:
+  <<: *base
   environment: production
-  version: "1.0.0"
-  last_updated: "2026-05-20"
 
-iam:
-  endpoint: "https://iam.myhuaweicloud.com"
-  domain_id: "{{env.HW_DOMAIN_ID}}"
-
-# Group Configuration
 groups:
   - name: administrators
     description: "Account administrators with MFA"
@@ -35,21 +51,15 @@ groups:
     description: "Security audit team"
     policies: [ReadOnlyAccess, CTS-FullAccess]
 
-# Security Configuration
 security:
   mfa_enforced: true
   password_policy:
+    <<: *password_rules
     min_length: 12
-    require_uppercase: true
-    require_lowercase: true
-    require_numbers: true
-    require_special_chars: true
     expire_days: 90
-    history_count: 5
   ak_sk_rotation_days: 90
   session_timeout_minutes: 480
 
-# Monitoring Configuration
 monitoring:
   cts_enabled: true
   alert_on_mfa_disable: true
@@ -58,7 +68,6 @@ monitoring:
   brute_force_threshold: 5
   brute_force_window_minutes: 5
 
-# FinOps Configuration
 finops:
   cost_center_tag: "CC-PROD-001"
   environment_tag: "prod"
@@ -68,22 +77,18 @@ finops:
     stale_key_threshold_days: 90
     stale_account_threshold_days: 180
 
-# SecOps Configuration
 secops:
   zero_trust:
     mfa_required: true
     least_privilege: true
     credential_rotation_days: 90
   incident_response:
-    compromised_ak_sk: "disable_immediately"
-    unauthorized_access: "revoke_permissions"
-    brute_force: "lock_account"
+    <<: *incident_response
   compliance_automation:
     mfa_check: daily
     policy_audit: weekly
     credential_rotation_check: daily
 
-# AIOps Configuration
 aiops:
   anomaly_detection:
     enabled: true
@@ -116,14 +121,26 @@ aiops:
 ```yaml
 # huaweicloud-iam-ops/config/staging.yaml
 
-metadata:
-  environment: staging
-  version: "1.0.0"
-  last_updated: "2026-05-20"
+_base: &base
+  metadata:
+    version: "1.0.0"
+    last_updated: "2026-05-20"
+  iam:
+    endpoint: "https://iam.myhuaweicloud.com"
+    domain_id: "{{env.HW_DOMAIN_ID}}"
+  incident_response: &incident_response
+    compromised_ak_sk: "disable_immediately"
+    unauthorized_access: "revoke_permissions"
+    brute_force: "lock_account"
+  password_rules: &password_rules
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: false
 
-iam:
-  endpoint: "https://iam.myhuaweicloud.com"
-  domain_id: "{{env.HW_DOMAIN_ID}}"
+metadata:
+  <<: *base
+  environment: staging
 
 groups:
   - name: staging-admins
@@ -136,11 +153,8 @@ groups:
 security:
   mfa_enforced: true
   password_policy:
+    <<: *password_rules
     min_length: 10
-    require_uppercase: true
-    require_lowercase: true
-    require_numbers: true
-    require_special_chars: false
     expire_days: 180
   ak_sk_rotation_days: 180
 
@@ -165,9 +179,7 @@ secops:
     least_privilege: true
     credential_rotation_days: 180
   incident_response:
-    compromised_ak_sk: "disable_immediately"
-    unauthorized_access: "revoke_permissions"
-    brute_force: "lock_account"
+    <<: *incident_response
 
 aiops:
   anomaly_detection:
@@ -190,14 +202,26 @@ aiops:
 ```yaml
 # huaweicloud-iam-ops/config/development.yaml
 
-metadata:
-  environment: development
-  version: "1.0.0"
-  last_updated: "2026-05-20"
+_base: &base
+  metadata:
+    version: "1.0.0"
+    last_updated: "2026-05-20"
+  iam:
+    endpoint: "https://iam.myhuaweicloud.com"
+    domain_id: "{{env.HW_DOMAIN_ID}}"
+  incident_response: &incident_response
+    compromised_ak_sk: "disable_and_notify"
+    unauthorized_access: "notify_only"
+    brute_force: "notify_only"
+  password_rules: &password_rules
+    require_uppercase: false
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: false
 
-iam:
-  endpoint: "https://iam.myhuaweicloud.com"
-  domain_id: "{{env.HW_DOMAIN_ID}}"
+metadata:
+  <<: *base
+  environment: development
 
 groups:
   - name: dev-admins
@@ -210,11 +234,8 @@ groups:
 security:
   mfa_enforced: false
   password_policy:
+    <<: *password_rules
     min_length: 8
-    require_uppercase: false
-    require_lowercase: true
-    require_numbers: true
-    require_special_chars: false
     expire_days: 365
   ak_sk_rotation_days: 365
 
@@ -236,9 +257,7 @@ secops:
     least_privilege: false
     credential_rotation_days: 365
   incident_response:
-    compromised_ak_sk: "disable_and_notify"
-    unauthorized_access: "notify_only"
-    brute_force: "notify_only"
+    <<: *incident_response
 
 aiops:
   anomaly_detection:
@@ -254,21 +273,24 @@ aiops:
 ```yaml
 # huaweicloud-iam-ops/config/security-hardened.yaml
 
-metadata:
-  profile: security-hardened
-  version: "1.0.0"
-
-# Maximum security settings
-security:
-  mfa_enforced: true
-  password_policy:
-    min_length: 16
+_base: &base
+  password_rules: &password_rules
     require_uppercase: true
     require_lowercase: true
     require_numbers: true
     require_special_chars: true
-    expire_days: 60
     history_count: 12
+
+metadata:
+  profile: security-hardened
+  version: "1.0.0"
+
+security:
+  mfa_enforced: true
+  password_policy:
+    <<: *password_rules
+    min_length: 16
+    expire_days: 60
     lockout_threshold: 3
     lockout_duration_minutes: 30
   ak_sk_rotation_days: 60
@@ -278,7 +300,6 @@ security:
     - 10.0.0.0/8
     - 172.16.0.0/12
 
-# Strict policy rules
 policy_rules:
   no_wildcard_actions: true
   no_direct_user_assignments: true
@@ -289,7 +310,6 @@ policy_rules:
     - iam:users:delete
     - iam:policies:delete
 
-# Agency restrictions
 agency_rules:
   max_delegation_duration: "P365D"
   require_justification: true
@@ -303,28 +323,7 @@ agency_rules:
 ```yaml
 # huaweicloud-iam-ops/config/credential-rotation.yaml
 
-metadata:
-  profile: credential-rotation
-  version: "1.0.0"
-
-# Rotation schedules
-rotation:
-  ak_sk:
-    enabled: true
-    rotation_days: 90
-    grace_period_days: 7
-    auto_notify: true
-    notification_days_before: 14
-  password:
-    enabled: true
-    rotation_days: 90
-    enforce_on_login: true
-  mfa:
-    review_days: 365
-    re_register_on_compromise: true
-
-# Rotation workflow
-workflow:
+_base: &rotation_workflow
   steps:
     - name: create_new_credential
       action: create
@@ -341,6 +340,28 @@ workflow:
     - name: audit_rotation
       action: log
       cts_trace: true
+
+metadata:
+  profile: credential-rotation
+  version: "1.0.0"
+
+rotation:
+  ak_sk:
+    enabled: true
+    rotation_days: 90
+    grace_period_days: 7
+    auto_notify: true
+    notification_days_before: 14
+  password:
+    enabled: true
+    rotation_days: 90
+    enforce_on_login: true
+  mfa:
+    review_days: 365
+    re_register_on_compromise: true
+
+workflow:
+  <<: *rotation_workflow
 ```
 
 ---

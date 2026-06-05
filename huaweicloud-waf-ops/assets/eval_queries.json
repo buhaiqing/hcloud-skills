@@ -1,0 +1,82 @@
+[
+  {
+    "query": "创建一个 WAF 防护策略,名称 prod-policy",
+    "should_activate": true,
+    "reason": "WAF policy creation"
+  },
+  {
+    "query": "把域名 www.example.com 接入 WAF",
+    "should_activate": true,
+    "reason": "WAF domain onboarding (destructive - DNS change implications)"
+  },
+  {
+    "query": "查看最近 24 小时的 WAF 攻击事件",
+    "should_activate": true,
+    "reason": "WAF attack event query"
+  },
+  {
+    "query": "配置 CC 攻击防护规则,阈值 200 QPS",
+    "should_activate": true,
+    "reason": "WAF CC attack protection rule"
+  },
+  {
+    "query": "上传一个新的 SSL 证书到 WAF",
+    "should_activate": true,
+    "reason": "WAF certificate upload"
+  },
+  {
+    "query": "封禁来自 XX 国家的 IP 访问",
+    "should_activate": true,
+    "reason": "WAF geo-blocking rule"
+  },
+  {
+    "query": "把生产策略的 SQL 注入规则从观察模式改成拦截",
+    "should_activate": true,
+    "reason": "WAF rule action change (destructive - false positives possible)"
+  },
+  {
+    "query": "删除这条 WAF 防护策略 (手工确认)",
+    "should_activate": true,
+    "reason": "WAF policy deletion (GCL-required, requires explicit confirmation)"
+  },
+  {
+    "query": "WAF 误拦截了正常请求,添加白名单",
+    "should_activate": true,
+    "reason": "WAF whitelist / false-positive handling"
+  },
+  {
+    "query": "配置反爬虫规则,封禁高频访问",
+    "should_activate": true,
+    "reason": "WAF anti-crawler rule"
+  },
+  {
+    "query": "网站首页打开 5xx 错误,排查后端 ECS",
+    "should_activate": false,
+    "reason": "ECS diagnosis - delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "HSS 检测到挖矿木马",
+    "should_activate": false,
+    "reason": "HSS intrusion - delegate to huaweicloud-hss-ops"
+  },
+  {
+    "query": "ELB 监听器配置 HTTPS",
+    "should_activate": false,
+    "reason": "ELB - delegate to huaweicloud-elb-ops"
+  },
+  {
+    "query": "DDoS 高防 IP 配置",
+    "should_activate": false,
+    "reason": "Anti-DDoS - outside WAF scope"
+  },
+  {
+    "query": "查看本月的 WAF 流量账单",
+    "should_activate": false,
+    "reason": "Billing - delegate to huaweicloud-billing-ops"
+  },
+  {
+    "query": "今天天气如何",
+    "should_activate": false,
+    "reason": "Out of scope"
+  }
+]

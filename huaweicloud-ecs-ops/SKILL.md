@@ -70,7 +70,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 - [Security Assessment](references/well-architected-assessment.md#21)
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3)
 - [SecOps Security Operations](references/well-architected-assessment.md#4)
-- [AIOps Integration](references/aiops-best-practices.md)
+- [AIOps Integration](references/advanced/aiops-best-practices.md)
 
 ## Five Core Standards (Quality Gates)
 
@@ -593,7 +593,7 @@ write (see `prompt-templates.md` §4). The path `./audit-results/` MUST be in `.
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S10 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator prompt skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Reference Directory
 
@@ -616,7 +616,7 @@ This skill's operations are evaluated against:
 - **Well-Architected five pillars**: [Security](references/well-architected-assessment.md#21), [Stability](references/well-architected-assessment.md#22), [Cost](references/well-architected-assessment.md#23), [Efficiency](references/well-architected-assessment.md#24), [Performance](references/well-architected-assessment.md#25)
 - **FinOps**: [Cost Optimization](references/well-architected-assessment.md#3) — billing models, right-sizing, idle detection
 - **SecOps**: [Security Operations](references/well-architected-assessment.md#4) — IAM, network, encryption, HSS
-- **AIOps**: [Intelligent Operations](references/aiops-best-practices.md) multi-metric correlation, cross-skill diagnosis
+- **AIOps**: [Intelligent Operations](references/advanced/aiops-best-practices.md) multi-metric correlation, cross-skill diagnosis
 
 ## FinOps — ECS Cost Optimization
 

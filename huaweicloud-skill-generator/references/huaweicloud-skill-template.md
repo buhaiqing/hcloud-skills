@@ -32,6 +32,11 @@ metadata:
     - HW_PROJECT_ID
 ---
 
+<!-- template: target-skill-layout. Links of the form `references/X.md` below are
+     written for the TARGET skill (SKILL.md and references/ as siblings). When
+     this template is viewed in-place under huaweicloud-skill-generator/references/
+     those links resolve one level too deep; audits must skip this file. -->
+
 > This template follows the [Agent Skill Open Specification](https://agentskills.io/specification).
 
 # Huawei Cloud [Product Name] Operations Skill

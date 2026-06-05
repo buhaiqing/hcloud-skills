@@ -370,20 +370,20 @@ hcloud CES ShowMetricData \
 
 ### Error Code Taxonomy
 
-| Code | Error | Category | Retry | Action |
-|------|-------|----------|-------|--------|
-| `CBR.0001` | Vault quota exceeded | Quota | No | Request quota increase or delete unused vaults |
-| `CBR.0002` | Invalid vault type | Config | No | Verify vault type matches resource type |
-| `CBR.0003` | Billing account error | Config | No | Check account balance and billing status |
-| `CBR.0004` | Vault not found | NotFound | No | Verify vault ID is correct |
-| `CBR.0005` | Resource not found | NotFound | No | Verify resource ID exists and is active |
-| `CBR.0006` | Backup not found | NotFound | No | Verify backup ID is correct |
-| `CBR.0007` | Insufficient vault capacity | Resource | No | Resize vault or delete old backups |
-| `CBR.0008` | Backup in progress | State | Yes (3x, 60s backoff) | Wait for current backup to complete |
-| `CBR.0009` | Policy schedule conflict | Config | No | Modify policy schedule to avoid overlap |
-| `CBR.0010` | Resource already associated with vault | Conflict | No | Disassociate first or use different vault |
-| `CBR.0011` | Destination region unavailable | Config | No | Verify CBR is available in target region |
-| `CBR.0012` | Replication bandwidth exceeded | Resource | Yes (3x, 120s backoff) | Reduce replication concurrency |
+| Code | Category | Action |
+|------|----------|--------|
+| `CBR.0001` | Quota | HALT — Request quota increase or delete unused vaults |
+| `CBR.0002` | Config | Verify vault type matches resource type |
+| `CBR.0003` | Config | Check account balance and billing status |
+| `CBR.0004` | NotFound | Verify vault ID is correct |
+| `CBR.0005` | NotFound | Verify resource ID exists and is active |
+| `CBR.0006` | NotFound | Verify backup ID is correct |
+| `CBR.0007` | Resource | Resize vault or delete old backups |
+| `CBR.0008` | State | Wait for current backup to complete (retry 3×, 60s backoff) |
+| `CBR.0009` | Config | Modify policy schedule to avoid overlap |
+| `CBR.0010` | Conflict | Disassociate first or use different vault |
+| `CBR.0011` | Config | Verify CBR is available in target region |
+| `CBR.0012` | Resource | Reduce replication concurrency (retry 3×, 120s backoff) |
 
 ### Diagnostic Flow (Backup Failure)
 
@@ -481,7 +481,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S15 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## Appendices
 

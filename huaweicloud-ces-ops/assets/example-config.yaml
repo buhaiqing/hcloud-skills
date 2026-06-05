@@ -1,75 +1,70 @@
 # CES Example Configuration — Huawei Cloud Cloud Eye Service
 
+> **YAML anchors**: `_base_alarm: &base_alarm` captures the standard
+> `period` / `evaluation_periods` / `comparison_operator` for ECS / RDS
+> alarms. Templates override only `metric_name`, `threshold`, and `name`.
+
+```yaml
+_base_alarm: &base_alarm
+  period: 300
+  comparison_operator: "GE"
+  evaluation_periods: 3
+_smn_critical: &smn_critical
+  - "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ces-critical-alerts"
+_smn_warning: &smn_warning
+  - "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ces-warning-alerts"
+
 ces:
   region: cn-north-4
   project_id: "{{env.HW_PROJECT_ID}}"
 
-  # Alarm smart defaults
   alarm_defaults:
     evaluation_periods: 3
     period: 300
     alarm_level: 2
     comparison_operator: "GE"
 
-  # Example alarm rules for ECS
   ecs_alarm_templates:
-    - name: "ecs-cpu-critical"
+    - <<: *base_alarm
+      name: "ecs-cpu-critical"
       namespace: "SYS.ECS"
       metric_name: "cpu_util"
-      comparison_operator: "GE"
       threshold: 95
       alarm_level: 1
-      period: 300
       evaluation_periods: 2
-      alarm_actions:
-        - "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ces-critical-alerts"
-
-    - name: "ecs-cpu-warning"
+      alarm_actions: *smn_critical
+    - <<: *base_alarm
+      name: "ecs-cpu-warning"
       namespace: "SYS.ECS"
       metric_name: "cpu_util"
-      comparison_operator: "GE"
       threshold: 80
       alarm_level: 2
-      period: 300
-      evaluation_periods: 3
-      alarm_actions:
-        - "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ces-warning-alerts"
-
-    - name: "ecs-memory-warning"
+      alarm_actions: *smn_warning
+    - <<: *base_alarm
+      name: "ecs-memory-warning"
       namespace: "AGT.ECS"
       metric_name: "memory_util"
-      comparison_operator: "GE"
       threshold: 85
-      alarm_level: 2
-      period: 300
-      evaluation_periods: 3
-
-    - name: "ecs-disk-warning"
+    - <<: *base_alarm
+      name: "ecs-disk-warning"
       namespace: "AGT.ECS"
       metric_name: "disk_util"
-      comparison_operator: "GE"
       threshold: 85
-      alarm_level: 2
-      period: 300
-      evaluation_periods: 3
 
-  # Example alarm rules for RDS
   rds_alarm_templates:
-    - name: "rds-cpu-warning"
+    - <<: *base_alarm
+      name: "rds-cpu-warning"
       namespace: "SYS.RDS"
       metric_name: "rds001_cpu_util"
-      comparison_operator: "GE"
       threshold: 80
-      alarm_level: 2
-
-    - name: "rds-connection-warning"
+    - <<: *base_alarm
+      name: "rds-connection-warning"
       namespace: "SYS.RDS"
       metric_name: "rds003_conn_usage"
-      comparison_operator: "GE"
       threshold: 90
       alarm_level: 1
+      evaluation_periods: 2
 
-  # Dashboard configuration
   dashboard_templates:
     - name: "infrastructure-overview"
       description: "CPU, Memory, Disk utilization across all ECS instances"
@@ -90,18 +85,16 @@ ces:
           period: "60"
           aggregation: "avg"
 
-# FinOps optimization settings
 finops:
-  budget_alert_thresholds:
+  budget_alert_thresholds: &budget_thresholds
     - 80
     - 90
     - 100
   idle_alarm_threshold_days: 90
   max_monitoring_granularity_seconds: 300
 
-# AIOps settings
 aiops:
-  storm_detection:
+  storm_detection: &storm_detection
     max_alarms_per_window: 10
     window_minutes: 5
     same_resource_max: 3
@@ -118,3 +111,4 @@ aiops:
     - name: "sudden_cpu_spike"
       description: "CPU delta > 50% within 5 minutes"
       severity: "Warning"
+```

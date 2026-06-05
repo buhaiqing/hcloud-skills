@@ -78,9 +78,9 @@ GaussDB (for openGauss) is Huawei Cloud's enterprise-grade distributed relationa
 
 | Pillar | Skill Integration | Reference |
 |--------|-------------------|-----------|
-| **FinOps** | Right-sizing flavors, backup retention optimization, idle instance detection | `references/cost-optimization.md` |
-| **SecOps** | IAM policies, KMS encryption, network isolation, password rotation, SSL | `references/security-best-practices.md` |
-| **AIOps** | 4 anomaly patterns (storage, backup, connections, long-running tasks) | `references/aiops-patterns.md` |
+| **FinOps** | Right-sizing flavors, backup retention optimization, idle instance detection | `references/advanced/cost-optimization.md` |
+| **SecOps** | IAM policies, KMS encryption, network isolation, password rotation, SSL | `references/advanced/security-best-practices.md` |
+| **AIOps** | 4 anomaly patterns (storage, backup, connections, long-running tasks) | `references/advanced/aiops-patterns.md` |
 
 ### Well-Architected Framework Integration (卓越架构)
 
@@ -275,15 +275,15 @@ echo "CONFIRM: Type 'yes' to proceed"; read -r ans; [ "$ans" = "yes" ] || exit 1
 
 ## Error Troubleshooting
 
-| HTTP Code | Error Code | Meaning | Fix |
-|-----------|-----------|---------|-----|
-| 400 | DBS.200001 | Parameter validation failed | Check request parameters against API docs |
-| 400 | DBS.200010 | Invalid instance status | Ensure instance is ACTIVE |
-| 400 | DBS.200012 | Operation not allowed on replica | Perform operation on primary instance |
-| 403 | DBS.200301 | Insufficient quota | Apply for higher instance/storage quota |
-| 404 | DBS.200404 | Instance not found | Verify instance_id exists and region |
-| 409 | DBS.200409 | Instance is being operated | Wait for current task to complete |
-| 500 | DBS.200500 | Internal server error | Retry with exponential backoff |
+| Code | HTTP | Fix |
+|------|------|-----|
+| `DBS.200001` | 400 | Check request parameters against API docs |
+| `DBS.200010` | 400 | Ensure instance is ACTIVE |
+| `DBS.200012` | 400 | Perform operation on primary instance |
+| `DBS.200301` | 403 | Apply for higher instance/storage quota |
+| `DBS.200404` | 404 | Verify instance_id exists and region |
+| `DBS.200409` | 409 | Wait for current task to complete |
+| `DBS.200500` | 500 | Retry with exponential backoff |
 
 ---
 
@@ -350,7 +350,7 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S17 rules, per-op thresholds
 - [`references/prompt-templates.md`](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
-- Repository root [`AGENTS.md`](../../AGENTS.md) §3, §5, §7, §8 — GCL specification
+- Repository root [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8 — GCL specification
 
 ## References
 
@@ -358,10 +358,10 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 - [CLI Syntax Reference](references/cli-syntax-reference.md) — KooCLI detailed usage
 - [Common Faults](references/common-faults.md) — Troubleshooting guide
 - [Error Handling](references/error-handling.md) — Error code matrix
-- [Cost Optimization](references/cost-optimization.md) — FinOps deep dive
-- [Security Best Practices](references/security-best-practices.md) — SecOps hardening
-- [AIOps Patterns](references/aiops-patterns.md) — Anomaly detection + remediation
-- [Safety Gates](references/safety-gates.md) — High-risk operation controls
+- [Cost Optimization](references/advanced/cost-optimization.md) — FinOps deep dive
+- [Security Best Practices](references/advanced/security-best-practices.md) — SecOps hardening
+- [AIOps Patterns](references/advanced/aiops-patterns.md) — Anomaly detection + remediation
+- [Safety Gates](references/advanced/safety-gates.md) — High-risk operation controls
 - [Example Config](assets/example-config.yaml) — Reference configuration
 - [Example Output](assets/example-output.json) — Sample API responses
 - [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 GaussDB-specific Safety rules; S12/S13 DWS-gated)

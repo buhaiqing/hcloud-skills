@@ -298,5 +298,5 @@ Before writing `gcl-trace-*.json` to `audit-results/`:
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S16 rules
 - `references/core-concepts.md` — ES version / node flavor / index name anchors
-- `references/safety-gates.md` — pre-existing high-risk operation controls
+- `references/rubric.md` S1–S16 — CSS-specific safety rules (CSS does not ship a separate `safety-gates.md`; safety gates are embedded in the rubric)
 - `references/troubleshooting.md` — CSS error code mapping

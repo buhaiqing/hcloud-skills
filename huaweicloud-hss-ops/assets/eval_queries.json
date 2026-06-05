@@ -1,0 +1,82 @@
+[
+  {
+    "query": "查看所有受 HSS 保护的主机",
+    "should_activate": true,
+    "reason": "HSS host list / inventory"
+  },
+  {
+    "query": "服务器被入侵了,看看最近的告警事件",
+    "should_activate": true,
+    "reason": "HSS intrusion detection alarm list"
+  },
+  {
+    "query": "扫描所有主机的 Linux 漏洞",
+    "should_activate": true,
+    "reason": "HSS vulnerability scan"
+  },
+  {
+    "query": "给主机做基线检查,看是否符合等保要求",
+    "should_activate": true,
+    "reason": "HSS baseline check"
+  },
+  {
+    "query": "把 /var/www/html 目录加入防篡改保护",
+    "should_activate": true,
+    "reason": "HSS Web Tamper Protection (WTP) config"
+  },
+  {
+    "query": "隔离这台被勒索病毒感染的主机",
+    "should_activate": true,
+    "reason": "HSS host isolation (destructive, GCL-required, requires explicit confirmation)"
+  },
+  {
+    "query": "处理这条高危漏洞告警,标记为已修复",
+    "should_activate": true,
+    "reason": "Vulnerability handling workflow"
+  },
+  {
+    "query": "列出所有异常登录的账号",
+    "should_activate": true,
+    "reason": "HSS asset - account anomaly"
+  },
+  {
+    "query": "给我的 Kubernetes 集群开启容器安全防护",
+    "should_activate": true,
+    "reason": "HSS container security enablement"
+  },
+  {
+    "query": "卸载主机上的 HSS Agent",
+    "should_activate": true,
+    "reason": "HSS agent uninstall (destructive - reduces host protection)"
+  },
+  {
+    "query": "把 ECS 实例的磁盘扩容",
+    "should_activate": false,
+    "reason": "ECS - delegate to huaweicloud-ecs-ops"
+  },
+  {
+    "query": "查 RDS 数据库慢查询",
+    "should_activate": false,
+    "reason": "RDS - delegate to huaweicloud-rds-ops"
+  },
+  {
+    "query": "WAF 域名接入配置",
+    "should_activate": false,
+    "reason": "WAF - delegate to huaweicloud-waf-ops"
+  },
+  {
+    "query": "查看近 7 天的应用日志",
+    "should_activate": false,
+    "reason": "LTS - delegate to huaweicloud-lts-ops"
+  },
+  {
+    "query": "DDoS 攻击告警怎么处理",
+    "should_activate": false,
+    "reason": "Anti-DDoS - outside HSS scope; HSS may supplement"
+  },
+  {
+    "query": "你好",
+    "should_activate": false,
+    "reason": "Out of scope"
+  }
+]

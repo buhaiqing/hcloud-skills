@@ -126,5 +126,5 @@ The Critic scores Traceability = 1 only if **all** are present:
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/prompt-templates.md` — Generator + Critic + Orchestrator skeletons
 - `references/api-navigation.md` — HSS version / event severity / handle type anchors
-- `references/safety-gates.md` — pre-existing high-risk operation controls
-- `references/security-best-practices.md` — HSS-specific hardening
+- `references/advanced/safety-gates.md` — pre-existing high-risk operation controls
+- `references/advanced/security-best-practices.md` — HSS-specific hardening

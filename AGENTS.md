@@ -68,6 +68,22 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - Adversarial scenarios considered
 - Self-reflection completed
 
+## Token Efficiency Requirements (P0 — 强制)
+
+> 在保持 Agent 可执行性的前提下，最小化每个 Skill 的 Token 消耗。
+
+| 规则 | 要点 | 节省 |
+|------|------|------|
+| **TE-1** API 查询 > 静态表格 | 用 `hcloud` 命令获取版本/配额，不硬编码 | ~200-500/文件 |
+| **TE-2** 省略不必要的 docstring | Go SDK 用 `#` 注释代替函数级 docstring | ~100-200/函数 |
+| **TE-3** 紧凑错误表 | 每行 1 个错误码，≤3 列 | ~300-500/文件 |
+| **TE-4** JSON paths 集中声明 | 文件顶部统一声明，不重复 | ~50-100/文件 |
+| **TE-5** YAML anchors | `example-config.yaml` 用 `&anchor` 消除重复 | ~200-400/文件 |
+| **TE-6** 消除跨文件重复 | SKILL.md 已有完整流程，references 不重复 | 因 Skill 而异 |
+| **TE-7** 专业内容分层 | AIOps/FinOps 等深度分析放 `references/advanced/`；安全敏感操作单独标注并要求显式确认 | ~3,000-8,000/文件 |
+
+**不可压缩的内容**：Agent 可执行命令本身（参数、JSON paths）、错误恢复逻辑、安全门、Credential 规则、跨技能编排链。
+
 ## Skill Update Rule: 2-Round Self-Reflection
 
 **After every skill update or creation, execute 2 mandatory self-reflection rounds and auto-fix all discovered issues before finishing.**
@@ -76,6 +92,22 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 1. **FinOps**: Are cost patterns actionable? Billing model comparison present? Idle detection documented?
 2. **SecOps**: IAM permissions minimum documented? Credential masking enforced? Network isolation?
 3. **AIOps**: Multi-metric correlation defined? Delegation matrix present? Knowledge base populated?
+
+#### Round 1, Item 4 — Token Efficiency (C6 — MUST PASS)
+
+**必检项**：TE-1~TE-7 是否全部满足（见上一节 Token Efficiency Requirements）？未满足则 **BLOCK**。
+
+| TE 规则 | 检查方法 | 不通过则 |
+|---------|---------|---------|
+| TE-1 | 检查 references/ 中是否有硬编码的版本号/配额数字 | 替换为 `hcloud` 查询命令 |
+| TE-2 | 检查 Go SDK 代码块是否有函数级 docstring | 删除 docstring，改用 `#` 行注释 |
+| TE-3 | 检查错误表是否超过 3 列 | 合并列，每行 1 个错误码 |
+| TE-4 | 检查 JSON path 是否在文件顶部集中声明 | 移至文件顶部统一声明 |
+| TE-5 | 检查 example-config.yaml 是否有重复字段 | 用 YAML anchors 消除 |
+| TE-6 | 检查 SKILL.md 与 references/ 是否有内容重复 | 删除 references 中的重复 |
+| TE-7 | 检查 AIOps/FinOps 是否在 `references/advanced/`；安全敏感操作是否标注 Security-Sensitive | 移至 `advanced/` + 添加 Security-Sensitive 标注 |
+
+**发现任一违规 → 立即修复 → 重新检查直到全部通过。**
 
 ### Round 2 — Critical Analysis
 4. **Gap Analysis**: What would break in production if a user follows this skill?

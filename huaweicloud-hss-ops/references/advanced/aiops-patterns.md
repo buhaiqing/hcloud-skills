@@ -1,5 +1,16 @@
 # 智能运维（AIOps）
 
+> **JSON paths**: Centralized below — inline `jq` calls in scripts use these.
+> `.total` — total event count (ListEvents / ListVulnerabilities top-level)
+> `.data_list[]` — HSS list API result array (host / event / vuln)
+> `.data_list[].host_id` / `.data_list[].host_name` — host identifiers
+> `.data_list[].severity` — severity per item
+> `.data_list[].vul_id` / `.data_list[].vul_name` — vulnerability ID / name
+> `.data_list[].alarm_id` — alarm identifier
+> `.data_list | length` — array size
+> `.host_num` — host count from summary APIs
+> `.risk_host_num` — at-risk host count
+
 ## 异常检测模式
 
 ### 模式 1：安全告警风暴检测

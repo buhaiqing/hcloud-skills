@@ -124,4 +124,4 @@ The Critic scores Traceability = 1 only if **all** are present:
 - `references/prompt-templates.md` — Generator + Critic + Orchestrator skeletons
 - `references/core-concepts.md` — ES version / node flavor / index name anchors
 - `references/troubleshooting.md` — CSS error code mapping
-- `references/safety-gates.md` — pre-existing high-risk operation controls
+- `references/rubric.md` S1–S16 — CSS-specific safety rules (CSS does not ship a separate `safety-gates.md`; safety gates are embedded in the rubric)
