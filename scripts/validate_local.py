@@ -24,6 +24,8 @@ def build_steps(python: str = sys.executable) -> list[Step]:
         Step("Validate Markdown local links", (python, "scripts/check_markdown_links.py")),
         Step("references/ deep link health", (python, "scripts/check_references_link_health.py")),
         Step("eval_queries.json schema", (python, "scripts/validate_eval_queries_schema.py")),
+        Step("SKILL.md frontmatter", (python, "scripts/validate_skills_frontmatter.py")),
+        Step("Well-Architected worker JSON", (python, "scripts/validate_product_assessment.py")),
         Step("Generator GCL contract", (python, "scripts/check_generator_contract.py")),
         Step(
             "GCL runner smoke test",

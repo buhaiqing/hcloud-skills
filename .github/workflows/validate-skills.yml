@@ -52,6 +52,12 @@ jobs:
       - name: eval_queries.json schema
         run: python3 scripts/validate_eval_queries_schema.py
 
+      - name: SKILL.md frontmatter
+        run: python3 scripts/validate_skills_frontmatter.py
+
+      - name: Well-Architected worker JSON
+        run: python3 scripts/validate_product_assessment.py
+
       - name: GCL Tier-A conformance
         run: python3 scripts/check_gcl_conformance.py
 

@@ -345,3 +345,73 @@ fi
 - **Auto Re-enable**: Full CLI + SDK execution flow in SKILL.md (lines 460-560)
 - **Auto-adjust Thresholds**: Historical baseline analysis + threshold calculation flow in SKILL.md (lines 560-620)
 - **Auto-create Alarms**: CI/CD integration via alarm templates; delegate to respective product skill for resource creation
+---
+
+## Worker Output Contract (Read-Only Assessment Mode)
+
+> Invoked when Well-Architected review sets `{{user.mode}}=well-architected-readonly`.
+> Return **`{{output.product_assessment}}`** — field names MUST match the canonical schema.
+
+**Canonical schema:** [worker-output-schema.md](../../huaweicloud-skill-generator/references/worker-output-schema.md)
+
+| Constant | Value |
+|----------|-------|
+| `skill_id` | `huaweicloud-ces-ops` |
+| `product` | `ces` |
+| Finding `id` pattern | `ces-{rel|sec|cost|eff}-NNN` |
+
+### Pillar → checklist map
+
+| `pillars` key | Checklist source in this document |
+|---------------|-------------------------------------|
+| `reliability` | Stability / DR / backup sections |
+| `security` | IAM / network / encryption sections |
+| `cost` | FinOps / billing / idle detection sections |
+| `efficiency` | Automation / batch / CI/CD sections |
+
+### Example `{{output.product_assessment}}`
+
+```json
+{
+  "skill_id": "huaweicloud-ces-ops",
+  "product": "ces",
+  "region": "cn-north-4",
+  "scope": "account-wide",
+  "assessment_date": "2026-06-19T10:00:00+08:00",
+  "status": "OK",
+  "partial": false,
+  "resource_count": 1,
+  "pillars": {
+    "cost": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "efficiency": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "reliability": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "security": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    }
+  },
+  "recommendations": [],
+  "trace": {
+    "commands": [
+      "hcloud ces read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)"
+    ],
+    "request_ids": [
+      "0123456789abcdef0123456789abcdef"
+    ]
+  },
+  "errors": []
+}
+```
