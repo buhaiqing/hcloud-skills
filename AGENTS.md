@@ -121,6 +121,8 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 - Repository linter is **ruff** (`ruff check .`, pinned to `0.11.8` in CI). Config lives in `ruff.toml`.
 - **After every Python script change, run `bash scripts/run_ruff.sh .` locally before declaring the task complete.** Do not batch — fix lint findings introduced by the change immediately. Apply `ruff format .` for any formatting drift introduced by the change.
+- A single shot gun covers everything: `bash scripts/pre_commit_check.sh`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
+- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_git_hook.py`. It auto-runs only when a `scripts/*.py` file is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.

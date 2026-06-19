@@ -32,6 +32,9 @@ jobs:
       - name: Run Python 3.10 syntax check
         run: python3 scripts/check_py310_compat.py
 
+      - name: Pre-commit Python gate (mirror local hook)
+        run: bash scripts/pre_commit_check.sh --skip-tests
+
       - name: Python unit tests
         run: |
           cd scripts
