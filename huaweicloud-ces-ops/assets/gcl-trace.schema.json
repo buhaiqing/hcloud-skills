@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hcloud-skills.local/huaweicloud-ces-ops/assets/gcl-trace.schema.json",
+  "title": "Huawei Cloud GCL Trace",
+  "type": "object",
+  "required": ["trace_schema_version", "skill", "request", "rubric_version", "masked_fields", "iterations", "final"],
+  "properties": {
+    "trace_schema_version": { "const": "v1" },
+    "skill": { "type": "string" },
+    "request": { "type": "string" },
+    "operation_intent": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "rubric_version": { "type": "string" },
+    "masked_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "iterations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iter", "generator", "critic", "decision"],
+        "properties": {
+          "iter": { "type": "integer", "minimum": 1 },
+          "generator": {
+            "type": "object",
+            "required": ["command", "exit_code", "result_excerpt", "stdout_len", "stderr_len", "args"],
+            "properties": {
+              "command": { "type": "string" },
+              "exit_code": { "type": "integer" },
+              "result_excerpt": { "type": "string" },
+              "stdout_len": { "type": "integer", "minimum": 0 },
+              "stderr_len": { "type": "integer", "minimum": 0 },
+              "args": {
+                "type": "object",
+                "required": ["iter", "critic_feedback"],
+                "properties": {
+                  "iter": { "type": "integer", "minimum": 1 },
+                  "critic_feedback": { "type": ["string", "null"] }
+                },
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          },
+          "critic": {
+            "type": "object",
+            "required": ["scores", "suggestions", "blocking"],
+            "properties": {
+              "scores": {
+                "type": "object",
+                "required": ["correctness", "safety", "idempotency", "traceability", "spec_compliance"],
+                "properties": {
+                  "correctness": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "safety": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "idempotency": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "traceability": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "spec_compliance": { "type": "number", "minimum": 0, "maximum": 1 }
+                },
+                "additionalProperties": true
+              },
+              "suggestions": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "blocking": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          },
+          "decision": { "type": "string", "enum": ["PASS", "RETRY", "SAFETY_FAIL"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "final": {
+      "type": "object",
+      "required": ["status", "iter", "output", "failure_pattern"],
+      "properties": {
+        "status": { "type": "string", "enum": ["PASS", "MAX_ITER", "SAFETY_FAIL"] },
+        "iter": { "type": "integer", "minimum": 1 },
+        "output": { "type": ["string", "null"] },
+        "unresolved": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "failure_pattern": {
+          "type": ["object", "null"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
