@@ -1,0 +1,65 @@
+# ECS Example Configuration — Huawei Cloud Elastic Cloud Server
+
+```yaml
+# ECS common alarm thresholds
+alarm_thresholds: &alarm_thresholds
+  cpu_util_critical: 95
+  cpu_util_warning: 80
+  memory_util_warning: 85
+  disk_util_warning: 85
+
+# Notification channels (anchored individually for template reuse)
+notification:
+  critical_topic: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ecs-critical-alerts"
+  warning_topic: &notification_warning "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:ecs-warning-alerts"
+
+# ECS alarm templates reuse the shared alarm_thresholds + notification anchors
+alarm_templates:
+  - <<: *alarm_thresholds
+    name: "ecs-cpu-critical"
+    namespace: "SYS.ECS"
+    metric_name: "cpu_util"
+    threshold: 95
+    alarm_level: 1
+    evaluation_periods: 2
+    alarm_actions: *notification_critical
+  - <<: *alarm_thresholds
+    name: "ecs-cpu-warning"
+    namespace: "SYS.ECS"
+    metric_name: "cpu_util"
+    threshold: 80
+    alarm_level: 2
+    alarm_actions: *notification_warning
+
+# FinOps idle instance detection
+finops:
+  idle_cpu_threshold_percent: 10
+  idle_window_days: 7
+  unattached_disk_age_days: 30
+  zombie_eip_age_days: 7
+
+# Backup defaults
+backup_defaults: &backup_defaults
+  period: "DAILY"
+  retention_days: 7
+
+backup_policies:
+  - <<: *backup_defaults
+    name: "ecs-daily-snapshot"
+    retention_days: 30
+  - <<: *backup_defaults
+    name: "ecs-weekly-snapshot"
+    period: "WEEKLY"
+    retention_days: 90
+```
+
+# Worker Output Contract (ECS Read-Only Assessment)
+
+```yaml
+worker:
+  skill_id: huaweicloud-ecs-ops
+  product: ecs
+  region: cn-north-4
+  output_contract: "{{output.product_assessment}}"
+  anchor: "&huaweicloud-skill-generator/references/worker-output-schema.md"
+```

@@ -10,6 +10,26 @@
     "request": { "type": "string" },
     "operation_intent": {
       "type": ["object", "null"],
+      "required": ["operation", "resource_scope", "expected_state", "safety_class"],
+      "properties": {
+        "operation": { "type": "string", "minLength": 1 },
+        "resource_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "anyOf": [
+              { "pattern": "^\\*+$" },
+              { "pattern": "^<masked>$" },
+              { "pattern": "^[A-Za-z][A-Za-z0-9-]*-\\*+$" }
+            ]
+          }
+        },
+        "expected_state": { "type": "string", "minLength": 1 },
+        "safety_class": {
+          "type": "string",
+          "enum": ["read-only", "mutating", "destructive"]
+        }
+      },
       "additionalProperties": true
     },
     "rubric_version": { "type": "string" },

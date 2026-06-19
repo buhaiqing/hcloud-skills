@@ -25,11 +25,21 @@ Template: `huaweicloud-skill-generator/references/huaweicloud-skill-template.md`
 
 ## ⚠️ Dual-Copy Trap
 
-The generator exists in **two places** with diverging content:
-- `huaweicloud-skill-generator/` (root — canonical, tracked by git)
-- `.agents/skills/huaweicloud-skill-generator/` (loaded by agent runtime — may be stale)
+The generator exists in **two places**:
 
-When editing the generator, update the **root copy**. The `.agents/skills/` copy is NOT in git and may drift.
+- `huaweicloud-skill-generator/` (root — canonical, tracked by git)
+- `.agents/skills/huaweicloud-skill-generator/` (loaded by agent runtime — gitignored)
+
+When editing the generator, update the **root copy** only. The runtime copy
+MUST be brought back in sync via:
+
+```bash
+python3 scripts/check_skill_generator_drift.py sync --apply
+```
+
+The drift guard (`scripts/check_skill_generator_drift.py check`) is wired into
+`scripts/validate_local.py` and the CI workflow, so a drifted runtime copy is
+a release-blocker. See also `docs/gcl-spec.md` §Dual-Copy Drift.
 
 ## Placeholder Conventions
 

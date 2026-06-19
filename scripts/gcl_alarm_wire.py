@@ -51,8 +51,20 @@ def load_thresholds_from_config(config_path: Path) -> dict[str, Any]:
     thresholds: dict[str, Any] = dict(DEFAULT_THRESHOLDS)
     if not config_path.exists():
         return thresholds
+    return load_thresholds_from_config_for_check(config_path.read_text(encoding="utf-8"))
+
+
+def load_thresholds_from_config_for_check(text: str) -> dict[str, Any]:
+    """Parse the `gcl_quality:` block from arbitrary YAML text.
+
+    Always returns a dict containing every key in ``DEFAULT_THRESHOLDS``; values
+    that aren't found in the text fall back to the defaults. Public helper used
+    by both ``gcl_alarm_wire`` and the cross-tool contract check.
+    """
+
+    thresholds: dict[str, Any] = dict(DEFAULT_THRESHOLDS)
     in_block = False
-    for line in config_path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue

@@ -229,6 +229,10 @@ audit-results/
 **/audit-results/
 gcl-trace-*.json
 **/gcl-trace-*.json
+gcl-quality-summary-*.json
+**/gcl-quality-summary-*.json
+gcl-alarm-plan-*.json
+**/gcl-alarm-plan-*.json
 
 # macOS
 .DS_Store

@@ -58,6 +58,30 @@ jobs:
       - name: Well-Architected worker JSON
         run: python3 scripts/validate_product_assessment.py
 
+      - name: example-config.yaml anchors
+        run: python3 scripts/check_example_config.py --warn-only
+
+      - name: references/advanced coverage (TE-7)
+        run: python3 scripts/check_advanced_coverage.py
+
+      - name: audit-results gitignore guard
+        run: python3 scripts/check_audit_results_guard.py
+
+      - name: gcl_quality wiring contract
+        run: python3 scripts/check_gcl_alarm_wire_contract.py
+
+      - name: GCL structural-critic CI smoke
+        run: cd scripts && python3 -m unittest gcl_structural_critic_test -v
+
+      - name: safety_class enum contract
+        run: python3 scripts/check_safety_class_enum.py
+
+      - name: skill_generator drift guard
+        run: python3 scripts/check_skill_generator_drift.py check
+
+      - name: resource_scope PII contract
+        run: python3 scripts/check_resource_scope_pii.py
+
       - name: GCL Tier-A conformance
         run: python3 scripts/check_gcl_conformance.py
 

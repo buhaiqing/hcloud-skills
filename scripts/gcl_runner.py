@@ -96,7 +96,81 @@ def sanitize_operation_intent(raw: str | None) -> dict[str, Any] | None:
         intent = json.loads(raw)
     except json.JSONDecodeError:
         return {"summary": mask_secrets(raw)[:500]}
-    return _mask_json(intent)
+    sanitized = _mask_json(intent)
+    if isinstance(sanitized, dict) and "resource_scope" in sanitized:
+        sanitized["resource_scope"] = _mask_resource_scope(sanitized["resource_scope"])
+    _enforce_safety_class_enum(sanitized)
+    return sanitized
+
+
+SAFETY_CLASS_VALUES: tuple[str, ...] = ("read-only", "mutating", "destructive")
+
+
+# Resource identifier patterns that MUST be masked before they land in a trace.
+# Each pattern preserves the type prefix (the segment before the first ``-``)
+# and replaces everything that follows with ``***``. The Critic can still see
+# the *kind* of resource without seeing the live identifier.
+_RESOURCE_ID_PREFIX = re.compile(r"^(?P<type>[A-Za-z][A-Za-z0-9]*?)(?P<rest>-.*)?$")
+_UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_ARN_PATTERN = re.compile(r"^(?P<prefix>acs:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+/)(?P<id>.+)$")
+_ALREADY_MASKED = re.compile(r"[*]{3,}|<masked>")
+_MASK = "***"
+
+
+def mask_resource_id(value: str) -> str:
+    """Return a masked representation of a single resource identifier.
+
+    * Already-masked values pass through unchanged (idempotent).
+    * ARNs (``acs:...``) get only the trailing ID replaced with ``***``.
+    * UUIDs become a plain ``***``.
+    * Bare single-character inputs fall back to ``***`` (no type prefix).
+    * Anything else is normalized to ``<type>-***`` where ``<type>`` is the
+      alphabetic prefix (the substring before the first ``-``). This is
+      intentionally strict: raw identifiers never appear in a trace.
+    """
+
+    if not isinstance(value, str):
+        return _MASK
+    if _ALREADY_MASKED.search(value):
+        return value
+    arn = _ARN_PATTERN.match(value)
+    if arn:
+        return f"{arn.group('prefix')}{_MASK}"
+    if _UUID_PATTERN.match(value):
+        return _MASK
+    match = _RESOURCE_ID_PREFIX.match(value)
+    if not match or not match.group("type"):
+        return _MASK
+    return f"{match.group('type')}-{_MASK}"
+
+
+def _enforce_safety_class_enum(intent: dict[str, Any]) -> None:
+    """Fail fast when the operation_intent carries a non-canonical safety_class.
+
+    The GCL spec defines ``safety_class`` as an enum (``read-only``,
+    ``mutating``, ``destructive``). Promoting an unknown class is a contract
+    break that prevents the Critic from applying the correct safety gates.
+    The runner never silently downgrades: an invalid value aborts the loop with
+    a precise error, keeping production GCL fail-closed.
+    """
+
+    if not isinstance(intent, dict):
+        return
+    value = intent.get("safety_class")
+    if value is None or value in SAFETY_CLASS_VALUES:
+        return
+    raise ValueError(
+        f"operation_intent.safety_class={value!r} is not one of {SAFETY_CLASS_VALUES}; "
+        "see docs/gcl-spec.md §operation_intent."
+    )
+
+
+def _mask_resource_scope(value: Any) -> Any:
+    if isinstance(value, list):
+        return [mask_resource_id(item) if isinstance(item, str) else _MASK for item in value]
+    if isinstance(value, str):
+        return mask_resource_id(value)
+    return _MASK
 
 
 def _mask_json(value: Any) -> Any:
@@ -262,11 +336,16 @@ def persist_trace(root: Path, trace: dict[str, Any]) -> Path:
 def cmd_run(args: argparse.Namespace) -> int:
     root = args.root
     max_iter = args.max_iter or SKILL_MAX_ITER.get(args.skill, 3)
+    try:
+        operation_intent = sanitize_operation_intent(args.operation_intent)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     trace: dict[str, Any] = {
         "trace_schema_version": "v1",
         "skill": args.skill,
         "request": mask_secrets(args.request),
-        "operation_intent": sanitize_operation_intent(args.operation_intent),
+        "operation_intent": operation_intent,
         "rubric_version": "v1",
         "masked_fields": ["request", "operation_intent", "generator.command", "generator.result_excerpt"],
         "iterations": [],
@@ -280,6 +359,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         generator["args"] = {"iter": iteration, "critic_feedback": critic_feedback or None}
 
         if args.structural_critic_only:
+            print(
+                "WARN: --structural-critic-only is for CI/local smoke tests only; "
+                "production GCL MUST use an externally supplied isolated Critic "
+                "(--critic-json or stdin). See docs/gcl-spec.md.",
+                file=sys.stderr,
+            )
             critic = structural_critic(generator)
         else:
             critic = load_critic(args.critic_json, args.critic_stdin)

@@ -1,0 +1,64 @@
+# CSS Example Configuration — Huawei Cloud Cloud Search Service
+
+```yaml
+# CSS alarm thresholds
+css_alarm: &css_alarm
+  cpu_util_warning: 80
+  disk_util_critical: 85
+  jvm_heap_warning: 80
+  write_blocking_warning: 100
+
+# Notification channels (anchored individually so templates can reference them)
+notification:
+  critical: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:css-critical-alerts"
+  warning: &notification_warning "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:css-warning-alerts"
+
+# CSS alarm templates reuse css_alarm + notification anchors
+alarm_templates:
+  - <<: *css_alarm
+    name: "css-cluster-cpu-warning"
+    namespace: "SYS.CSS"
+    metric_name: "cpu_util"
+    threshold: 80
+    alarm_level: 2
+    alarm_actions: *notification_warning
+  - <<: *css_alarm
+    name: "css-cluster-disk-critical"
+    namespace: "SYS.CSS"
+    metric_name: "disk_util"
+    threshold: 85
+    alarm_level: 1
+    alarm_actions: *notification_critical
+
+# Idle cluster detection
+finops:
+  idle_cluster_window_days: 14
+  zero_query_window_days: 7
+  min_recommend_savings_cny: 200
+  storage_overhead_target: 1.2
+
+# Backup defaults
+backup_defaults: &backup_defaults
+  backup_type: "auto"
+  retention_days: 7
+  period: "DAILY"
+
+backup_policies:
+  - <<: *backup_defaults
+    name: "css-daily-snapshot"
+    retention_days: 30
+  - <<: *backup_defaults
+    name: "css-weekly-snapshot"
+    retention_days: 90
+```
+
+# Worker Output Contract (CSS Read-Only Assessment)
+
+```yaml
+worker:
+  skill_id: huaweicloud-css-ops
+  product: css
+  region: cn-north-4
+  output_contract: "{{output.product_assessment}}"
+  anchor: "&huaweicloud-skill-generator/references/worker-output-schema.md"
+```

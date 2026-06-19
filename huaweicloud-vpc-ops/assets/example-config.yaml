@@ -1,0 +1,51 @@
+# VPC Example Configuration — Huawei Cloud Virtual Private Cloud
+
+```yaml
+# VPC alarm thresholds
+vpc_alarm: &vpc_alarm
+  bandwidth_util_warning: 80
+  bandwidth_util_critical: 95
+  snat_connection_warning: 80
+
+# Notification channels (anchored individually)
+notification:
+  critical: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:vpc-critical-alerts"
+  warning: &notification_warning "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:vpc-warning-alerts"
+
+# VPC alarm templates reuse vpc_alarm + notification anchors
+alarm_templates:
+  - <<: *vpc_alarm
+    name: "vpc-bandwidth-warning"
+    resource_type: "bandwidth"
+    threshold: 80
+    alarm_level: 2
+    alarm_actions: *notification_warning
+  - <<: *vpc_alarm
+    name: "vpc-bandwidth-critical"
+    resource_type: "bandwidth"
+    threshold: 95
+    alarm_level: 1
+    alarm_actions: *notification_critical
+
+# Network baseline
+network_baseline:
+  min_subnet_size: 28
+  recommended_cidr: "192.168.0.0/16"
+  flow_log_retention_days: 180
+
+# FinOps idle EIP detection
+finops:
+  idle_eip_window_days: 7
+  unattached_eip_cost_cny_per_day: 1.5
+```
+
+# Worker Output Contract (VPC Read-Only Assessment)
+
+```yaml
+worker:
+  skill_id: huaweicloud-vpc-ops
+  product: vpc
+  region: cn-north-4
+  output_contract: "{{output.product_assessment}}"
+  anchor: "&huaweicloud-skill-generator/references/worker-output-schema.md"
+```

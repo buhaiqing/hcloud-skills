@@ -75,9 +75,7 @@ def example_product_assessment(skill_id: str, product: str) -> dict[str, Any]:
         "status": "OK",
         "partial": False,
         "resource_count": 1,
-        "pillars": {
-            pillar: {"score": 80, "status": "assessed", "findings": []} for pillar in sorted(PILLARS)
-        },
+        "pillars": {pillar: {"score": 80, "status": "assessed", "findings": []} for pillar in sorted(PILLARS)},
         "recommendations": [],
         "trace": {
             "commands": [f"hcloud {product} read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)"],
@@ -142,9 +140,7 @@ def validate_finding(product: str, pillar_key: str, finding: dict[str, Any], pat
     finding_id = finding.get("id", "")
     match = FINDING_ID.match(str(finding_id))
     if not match:
-        errors.append(
-            f"{path}: finding id {finding_id!r} invalid (expected {{product}}-{{rel|sec|cost|eff}}-NNN)"
-        )
+        errors.append(f"{path}: finding id {finding_id!r} invalid (expected {{product}}-{{rel|sec|cost|eff}}-NNN)")
         return errors
     if match.group(1) != product:
         errors.append(f"{path}: finding id product prefix {match.group(1)!r} != top-level product {product!r}")
@@ -307,9 +303,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     elif report["ok"]:
-        print(
-            f"OK: {report['files_checked']} files, {report['examples_checked']} example JSON blocks validated"
-        )
+        print(f"OK: {report['files_checked']} files, {report['examples_checked']} example JSON blocks validated")
     else:
         print(
             f"FAIL: {len(report['errors'])} error(s) in {report['files_checked']} files "
