@@ -28,8 +28,8 @@ def write_minimal_contract(root: Path, *, include_quality_gate: bool = True) -> 
         "  gcl:\n"
         "    required: true\n"
         "    default_max_iter: 2\n"
-        "    rubric_version: \"v1\"\n"
-        "    trace_path: \"audit-results/gcl-trace-YYYYMMDD-HHMMSS.json\"\n"
+        '    rubric_version: "v1"\n'
+        '    trace_path: "audit-results/gcl-trace-YYYYMMDD-HHMMSS.json"\n'
         f"{quality_gate}"
         "references/rubric.md\n"
         "references/prompt-templates.md\n"
@@ -37,10 +37,7 @@ def write_minimal_contract(root: Path, *, include_quality_gate: bool = True) -> 
         encoding="utf-8",
     )
     (generator_dir / "SKILL.md").write_text(
-        "references/gcl-prompt-backbone.md\n"
-        "`references/rubric.md`\n"
-        "`references/prompt-templates.md`\n"
-        "`metadata.gcl`\n",
+        "references/gcl-prompt-backbone.md\n`references/rubric.md`\n`references/prompt-templates.md`\n`metadata.gcl`\n",
         encoding="utf-8",
     )
     (references / "gcl-prompt-backbone.md").write_text(
@@ -86,7 +83,10 @@ class ContractTests(unittest.TestCase):
         self.assertFalse(cgc.has_bare_placeholders("https://example/${OS}-${ARCH}.tar.gz"))
 
     def test_format_human(self) -> None:
-        report = {"summary": {"passing": 1, "total": 2}, "failures": [{"scope": "template", "item": "x", "reason": "missing"}]}
+        report = {
+            "summary": {"passing": 1, "total": 2},
+            "failures": [{"scope": "template", "item": "x", "reason": "missing"}],
+        }
         text = cgc.format_human(report)
         self.assertIn("Generator GCL contract", text)
         self.assertIn("FAIL template.x", text)

@@ -14,11 +14,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shlex
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -71,10 +72,8 @@ def load_thresholds_from_config(config_path: Path) -> dict[str, Any]:
             if raw.lower() in ("true", "false"):
                 thresholds[key] = raw.lower() == "true"
             else:
-                try:
+                with contextlib.suppress(ValueError):
                     thresholds[key] = float(raw)
-                except ValueError:
-                    pass
     return thresholds
 
 
@@ -86,39 +85,47 @@ def evaluate(summary: dict[str, Any], thresholds: dict[str, Any]) -> dict[str, A
 
     breaches: list[dict[str, str]] = []
     if pass_rate < float(thresholds["pass_rate_critical"]):
-        breaches.append({
-            "severity": "CRITICAL",
-            "metric": "pass_rate",
-            "value": str(pass_rate),
-            "threshold": f"< {thresholds['pass_rate_critical']}",
-            "message": f"GCL pass_rate {pass_rate} below critical {thresholds['pass_rate_critical']}",
-        })
+        breaches.append(
+            {
+                "severity": "CRITICAL",
+                "metric": "pass_rate",
+                "value": str(pass_rate),
+                "threshold": f"< {thresholds['pass_rate_critical']}",
+                "message": f"GCL pass_rate {pass_rate} below critical {thresholds['pass_rate_critical']}",
+            }
+        )
     elif pass_rate < float(thresholds["pass_rate_warn"]):
-        breaches.append({
-            "severity": "WARN",
-            "metric": "pass_rate",
-            "value": str(pass_rate),
-            "threshold": f"< {thresholds['pass_rate_warn']}",
-            "message": f"GCL pass_rate {pass_rate} below warn {thresholds['pass_rate_warn']}",
-        })
+        breaches.append(
+            {
+                "severity": "WARN",
+                "metric": "pass_rate",
+                "value": str(pass_rate),
+                "threshold": f"< {thresholds['pass_rate_warn']}",
+                "message": f"GCL pass_rate {pass_rate} below warn {thresholds['pass_rate_warn']}",
+            }
+        )
 
     if bool(thresholds["safety_fail_alert"]) and safety_fail > 0:
-        breaches.append({
-            "severity": "CRITICAL",
-            "metric": "safety_fail_count",
-            "value": str(safety_fail),
-            "threshold": "== 0",
-            "message": f"GCL observed {safety_fail} SAFETY_FAIL trace(s)",
-        })
+        breaches.append(
+            {
+                "severity": "CRITICAL",
+                "metric": "safety_fail_count",
+                "value": str(safety_fail),
+                "threshold": "== 0",
+                "message": f"GCL observed {safety_fail} SAFETY_FAIL trace(s)",
+            }
+        )
 
     if max_iter > int(thresholds["max_iter_warn_count"]):
-        breaches.append({
-            "severity": "WARN",
-            "metric": "max_iter_count",
-            "value": str(max_iter),
-            "threshold": f"<= {thresholds['max_iter_warn_count']}",
-            "message": f"GCL hit MAX_ITER {max_iter} time(s)",
-        })
+        breaches.append(
+            {
+                "severity": "WARN",
+                "metric": "max_iter_count",
+                "value": str(max_iter),
+                "threshold": f"<= {thresholds['max_iter_warn_count']}",
+                "message": f"GCL hit MAX_ITER {max_iter} time(s)",
+            }
+        )
 
     return {
         "pass_rate": pass_rate,
@@ -196,7 +203,7 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, An
     evaluation["_pass_rate_critical"] = thresholds["pass_rate_critical"]
     evaluation["_max_iter_warn_count"] = thresholds["max_iter_warn_count"]
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "cloud": "huaweicloud",
         "metric_namespace": GCL_NAMESPACE,
         "summary_path": str(summary_path),
@@ -210,7 +217,7 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, An
 def write_plan(root: Path, report: dict[str, Any], suffix: str) -> Path:
     audit_dir = root / "audit-results"
     audit_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = audit_dir / f"gcl-alarm-plan-{stamp}-{suffix}.json"
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
@@ -288,7 +295,9 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Evaluate summary, render CES alarm plan")
     plan.add_argument("--config", type=Path, default=Path("huaweicloud-ces-ops/assets/example-config.yaml"))
     plan.add_argument("--summary", type=Path, default=None)
-    plan.add_argument("--write-plan", action="store_true", help="Persist the plan JSON to audit-results/ for CI validation")
+    plan.add_argument(
+        "--write-plan", action="store_true", help="Persist the plan JSON to audit-results/ for CI validation"
+    )
     plan.set_defaults(func=cmd_plan)
 
     apply = subparsers.add_parser("apply", help="Apply CES alarm plan via hcloud")

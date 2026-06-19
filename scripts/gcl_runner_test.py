@@ -165,12 +165,18 @@ class CmdRunEndToEndTests(unittest.TestCase):
         root = Path(tempfile.mkdtemp())
         args = [
             "run",
-            "--root", str(root),
-            "--skill", "huaweicloud-ecs-ops",
-            "--request", "CI smoke test",
-            "--operation-intent", '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
-            "--command", 'printf "{\\\"Response\\\":{\\\"RequestId\\\":\\\"ci-smoke\\\"}}"',
-            "--max-iter", str(max_iter),
+            "--root",
+            str(root),
+            "--skill",
+            "huaweicloud-ecs-ops",
+            "--request",
+            "CI smoke test",
+            "--operation-intent",
+            '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
+            "--command",
+            'printf "{\\"Response\\":{\\"RequestId\\":\\"ci-smoke\\"}}"',
+            "--max-iter",
+            str(max_iter),
         ]
         if structural:
             args.append("--structural-critic-only")

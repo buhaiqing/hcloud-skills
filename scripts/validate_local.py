@@ -19,6 +19,8 @@ class Step:
 
 def build_steps(python: str = sys.executable) -> list[Step]:
     return [
+        Step("Ruff Python lint", ("bash", "scripts/run_ruff.sh", ".")),
+        Step("Python 3.10 syntax compat", (python, "scripts/check_py310_compat.py")),
         Step("Validate Markdown local links", (python, "scripts/check_markdown_links.py")),
         Step("Generator GCL contract", (python, "scripts/check_generator_contract.py")),
         Step(
@@ -34,7 +36,7 @@ def build_steps(python: str = sys.executable) -> list[Step]:
                 "--operation-intent",
                 '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
                 "--command",
-                'printf "{\\\"Response\\\":{\\\"RequestId\\\":\\\"ci-smoke\\\"}}"',
+                'printf "{\\"Response\\":{\\"RequestId\\":\\"ci-smoke\\"}}"',
                 "--max-iter",
                 "1",
                 "--structural-critic-only",

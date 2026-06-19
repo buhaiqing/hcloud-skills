@@ -26,7 +26,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -253,7 +253,7 @@ def extract_failure_pattern(
 def persist_trace(root: Path, trace: dict[str, Any]) -> Path:
     out_dir = root / "audit-results"
     out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = out_dir / f"gcl-trace-{ts}.json"
     path.write_text(json.dumps(trace, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path

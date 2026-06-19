@@ -86,7 +86,11 @@ def check_contract(root: Path) -> dict[str, Any]:
     ok = not failures
     return {
         "ok": ok,
-        "summary": {"total": len(checks), "passing": sum(1 for check in checks if check["ok"]), "failing": len(failures)},
+        "summary": {
+            "total": len(checks),
+            "passing": sum(1 for check in checks if check["ok"]),
+            "failing": len(failures),
+        },
         "checks": checks,
         "failures": failures,
     }
@@ -94,9 +98,7 @@ def check_contract(root: Path) -> dict[str, Any]:
 
 def format_human(report: dict[str, Any]) -> str:
     summary = report["summary"]
-    lines = [
-        f"Generator GCL contract: {summary['passing']}/{summary['total']} checks pass."
-    ]
+    lines = [f"Generator GCL contract: {summary['passing']}/{summary['total']} checks pass."]
     for failure in report["failures"]:
         lines.append(f"  FAIL {failure['scope']}.{failure['item']}: {failure['reason']}")
     return "\n".join(lines) + "\n"

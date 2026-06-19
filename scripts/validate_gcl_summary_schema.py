@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from json_schema_subset import load_json, json_type, resolve_under_root, type_matches, validate_file, validate_value
+from json_schema_subset import json_type, load_json, resolve_under_root, type_matches, validate_file, validate_value
 
 DEFAULT_SCHEMA = Path("huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json")
 DEFAULT_SUMMARY = Path("scripts/fixtures/gcl-quality-summary-healthy.json")

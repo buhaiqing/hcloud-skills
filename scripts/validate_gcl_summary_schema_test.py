@@ -127,7 +127,9 @@ class CliTests(unittest.TestCase):
             fixture_dir = root / "scripts/fixtures"
             schema_dir.mkdir(parents=True)
             fixture_dir.mkdir(parents=True)
-            (schema_dir / "gcl-quality-summary.schema.json").write_text(SCHEMA.read_text(encoding="utf-8"), encoding="utf-8")
+            (schema_dir / "gcl-quality-summary.schema.json").write_text(
+                SCHEMA.read_text(encoding="utf-8"), encoding="utf-8"
+            )
             bad = healthy_summary()
             bad["pass_rate"] = -0.1
             (fixture_dir / "bad.json").write_text(json.dumps(bad), encoding="utf-8")

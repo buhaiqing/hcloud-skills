@@ -52,9 +52,13 @@ def scan_summaries(root: Path, inputs: list[Path] | None, latest: bool) -> list[
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--latest", action="store_true", help="Scan only the latest summary when no explicit path is given")
+    parser.add_argument(
+        "--latest", action="store_true", help="Scan only the latest summary when no explicit path is given"
+    )
     parser.add_argument("--allow-empty", action="store_true", help="Return success when no summary files exist")
-    parser.add_argument("--include-fixture", action="store_true", help="Also scan the healthy fixture (used in CI smoke)")
+    parser.add_argument(
+        "--include-fixture", action="store_true", help="Also scan the healthy fixture (used in CI smoke)"
+    )
     parser.add_argument("--json", action="store_true")
     parser.add_argument("summary", nargs="*", type=Path)
     return parser

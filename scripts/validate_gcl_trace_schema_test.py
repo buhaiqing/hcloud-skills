@@ -29,7 +29,12 @@ def sample_trace(status: str = "PASS") -> dict:
         "trace_schema_version": "v1",
         "skill": "huaweicloud-ecs-ops",
         "request": "CI smoke test",
-        "operation_intent": {"operation": "smoke", "resource_scope": [], "expected_state": "no-op", "safety_class": "read-only"},
+        "operation_intent": {
+            "operation": "smoke",
+            "resource_scope": [],
+            "expected_state": "no-op",
+            "safety_class": "read-only",
+        },
         "rubric_version": "v1",
         "masked_fields": ["request", "operation_intent", "generator.command", "generator.result_excerpt"],
         "iterations": [
@@ -44,7 +49,13 @@ def sample_trace(status: str = "PASS") -> dict:
                     "args": {"iter": 1, "critic_feedback": None},
                 },
                 "critic": {
-                    "scores": {"correctness": 1, "safety": 1, "idempotency": 0.5, "traceability": 1, "spec_compliance": 0.5},
+                    "scores": {
+                        "correctness": 1,
+                        "safety": 1,
+                        "idempotency": 0.5,
+                        "traceability": 1,
+                        "spec_compliance": 0.5,
+                    },
                     "suggestions": [],
                     "blocking": False,
                 },
@@ -89,16 +100,24 @@ class TraceSchemaTests(unittest.TestCase):
     def test_runner_output_validates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            args = gcl_runner.build_parser().parse_args([
-                "run",
-                "--root", str(root),
-                "--skill", "huaweicloud-ecs-ops",
-                "--request", "CI smoke test",
-                "--operation-intent", '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
-                "--command", "printf ok",
-                "--max-iter", "1",
-                "--structural-critic-only",
-            ])
+            args = gcl_runner.build_parser().parse_args(
+                [
+                    "run",
+                    "--root",
+                    str(root),
+                    "--skill",
+                    "huaweicloud-ecs-ops",
+                    "--request",
+                    "CI smoke test",
+                    "--operation-intent",
+                    '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
+                    "--command",
+                    "printf ok",
+                    "--max-iter",
+                    "1",
+                    "--structural-critic-only",
+                ]
+            )
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(gcl_runner.cmd_run(args), 0)
             trace_path = next((root / "audit-results").glob("gcl-trace-*.json"))
@@ -119,7 +138,9 @@ class CollectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             trace_path = write_trace(root, sample_trace())
-            paths = vts.collect_trace_paths(root, [Path("audit-results/gcl-trace-test.json"), Path("missing.json")], latest=False)
+            paths = vts.collect_trace_paths(
+                root, [Path("audit-results/gcl-trace-test.json"), Path("missing.json")], latest=False
+            )
             self.assertEqual(paths, [trace_path])
 
 

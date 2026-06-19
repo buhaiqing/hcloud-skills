@@ -119,8 +119,8 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ## Python Style & Lint (P0)
 
-- Repository linter is **ruff** (`ruff check .`, pinned to `0.11.8` in CI).
-- **After every Python script change, run `ruff check` locally before declaring the task complete.** Do not batch — fix lint findings introduced by the change immediately.
+- Repository linter is **ruff** (`ruff check .`, pinned to `0.11.8` in CI). Config lives in `ruff.toml`.
+- **After every Python script change, run `bash scripts/run_ruff.sh .` locally before declaring the task complete.** Do not batch — fix lint findings introduced by the change immediately. Apply `ruff format .` for any formatting drift introduced by the change.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.
@@ -129,6 +129,18 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - Shared helpers (`json_schema_subset`, `gcl_security_scan`) MUST be reused instead of copy-pasted patterns — same rule as TE-6.
 - Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`.
 - CI runs the full `validate_local.py` suite; local dev MUST run the same suite before pushing.
+
+## Python 3.10 Syntax Compatibility (P0)
+
+- Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only syntax silently breaks the agent.
+- Disallowed in `scripts/*.py`:
+  - PEP 695 type aliases (`type Alias = int`) and PEP 695 type parameters (`class C[T]: ...`, `def f[T](x: T) -> T: ...`).
+  - `tomllib` (use `json`/`yaml` instead).
+  - `Self` from `typing` used without `from __future__ import annotations`; `Self` itself is fine in 3.11+ but keep using `from typing import Self` only when 3.10 is supported.
+  - Any other 3.11+ stdlib symbol used at runtime (not just in annotations).
+- All scripts MUST start with `from __future__ import annotations` so PEP 604 / new-style generics remain *string* and are safe across 3.10 / 3.11 / 3.12.
+- Enforcement: `scripts/check_py310_compat.py` invokes `python3.10 -m py_compile` on every `scripts/*.py`. Local: `python3 scripts/check_py310_compat.py`. CI: same command on `python-version: "3.10"`.
+- **After every Python script change, the script MUST still compile under Python 3.10.** CI and `validate_local.py` both enforce this gate; a regression is a release-blocker.
 
 ## Docker Sandbox
 

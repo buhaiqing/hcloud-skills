@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
-    parser.add_argument("--latest", action="store_true", help="Validate only latest trace when no explicit trace is given")
+    parser.add_argument(
+        "--latest", action="store_true", help="Validate only latest trace when no explicit trace is given"
+    )
     parser.add_argument("--allow-empty", action="store_true", help="Return success when no trace files exist")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("trace", nargs="*", type=Path)

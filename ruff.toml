@@ -1,0 +1,25 @@
+# Pinned ruff config for hcloud-skills.
+#
+# Keep this aligned with .github/workflows/validate-skills.yml
+# (CI uses astral-sh/ruff-action@v3, version 0.11.8). Local dev runs
+# the same checks via `scripts/run_ruff.sh`.
+
+# Match the same scope CI lints (the whole repo).
+target-version = "py311"
+
+# Default rule set is fine for now; extend here if we add per-file ignores.
+line-length = 120
+
+[lint]
+# E/W (pycodestyle), F (pyflakes), I (isort), B (bugbear), UP (pyupgrade),
+# SIM (simplify), C4 (comprehensions) — same default profile ruff ships.
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4"]
+ignore = [
+    # Allow module-level import-not-at-top for scripts that intentionally
+    # import after adding scripts/ to sys.path (test bootstrapping).
+    "E402",
+]
+
+[lint.per-file-ignores]
+# Tests can use unittest patterns that violate strict lint rules.
+"scripts/*_test.py" = ["B011"]

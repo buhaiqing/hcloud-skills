@@ -24,6 +24,14 @@ jobs:
           version: 0.11.8
           args: check --output-format=github .
 
+      - name: Python 3.10 syntax compat
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run Python 3.10 syntax check
+        run: python3 scripts/check_py310_compat.py
+
       - name: Python unit tests
         run: |
           cd scripts

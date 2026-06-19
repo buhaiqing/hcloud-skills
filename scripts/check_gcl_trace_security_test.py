@@ -31,7 +31,13 @@ def clean_trace() -> dict:
                     "result_excerpt": "ok",
                 },
                 "critic": {
-                    "scores": {"correctness": 1, "safety": 1, "idempotency": 0.5, "traceability": 1, "spec_compliance": 1},
+                    "scores": {
+                        "correctness": 1,
+                        "safety": 1,
+                        "idempotency": 0.5,
+                        "traceability": 1,
+                        "spec_compliance": 1,
+                    },
                 },
             }
         ],
@@ -72,7 +78,9 @@ class ScanTests(unittest.TestCase):
 
     def test_bearer_token_leak_detected(self) -> None:
         trace = clean_trace()
-        trace["iterations"][0]["generator"]["result_excerpt"] = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+        trace["iterations"][0]["generator"]["result_excerpt"] = (
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+        )
         findings = cts.scan_payload(trace)
         self.assertTrue(any("extra:" in finding["pattern"] for finding in findings))
 
@@ -93,16 +101,24 @@ class RunnerIntegrationTests(unittest.TestCase):
     def test_runner_output_passes_scan(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            args = gcl_runner.build_parser().parse_args([
-                "run",
-                "--root", str(root),
-                "--skill", "huaweicloud-ecs-ops",
-                "--request", "CI smoke test",
-                "--operation-intent", '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
-                "--command", "printf ok",
-                "--max-iter", "1",
-                "--structural-critic-only",
-            ])
+            args = gcl_runner.build_parser().parse_args(
+                [
+                    "run",
+                    "--root",
+                    str(root),
+                    "--skill",
+                    "huaweicloud-ecs-ops",
+                    "--request",
+                    "CI smoke test",
+                    "--operation-intent",
+                    '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
+                    "--command",
+                    "printf ok",
+                    "--max-iter",
+                    "1",
+                    "--structural-critic-only",
+                ]
+            )
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(gcl_runner.cmd_run(args), 0)
             trace_path = next((root / "audit-results").glob("gcl-trace-*.json"))

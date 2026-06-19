@@ -21,28 +21,30 @@ import sys
 from pathlib import Path
 from typing import Any
 
-GCL_SKILLS: frozenset[str] = frozenset({
-    "huaweicloud-billing-ops",
-    "huaweicloud-cbr-ops",
-    "huaweicloud-cce-ops",
-    "huaweicloud-ces-ops",
-    "huaweicloud-css-ops",
-    "huaweicloud-cts-ops",
-    "huaweicloud-dcs-ops",
-    "huaweicloud-dms-ops",
-    "huaweicloud-ecs-ops",
-    "huaweicloud-elb-ops",
-    "huaweicloud-functiongraph-ops",
-    "huaweicloud-gaussdb-ops",
-    "huaweicloud-hss-ops",
-    "huaweicloud-iam-ops",
-    "huaweicloud-lts-ops",
-    "huaweicloud-obs-ops",
-    "huaweicloud-rds-ops",
-    "huaweicloud-swr-ops",
-    "huaweicloud-vpc-ops",
-    "huaweicloud-waf-ops",
-})
+GCL_SKILLS: frozenset[str] = frozenset(
+    {
+        "huaweicloud-billing-ops",
+        "huaweicloud-cbr-ops",
+        "huaweicloud-cce-ops",
+        "huaweicloud-ces-ops",
+        "huaweicloud-css-ops",
+        "huaweicloud-cts-ops",
+        "huaweicloud-dcs-ops",
+        "huaweicloud-dms-ops",
+        "huaweicloud-ecs-ops",
+        "huaweicloud-elb-ops",
+        "huaweicloud-functiongraph-ops",
+        "huaweicloud-gaussdb-ops",
+        "huaweicloud-hss-ops",
+        "huaweicloud-iam-ops",
+        "huaweicloud-lts-ops",
+        "huaweicloud-obs-ops",
+        "huaweicloud-rds-ops",
+        "huaweicloud-swr-ops",
+        "huaweicloud-vpc-ops",
+        "huaweicloud-waf-ops",
+    }
+)
 
 
 def _count_numbered_sections(text: str, target: int) -> int:
@@ -126,7 +128,16 @@ def main() -> int:
     reports = check_all(args.root)
     passing = sum(1 for report in reports if report["ok"])
     if args.json:
-        print(json.dumps({"summary": {"total": len(reports), "passing": passing, "failing": len(reports) - passing}, "reports": reports}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "summary": {"total": len(reports), "passing": passing, "failing": len(reports) - passing},
+                    "reports": reports,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
     else:
         print(_format_human(reports), end="")
     return 0 if passing == len(reports) else 1

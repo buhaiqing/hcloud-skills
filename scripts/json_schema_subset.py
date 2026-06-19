@@ -56,7 +56,7 @@ def validate_value(value: Any, schema: dict[str, Any], path: str = "$") -> list[
     if "enum" in schema and value not in schema["enum"]:
         errors.append(f"{path}: expected one of {schema['enum']!r}, got {value!r}")
 
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):  # noqa: UP038
         if "minimum" in schema and value < schema["minimum"]:
             errors.append(f"{path}: value {value} < minimum {schema['minimum']}")
         if "maximum" in schema and value > schema["maximum"]:

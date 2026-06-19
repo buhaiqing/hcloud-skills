@@ -101,10 +101,13 @@ class PlanTests(unittest.TestCase):
     def test_slo_breach_returns_1(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            summary = write_summary(root, {
-                "pass_rate": 0.60,
-                "totals": {"PASS": 6, "MAX_ITER": 0, "SAFETY_FAIL": 1, "total_runs": 10},
-            })
+            summary = write_summary(
+                root,
+                {
+                    "pass_rate": 0.60,
+                    "totals": {"PASS": 6, "MAX_ITER": 0, "SAFETY_FAIL": 1, "total_runs": 10},
+                },
+            )
             args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml", write_plan=False)
             self.assertEqual(quiet_call(gaw.cmd_plan, args), 1)
 

@@ -72,7 +72,9 @@ class ScanTests(unittest.TestCase):
 
     def test_authorization_header_detected(self) -> None:
         summary = healthy_summary()
-        summary["by_skill"]["huaweicloud-billing-ops"]["note"] = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+        summary["by_skill"]["huaweicloud-billing-ops"]["note"] = (
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890"
+        )
         findings = css.scan_payload(summary)
         self.assertTrue(any("authorization_header" in finding["pattern"] for finding in findings))
 

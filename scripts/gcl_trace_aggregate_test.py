@@ -19,7 +19,6 @@ if str(_HERE) not in sys.path:
 
 import gcl_trace_aggregate as gta  # noqa: E402
 
-
 SCORES = {
     "correctness": 1,
     "safety": 1,

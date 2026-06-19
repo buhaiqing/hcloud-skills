@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -44,9 +44,9 @@ def last_scores(trace: dict[str, Any]) -> dict[str, float]:
 
 def aggregate(traces: list[dict[str, Any]]) -> dict[str, Any]:
     by_skill: dict[str, dict[str, Any]] = {}
-    totals = {status: 0 for status in FINAL_STATUSES}
+    totals = dict.fromkeys(FINAL_STATUSES, 0)
     totals["total_runs"] = len(traces)
-    score_sums: dict[str, float] = {dim: 0.0 for dim in RUBRIC_DIMS}
+    score_sums: dict[str, float] = dict.fromkeys(RUBRIC_DIMS, 0.0)
     score_count = 0
 
     for trace in traces:
@@ -63,9 +63,7 @@ def aggregate(traces: list[dict[str, Any]]) -> dict[str, Any]:
         if status in bucket:
             bucket[status] += 1
         iterations = len(trace.get("iterations") or [])
-        bucket["avg_iterations"] = (
-            (bucket["avg_iterations"] * (bucket["total"] - 1) + iterations) / bucket["total"]
-        )
+        bucket["avg_iterations"] = (bucket["avg_iterations"] * (bucket["total"] - 1) + iterations) / bucket["total"]
 
         scores = last_scores(trace)
         if scores:
@@ -75,14 +73,11 @@ def aggregate(traces: list[dict[str, Any]]) -> dict[str, Any]:
 
     total_runs = int(totals["total_runs"])
     pass_rate = totals["PASS"] / total_runs if total_runs else 0.0
-    avg_scores = {
-        dim: round(score_sums[dim] / score_count, 3) if score_count else None
-        for dim in RUBRIC_DIMS
-    }
+    avg_scores = {dim: round(score_sums[dim] / score_count, 3) if score_count else None for dim in RUBRIC_DIMS}
 
     return {
         "version": "1.0",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "cloud": "huaweicloud",
         "metric_namespace": "CUSTOM.GCL",
         "window": {"trace_count": total_runs},
@@ -107,14 +102,14 @@ def collect_paths(root: Path, inputs: list[str] | None, since_hours: int | None)
     paths = sorted(audit_dir.glob("gcl-trace-*.json"))
     if since_hours is None:
         return paths
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-    return [path for path in paths if datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc) >= cutoff]
+    cutoff = datetime.now(UTC) - timedelta(hours=since_hours)
+    return [path for path in paths if datetime.fromtimestamp(path.stat().st_mtime, tz=UTC) >= cutoff]
 
 
 def persist_summary(root: Path, summary: dict[str, Any]) -> Path:
     out_dir = root / "audit-results"
     out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = out_dir / f"gcl-quality-summary-{ts}.json"
     path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
@@ -145,7 +140,11 @@ def main() -> int:
 
     summary = aggregate(traces)
     out = persist_summary(args.root, summary)
-    print(json.dumps({"summary_path": str(out), "pass_rate": summary["pass_rate"], "total_runs": summary["totals"]["total_runs"]}))
+    print(
+        json.dumps(
+            {"summary_path": str(out), "pass_rate": summary["pass_rate"], "total_runs": summary["totals"]["total_runs"]}
+        )
+    )
     return 0
 
 

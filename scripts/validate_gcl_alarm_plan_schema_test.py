@@ -53,7 +53,9 @@ class SchemaValidationTests(unittest.TestCase):
             summary_path = root / "audit-results" / "gcl-quality-summary-test.json"
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             summary_path.write_text(json.dumps(healthy_summary()), encoding="utf-8")
-            args = type("Args", (), {"root": root, "summary": summary_path, "config": root / "missing.yaml", "write_plan": True})()
+            args = type(
+                "Args", (), {"root": root, "summary": summary_path, "config": root / "missing.yaml", "write_plan": True}
+            )()
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(gaw.cmd_plan(args), 0)
             persisted = sorted((root / "audit-results").glob("gcl-alarm-plan-*-plan.json"))
@@ -140,7 +142,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn(f"OK: {FIXTURE.relative_to(ROOT)}", stdout.getvalue())
         finally:
-                sys.argv = old_argv
+            sys.argv = old_argv
 
     def test_main_invalid_plan_returns_1(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
