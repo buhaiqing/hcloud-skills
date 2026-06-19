@@ -93,6 +93,12 @@ finops:
   idle_alarm_threshold_days: 90
   max_monitoring_granularity_seconds: 300
 
+gcl_quality: &gcl_quality
+  pass_rate_warn: 0.85
+  pass_rate_critical: 0.70
+  max_iter_warn_count: 3
+  safety_fail_alert: true
+
 aiops:
   storm_detection: &storm_detection
     max_alarms_per_window: 10

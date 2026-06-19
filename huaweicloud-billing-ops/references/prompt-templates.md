@@ -107,6 +107,7 @@ trace. Score it STRICTLY against the rubric below. Do NOT consider the original 
 ## Inputs
 
 rubric: {{output.rubric}}
+operation_intent: {{output.operation_intent}}          # sanitized; no raw user wording or credentials
 generator_output: {{output.generator_output}}
 trace: {{output.trace}}
 
@@ -269,7 +270,13 @@ Before writing `gcl-trace-*.json` to `audit-results/`:
 | Sub-agent returns non-JSON | Re-prompt once with "Return the JSON object only — no prose wrapper"; if still bad, return MAX_ITER |
 | Trace file write fails | Retry once; if still fails, surface a warning but DO NOT silently continue |
 
-## 6. See also
+## 6. Changelog
+
+| Version | Date | Change |
+|---|---|---|
+| 1.1.0 | 2026-06-19 | Tier-A GCL conformance: added sanitized operation_intent input and explicit 7-section prompt-template structure. |
+
+## 7. See also
 
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S7 rules

@@ -1,0 +1,33 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-06-19T00:00:00+00:00",
+  "cloud": "huaweicloud",
+  "metric_namespace": "CUSTOM.GCL",
+  "window": {
+    "trace_count": 10
+  },
+  "totals": {
+    "PASS": 10,
+    "SAFETY_FAIL": 0,
+    "MAX_ITER": 0,
+    "total_runs": 10
+  },
+  "pass_rate": 1.0,
+  "avg_rubric_scores": {
+    "correctness": 1.0,
+    "safety": 1.0,
+    "idempotency": 0.8,
+    "traceability": 1.0,
+    "spec_compliance": 1.0
+  },
+  "by_skill": {
+    "huaweicloud-billing-ops": {
+      "total": 10,
+      "PASS": 10,
+      "SAFETY_FAIL": 0,
+      "MAX_ITER": 0,
+      "avg_iterations": 1.0
+    }
+  },
+  "trace_files": []
+}

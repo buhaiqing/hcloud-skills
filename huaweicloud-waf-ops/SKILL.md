@@ -566,7 +566,7 @@ func main() {
 }
 ```
 
-## 质量门 (GCL)
+## Quality Gate (GCL)
 
 本 skill 强制 GCL(参见 `AGENTS.md` §8)。所有 WAF 变更操作(策略创建/更新/删除、防护域名创建/更新/删除、规则创建/更新/删除/禁用、证书删除)均需经过 **Generator-Critic-Loop** 后才能返回结果。只读操作为 GCL-豁免。
 

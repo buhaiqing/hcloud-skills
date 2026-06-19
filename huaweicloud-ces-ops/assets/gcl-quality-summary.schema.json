@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hcloud-skills.local/huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json",
+  "title": "Huawei Cloud GCL Quality Summary",
+  "type": "object",
+  "required": ["version", "generated_at", "cloud", "metric_namespace", "totals", "pass_rate", "by_skill"],
+  "properties": {
+    "version": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "cloud": { "const": "huaweicloud" },
+    "metric_namespace": { "const": "CUSTOM.GCL" },
+    "window": {
+      "type": "object",
+      "properties": {
+        "trace_count": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "totals": {
+      "type": "object",
+      "required": ["PASS", "SAFETY_FAIL", "MAX_ITER", "total_runs"],
+      "properties": {
+        "PASS": { "type": "integer", "minimum": 0 },
+        "SAFETY_FAIL": { "type": "integer", "minimum": 0 },
+        "MAX_ITER": { "type": "integer", "minimum": 0 },
+        "total_runs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "avg_rubric_scores": {
+      "type": "object",
+      "properties": {
+        "correctness": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "safety": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "idempotency": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "traceability": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "spec_compliance": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "by_skill": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["total", "PASS", "SAFETY_FAIL", "MAX_ITER", "avg_iterations"],
+        "properties": {
+          "total": { "type": "integer", "minimum": 0 },
+          "PASS": { "type": "integer", "minimum": 0 },
+          "SAFETY_FAIL": { "type": "integer", "minimum": 0 },
+          "MAX_ITER": { "type": "integer", "minimum": 0 },
+          "avg_iterations": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "trace_files": {
+      "type": "array",
+      "items": { "type": ["string", "null"] }
+    }
+  },
+  "additionalProperties": true
+}

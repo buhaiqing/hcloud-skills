@@ -462,7 +462,7 @@ func main() {
 }
 ```
 
-## 质量门 (GCL)
+## Quality Gate (GCL)
 
 本 skill 强制 GCL(参见 `AGENTS.md` §8)。所有 HSS 变更操作(主机防护版本切换、告警事件处理、隔离文件恢复/删除、基线策略增删改、网页防篡改策略增删改、漏洞处理)均需经过 **Generator-Critic-Loop** 后才能返回结果。只读操作为 GCL-豁免。
 

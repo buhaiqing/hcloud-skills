@@ -1,11 +1,13 @@
-# GCL — Generator-Critic-Loop: Complete Specification
+# Generator-Critic-Loop (GCL) — Adversarial Quality Gate
 
-> Full implementation spec referencing `AGENTS.md §Generator-Critic-Loop`.
-> Moved here from AGENTS.md for TE-6/TE-7 compliance — see AGENTS.md `## Token Efficiency Requirements`.
+> Inspired by GAN's Generator/Discriminator idea, but deliberately **not** a real GAN.
+> Naming: **GCL (Generator-Critic-Loop)** to avoid misleading reviewers and LLM trainees.
+> This document is the detailed runtime spec for Huawei Cloud (`hcloud` CLI / Go SDK fallback).
 
----
+## 1. Purpose
 
-## 1. GAN / GCL Comparison
+Apply an adversarial **Generator ↔ Critic** loop with a quantitative rubric to every skill execution.
+Most valuable in high-side-effect cloud operations (`delete`, `stop`, `restore`, IAM/KMS/DDL) where a single mistake is unrecoverable.
 
 | GAN (real) | GCL (this spec) |
 |---|---|
@@ -14,149 +16,208 @@
 | G and D train in parallel | G and C run **sequentially** |
 | Goal: "fool the D" | Goal: "pass the rubric threshold" |
 
-## 2. Loop Flow
+## 2. Roles
 
-```
+| Role | Job | Input | Output | Forbidden |
+|---|---|---|---|---|
+| **Generator (G)** | Execute the cloud operation | user request + previous Critic feedback | result + execution trace | modifying rubric; self-scoring |
+| **Critic (C)** | Independently audit output | generator result + trace + rubric + sanitized operation intent | scores + suggestions | calling `hcloud`, SDK clients, or mutating resources |
+| **Orchestrator (O)** | Loop control | context + Critic scores + budget | continue / final result | executing or scoring on its own |
+
+**Hard constraint:** Generator and Critic MUST run in isolated prompt contexts. Shared-context G+C is banned.
+
+## 3. Rubric
+
+Each required/recommended skill keeps:
+
+- `## Quality Gate (GCL)` in `SKILL.md`
+- `references/rubric.md`
+- `references/prompt-templates.md`
+
+Minimum dimensions:
+
+| Dimension | Meaning | Scale | Default threshold |
+|---|---|---|---|
+| **Correctness** | Resource id / state / config actually matches the request | 0 / 0.5 / 1 | ≥ 0.5; 1.0 for destructive/IAM/KMS/DDL |
+| **Safety** | Destructive op was confirmed or guarded | 0 / 1 | = 1 |
+| **Idempotency** | Retry does not duplicate side-effects | 0 / 0.5 / 1 | ≥ 0.5 |
+| **Traceability** | Command, params, raw response, errors captured | 0 / 0.5 / 1 | ≥ 0.5 |
+| **Spec Compliance** | Conforms to `core-concepts.md` / `cli-usage.md` constraints | 0 / 0.5 / 1 | ≥ 0.5 |
+
+**Safety = 0 → ABORT immediately**, regardless of total score.
+
+## 4. Loop Flow
+
+```text
 User Request
-     │
-     ▼
+  ↓
 [0] Pre-flight (Orchestrator)
-    - resolve env.* and user.* variables
-    - pick skill, load its rubric from SKILL.md
-    - verify P0/P1 gates already passed
-     │
-     ▼
-[1] Generate (G) ───────────────────────┐
-    - run hcloud (or SDK fallback)       │
-    - capture trace                      │
-     │                                   │
-     ▼                                   │
-[2] Critique (C)                        │
-    - isolated prompt context            │
-    - score every rubric dimension       │
-    - emit actionable suggestions        │
-     │                                   │
-     ▼                                   │
-[3] Decide (Orchestrator)               │
-    - Safety=0  → ABORT (no partial)    │
-    - all pass  → RETURN                 │
-    - else & iter<max → inject          │
-       suggestions into G                │
-    - else → RETURN best + unresolved    │
-       rubric items                      │
-     └───────────────────────────────────┘
+  - resolve env.* and user.* variables
+  - pick skill, load rubric
+  - derive sanitized operation_intent: operation, expected_state, resource_scope, safety_class
+  - omit raw user wording, credentials, and unmasked sensitive identifiers
+  ↓
+[1] Generate (G)
+  - run hcloud or JIT Go SDK fallback
+  - capture command/args/exit/raw response/request_id/job_id
+  ↓
+[2] Critique (C)
+  - isolated prompt context
+  - score rubric dimensions
+  - emit ≤3 concrete suggestions
+  ↓
+[3] Decide (O)
+  - Safety=0 → SAFETY_FAIL
+  - all thresholds pass → PASS
+  - else and iter<max_iter → retry with critic_feedback
+  - else → MAX_ITER
 ```
 
-## 3. Termination (first match wins)
+The Orchestrator owns `operation_intent` generation. Critic MUST NOT see raw user wording; it may use `{{output.operation_intent}}`.
+
+## 5. Termination
 
 | Condition | Behavior |
 |---|---|
-| **PASS** | Every rubric dimension meets its threshold → return G's result |
-| **MAX_ITER** | Reached `max_iterations` → return **best-so-far** + unresolved rubric items |
-| **SAFETY_FAIL** | Safety = 0 → **ABORT**; never return partial or "best-effort" output |
+| **PASS** | Every rubric dimension meets threshold → return result |
+| **MAX_ITER** | Max iterations reached → return best-so-far + unresolved rubric items |
+| **SAFETY_FAIL** | Safety = 0 → abort; never return partial or best-effort output |
 
-## 4. Trace & Audit Schema
+## 6. Trace & Audit Schema
 
-Every GCL run MUST persist a JSON trace:
+Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`.
 
 ```json
 {
+  "trace_schema_version": "v1",
   "skill": "huaweicloud-ecs-ops",
   "request": "<sanitized user request>",
+  "operation_intent": {
+    "operation": "stop-server",
+    "resource_scope": ["ecs-***"],
+    "expected_state": "SHUTOFF",
+    "safety_class": "destructive"
+  },
   "rubric_version": "v1",
+  "masked_fields": ["request", "operation_intent.resource_scope"],
   "iterations": [
     {
       "iter": 1,
-      "generator": { "command": "hcloud ecs delete", "args": {...}, "exit_code": 0, "result_excerpt": "..." },
+      "generator": { "command": "...", "args": {}, "exit_code": 0, "result_excerpt": "..." },
       "critic": {
         "scores": {
-          "correctness": 1, "safety": 1, "idempotency": 0.5,
-          "traceability": 1, "spec_compliance": 1
+          "correctness": 1,
+          "safety": 1,
+          "idempotency": 0.5,
+          "traceability": 1,
+          "spec_compliance": 1
         },
         "suggestions": ["..."],
         "blocking": false
       },
-      "decision": "RETRY"
+      "decision": "PASS"
     }
   ],
-  "final": { "status": "PASS", "iter": 2, "output": "..." }
+  "final": {
+    "status": "PASS",
+    "iter": 1,
+    "output": "...",
+    "failure_pattern": null
+  }
 }
 ```
 
-Path: `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` — must be in `.gitignore`. Trace files are **append-only**; never overwrite or delete in place.
+Trace files are append-only; do not overwrite/delete in place. `audit-results/` and `gcl-trace-*.json` are gitignored.
 
-## 5. Prompt Templates
+## 7. Prompt Templates
 
-Each skill's `references/prompt-templates.md` MUST contain:
+Each skill's `references/prompt-templates.md` MUST contain numbered sections `## 1.` through `## 7.` and include:
 
-1. **Generator Prompt Template** — placeholders: `{{user.request}}`, `{{output.critic_feedback}}`, `{{output.rubric}}`
-2. **Critic Prompt Template** — placeholders: `{{output.generator_output}}`, `{{output.trace}}`, `{{output.rubric}}`
+1. Generator Prompt Template — placeholders include `{{user.request}}`, `{{output.critic_feedback}}`, `{{output.rubric}}`
+2. Critic Prompt Template — placeholders include `{{output.operation_intent}}`, `{{output.generator_output}}`, `{{output.trace}}`, `{{output.rubric}}`
+3. Orchestrator Loop Template
+4. Sanitization rules
+5. Failure recovery
+6. Changelog
+7. See also
 
-> Placeholder syntax MUST follow `{{env.*}}` / `{{user.*}}` / `{{output.*}}` convention. Bare `{...}` is NOT allowed.
+Placeholder syntax MUST follow `{{env.*}}` / `{{user.*}}` / `{{output.*}}`; bare `{...}` placeholders are banned.
 
-**Critic prompt must hide the raw user request** to prevent rubber-stamping. Recommended skeleton:
+## 8. Per-Skill Defaults
 
-```text
-You are an independent cloud-operation auditor.
-You will see one execution result and its trace. Score it STRICTLY against the rubric below.
-Do NOT consider the original user request — judge only what was actually done.
+| Skill | GCL | max_iter | Notes |
+|---|---|---:|---|
+| `huaweicloud-ecs-ops` | required | 2 | delete/stop/reboot |
+| `huaweicloud-iam-ops` | required | 2 | detach policy / delete user / rotate keys |
+| `huaweicloud-rds-ops` | required | 2 | delete / DDL / restore |
+| `huaweicloud-gaussdb-ops` | required | 2 | delete / DDL / shard rebalance |
+| `huaweicloud-dcs-ops` | required | 2 | FLUSHALL / delete / restore |
+| `huaweicloud-dms-ops` | required | 2 | queue delete / message purge |
+| `huaweicloud-css-ops` | required | 2 | cluster delete / snapshot restore |
+| `huaweicloud-cce-ops` | required | 2 | node drain / cluster delete |
+| `huaweicloud-cbr-ops` | required | 2 | restore overwrites source |
+| `huaweicloud-vpc-ops` | required | 2 | delete VPC/subnet/SG cascades |
+| `huaweicloud-obs-ops` | required | 2 | bucket delete / lifecycle purge |
+| `huaweicloud-swr-ops` | required | 2 | image delete / tag overwrite |
+| `huaweicloud-functiongraph-ops` | required | 2 | function delete / version disable |
+| `huaweicloud-waf-ops` | required | 2 | policy delete / rule disable |
+| `huaweicloud-hss-ops` | required | 2 | host isolate / policy detach |
+| `huaweicloud-elb-ops` | recommended | 3 | listener/backend/cert changes |
+| `huaweicloud-ces-ops` | recommended | 3 | alarm rule delete |
+| `huaweicloud-lts-ops` | recommended | 3 | log group/stream delete |
+| `huaweicloud-cts-ops` | recommended | 3 | tracker disable / transfer delete |
+| `huaweicloud-billing-ops` | optional | 5 | read-only reports |
+| `huaweicloud-skill-generator` | optional | 3 | meta operation |
 
-rubric: {{output.rubric}}
-generator_output: {{output.generator_output}}
-trace: {{output.trace}}
+## 9. Runtime Scripts
 
-Return strict JSON:
-{
-  "scores": { "correctness": 0|0.5|1, "safety": 0|0.5|1, "idempotency": 0|0.5|1,
-              "traceability": 0|0.5|1, "spec_compliance": 0|0.5|1 },
-  "suggestions": ["≤ 3 concrete, executable improvements"],
-  "blocking": true|false
-}
-```
+| Script | Purpose |
+|---|---|
+| `scripts/gcl_runner.py` | Orchestrator loop; external Critic required in production |
+| `scripts/gcl_trace_aggregate.py` | Aggregate traces into quality summary |
+| `scripts/gcl_alarm_wire.py` | Plan/apply CES alarms from summary |
+| `scripts/check_gcl_conformance.py` | Verify per-skill GCL artifacts |
+| `scripts/check_markdown_links.py` | Validate top-level local path references |
+| `scripts/validate_local.py` | One-command local validation suite |
 
-## 6. Relationship to Existing Quality Gates
+Production GCL MUST use externally supplied isolated Critic scores via `--critic-json` or stdin. `--structural-critic-only` is only for CI/local smoke tests and cannot approve production or human acceptance gates.
 
-```
-┌─────────────────────────────────────────────┐
-│  GCL  — runtime, per-op                     │  ← NEW
-├─────────────────────────────────────────────┤
-│  2-Round Self-Reflection  — per-skill-update│  ← existing
-├─────────────────────────────────────────────┤
-│  P1 Quality Gates  — should-pass           │  ← existing
-├─────────────────────────────────────────────┤
-│  P0 Quality Gates  — must-pass             │  ← existing
-├─────────────────────────────────────────────┤
-│  Three-Pillar Integration (FinOps/SecOps/   │  ← existing
-│  AIOps)                                     │
-└─────────────────────────────────────────────┘
-```
+## 10. Anti-Patterns
 
-- **Skill creation/update** → P0 → P1 → 2-round self-reflection.
-- **Skill execution at runtime** → additionally GCL when skill class is `required`/`recommended`.
+- Shared context G+C
+- Subjective scoring instead of rubric scoring
+- Unbounded loop
+- Critic sees raw user request
+- Safety fail silently downgraded
+- Trace not persisted
+- Critic mutates resources
+- Structural critic used as production quality pass
+- Printing/logging credentials
 
-## 7. Rollout Roadmap
+## 11. Monitoring Integration
 
-| Phase | Date | Scope |
-|-------|------|-------|
-| **Phase 1** | 2026-06-04 | GCL spec in `AGENTS.md`; pilot `huaweicloud-ecs-ops` |
-| **Phase 2** | 2026-06-04 | 4 required skills: iam, rds, vpc, gaussdb |
-| **Phase 3** | 2026-06-04 | Remaining 10 required + 4 recommended + 1 optional skills |
-| **Phase 4** | 2026-06-04 | GCL monitoring via CES (`CUSTOM.GCL` namespace, alarms, dashboards) |
+GCL quality summaries are owned by `huaweicloud-ces-ops`:
 
-## 8. Changelog
+- Schema: `huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json`
+- Design: `huaweicloud-ces-ops/references/gcl-monitoring.md`
+- Namespace: `CUSTOM.GCL`
+- Alarm plan: `scripts/gcl_alarm_wire.py plan --summary <summary.json>`
+
+## 12. Changelog
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-06-04 | Initial GCL specification |
-| 1.1.0 | 2026-06-04 | `huaweicloud-ecs-ops` GCL pilot rollout |
-| 1.2.0 | 2026-06-04 | Phase 2 rollout (iam, rds, vpc, gaussdb) |
-| 1.3.0 | 2026-06-04 | Phase 3 full-remaining rollout (all 20 skills) |
-| 1.4.0 | 2026-06-04 | Phase 4 — GCL monitoring via CES |
-| 1.5.0 | 2026-06-05 | Moved detailed GCL spec to `docs/gcl-spec.md` for TE-6/TE-7 compliance |
+| 1.1.0 | 2026-06-04 | ECS pilot rollout |
+| 1.2.0 | 2026-06-04 | Phase 2 rollout to high-blast-radius skills |
+| 1.3.0 | 2026-06-04 | All 20 skills gained GCL artifacts |
+| 1.4.0 | 2026-06-04 | CES monitoring design |
+| 1.5.0 | 2026-06-05 | Moved detailed spec to `docs/gcl-spec.md` |
+| 1.6.0 | 2026-06-19 | Added qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES quality-summary contract |
 
-## 9. See also
+## 13. See also
 
-- `AGENTS.md §Generator-Critic-Loop` — operational summary (roles, rubric, per-skill defaults, anti-patterns)
-- Per-skill `references/prompt-templates.md` — G/C/O prompt skeletons
-- `huaweicloud-skill-generator/references/huaweicloud-skill-template.md` — skill template with GCL stub
-- `huaweicloud-ces-ops/references/gcl-monitoring.md` — GCL metric collection and alarms
+- `AGENTS.md` — always-loaded GCL hard constraints and validation pointers
+- `huaweicloud-*-ops/references/rubric.md` — per-skill scoring rubrics
+- `huaweicloud-*-ops/references/prompt-templates.md` — G/C/O templates
+- `huaweicloud-ces-ops/references/gcl-monitoring.md` — CES monitoring design
