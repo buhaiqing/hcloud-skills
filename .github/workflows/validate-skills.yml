@@ -41,6 +41,9 @@ jobs:
       - name: GCL trace schema
         run: python3 scripts/validate_gcl_trace_schema.py --latest
 
+      - name: GCL trace security
+        run: python3 scripts/check_gcl_trace_security.py --latest
+
       - name: GCL quality summary schema
         run: python3 scripts/validate_gcl_summary_schema.py
 

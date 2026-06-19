@@ -41,6 +41,7 @@ def build_steps(python: str = sys.executable) -> list[Step]:
             ),
         ),
         Step("GCL trace schema", (python, "scripts/validate_gcl_trace_schema.py", "--latest")),
+        Step("GCL trace security", (python, "scripts/check_gcl_trace_security.py", "--latest")),
         Step("GCL trace aggregate", (python, "scripts/gcl_trace_aggregate.py", "--since-hours", "168")),
         Step("GCL quality summary schema", (python, "scripts/validate_gcl_summary_schema.py")),
         Step(
