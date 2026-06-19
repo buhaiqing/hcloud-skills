@@ -30,6 +30,11 @@ metadata:
     - HW_SECRET_ACCESS_KEY
     - HW_REGION_ID
     - HW_PROJECT_ID
+  gcl:
+    required: true
+    default_max_iter: 2
+    rubric_version: "v1"
+    trace_path: "audit-results/gcl-trace-YYYYMMDD-HHMMSS.json"
 ---
 
 <!-- template: target-skill-layout. Links of the form `references/X.md` below are
@@ -61,7 +66,7 @@ metadata:
 | 3 | **Explicit Actionable Steps** | Every operation: Pre-flight → Execute → Validate → Recover |
 | 4 | **Complete Failure Strategies** | Error taxonomy ≥ 10 codes; HALT vs retry per error type |
 | 5 | **Absolute Single Responsibility** | One product, one resource model; cross-product delegation to other skills |
-| 6 | **GCL Adversarial Rubric** | `## Quality Gate (GCL)` chapter with ≥5-dimension rubric; `references/prompt-templates.md` with G + C prompt skeletons (required for `huaweicloud-{ecs,evs,eip,vpc,rds,gaussdb,dcs,dms,css,cce,cbr,iam,obs,swr,functiongraph,waf,hss}-ops`; recommended for `{elb,ces,lts,cts}-ops`). See root `AGENTS.md` §3, §7, §8. |
+| 6 | **GCL Adversarial Rubric** | `## Quality Gate (GCL)` chapter; `references/rubric.md` with 8 numbered sections; `references/prompt-templates.md` with 7 numbered sections and sanitized `operation_intent`; optional shared prompt text comes from `huaweicloud-skill-generator/references/gcl-prompt-backbone.md`. See root `AGENTS.md` and `docs/gcl-spec.md`. |
 
 ### Three-Pillar Ops Integration (FinOps + SecOps + AIOps)
 
@@ -246,7 +251,7 @@ func main() {
 | `QuotaExceeded` | 0 | — | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused resources.` |
 | `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
 | `ResourceAlreadyExists` | 0 | — | Ask reuse vs new name | `[ERROR] Resource already exists. Use different name or reuse existing.` |
-| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `[WARN] Rate limited. Retrying after computed backoff seconds...` |
 | `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
 
 ### Operation: Describe [Resource]
@@ -340,6 +345,43 @@ hcloud [product] create-backup \
     hcloud ecs describe-instances --region {{env.HW_REGION_ID}}
     ```
 
+## Quality Gate (GCL)
+
+This skill uses Generator-Critic-Loop runtime validation for cloud operations. Generated skills MUST ship the following artifacts:
+
+- `references/rubric.md` — 8 numbered sections: scope, thresholds, evidence, product safety rules, scoring guide, examples, escalation, changelog.
+- `references/prompt-templates.md` — 7 numbered sections: Generator, Critic, Orchestrator, product pre-flight overrides, product-only anti-patterns, changelog, see also.
+- `SKILL.md` metadata `gcl` block — `required`, `default_max_iter`, `rubric_version`, `trace_path`.
+
+### Runtime Roles
+
+| Role | Responsibility | Constraint |
+|---|---|---|
+| Generator | Execute one requested operation via `hcloud` or Go SDK fallback | Capture masked trace; never self-score |
+| Critic | Score Generator output against `references/rubric.md` | Read-only; never see raw `{{user.request}}`; no cloud mutations |
+| Orchestrator | Decide PASS / RETRY / SAFETY_FAIL / MAX_ITER | Persist trace under `audit-results/`; safety=0 aborts |
+
+### Default Rubric Thresholds
+
+| Dimension | Threshold | Notes |
+|---|---:|---|
+| correctness | ≥ 0.5 | Must be 1.0 for destructive/stop/IAM/KMS/DDL if applicable |
+| safety | = 1.0 | Any credential leak or missing destructive confirmation => SAFETY_FAIL |
+| idempotency | ≥ 0.5 | Retries must not duplicate side effects |
+| traceability | ≥ 0.5 | Command, args, response excerpt, errors, request_id/job_id captured |
+| spec_compliance | ≥ 0.5 | Uses OpenAPI/CLI-verified fields; no invented flags |
+
+### Trace Requirements
+
+1. Persist `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` for PASS, MAX_ITER, and SAFETY_FAIL.
+2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK values, tokens, passwords, and authorization headers.
+3. Include sanitized `operation_intent` so the Critic can assess expected state without seeing raw user wording.
+4. Use root scripts for validation: `scripts/gcl_runner.py`, `scripts/gcl_trace_aggregate.py`, `scripts/check_gcl_conformance.py`.
+
+### Prompt Backbone
+
+Use `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` as the shared source for Generator/Critic/Orchestrator wording. Product `prompt-templates.md` should keep product-specific overrides and must not introduce bare `{...}` placeholders.
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md)
@@ -355,6 +397,8 @@ hcloud [product] create-backup \
 - [FinOps Cost Optimization](references/well-architected-assessment.md#3-finops-)
 - [SecOps Security Operations](references/well-architected-assessment.md#4-secops-)
 - [Well-Architected Assessment](references/well-architected-assessment.md)
+- [GCL Rubric](references/rubric.md)
+- [GCL Prompt Templates](references/prompt-templates.md)
 
 ## Well-Architected + Three-Pillar Assessment
 

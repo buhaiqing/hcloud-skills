@@ -15,6 +15,7 @@ compatibility: >-
   `references/evaluation-driven-workflow.md`,
   `references/governance-and-adversarial-review.md` (when present),
   `references/prompt-library.md` (structured prompt repository),
+  `references/gcl-prompt-backbone.md` (shared GCL prompt backbone),
   `references/optimization-analysis.md` (three-dimensional optimization framework),
   `references/user-experience-spec.md` (mandatory UX requirements for generated skills),
   `references/execution-environment.md` (CLI + Go SDK setup details),
@@ -138,6 +139,8 @@ If the user wants **operational execution** (e.g. "create a resource"), load the
 | `references/knowledge-base.md` | Fault pattern library for diagnostic skills | AIOps/diagnosis skills |
 | `references/observability.md` | Metrics→Logs→Traces linkage | Monitoring/AIOps skills |
 | `references/idempotency-checklist.md` | Idempotent behavior for retries/automation | Automation-heavy products |
+| `references/rubric.md` | GCL rubric with 8 numbered sections and product safety rules | Always |
+| `references/prompt-templates.md` | GCL Generator/Critic/Orchestrator templates with sanitized `operation_intent` | Always |
 | `assets/example-config.yaml` | Example configuration with UX and optimization settings | Always |
 | `assets/eval_queries.json` | Trigger accuracy evaluation queries for the generated skill | Always |
 
@@ -275,6 +278,8 @@ huaweicloud-[product]-ops/
 │   ├── monitoring.md              # When monitoring in scope
 │   ├── integration.md
 │   ├── well-architected-assessment.md  # MANDATORY: five-pillar + FinOps + SecOps + AIOps
+│   ├── rubric.md                 # MANDATORY: GCL 8-section rubric
+│   ├── prompt-templates.md       # MANDATORY: GCL 7-section prompt templates
 │   └── idempotency-checklist.md  # When retries/automation required
 ├── assets/
 │   ├── example-config.yaml
@@ -296,6 +301,7 @@ Replace all `[Placeholder]` with product-specific content derived from Step 2. E
 | `description` | Third person, triggers only (per OpenSpec) |
 | `cli_applicability` | `cli-first` / `dual-path` / `sdk-only` / `cli-only` |
 | `cli_support_evidence` | Cite confirmation via `hcloud help` or official docs |
+| `metadata.gcl` | Include `required`, `default_max_iter`, `rubric_version`, `trace_path` |
 
 **Validation checkpoint (Five Core Standards):**
 - [ ] **Boundary**: SHOULD/SHOULD NOT Use conditions complete?
@@ -303,6 +309,7 @@ Replace all `[Placeholder]` with product-specific content derived from Step 2. E
 - [ ] **Steps**: Every operation has Pre-flight → Execute → Validate → Recover?
 - [ ] **Failure**: Error taxonomy ≥ 10 codes, each with recovery action?
 - [ ] **Single Responsibility**: One product, one resource model, clear delegation?
+- [ ] **GCL**: `## Quality Gate (GCL)` present and references `rubric.md` + `prompt-templates.md`?
 
 ---
 
@@ -317,6 +324,8 @@ Replace all `[Placeholder]` with product-specific content derived from Step 2. E
 | `monitoring.md` | Metrics, dashboards, alarms, anomaly patterns | CES docs |
 | `integration.md` | Go bootstrap, JIT SDK setup, dependency config | Execution environment |
 | `well-architected-assessment.md` | Five pillars + FinOps + SecOps + AIOps integration | All official pillars |
+| `rubric.md` | 8 numbered GCL sections with product-specific safety rules | `docs/gcl-spec.md` + product risk model |
+| `prompt-templates.md` | 7 numbered GCL sections; include `{{output.operation_intent}}`; no bare `{...}` placeholders | `references/gcl-prompt-backbone.md` |
 
 ---
 

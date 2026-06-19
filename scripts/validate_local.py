@@ -20,6 +20,7 @@ class Step:
 def build_steps(python: str = sys.executable) -> list[Step]:
     return [
         Step("Validate Markdown local links", (python, "scripts/check_markdown_links.py")),
+        Step("Generator GCL contract", (python, "scripts/check_generator_contract.py")),
         Step(
             "GCL runner smoke test",
             (
