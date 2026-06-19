@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hcloud-skills.local/huaweicloud-ces-ops/assets/gcl-alarm-plan.schema.json",
+  "title": "Huawei Cloud GCL CES Alarm Plan",
+  "type": "object",
+  "required": ["generated_at", "cloud", "metric_namespace", "summary_path", "thresholds", "evaluation", "alarm_plan"],
+  "properties": {
+    "generated_at": { "type": "string", "format": "date-time" },
+    "cloud": { "const": "huaweicloud" },
+    "metric_namespace": { "const": "CUSTOM.GCL" },
+    "summary_path": { "type": "string" },
+    "thresholds": {
+      "type": "object",
+      "required": ["pass_rate_warn", "pass_rate_critical", "max_iter_warn_count", "safety_fail_alert"],
+      "properties": {
+        "pass_rate_warn": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pass_rate_critical": { "type": "number", "minimum": 0, "maximum": 1 },
+        "max_iter_warn_count": { "type": "number", "minimum": 0 },
+        "safety_fail_alert": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["pass_rate", "safety_fail", "max_iter", "breaches", "ok"],
+      "properties": {
+        "pass_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "safety_fail": { "type": "integer", "minimum": 0 },
+        "max_iter": { "type": "integer", "minimum": 0 },
+        "breaches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["severity", "metric", "value", "threshold", "message"],
+            "properties": {
+              "severity": { "enum": ["INFO", "WARN", "CRITICAL"] },
+              "metric": { "type": "string" },
+              "value": { "type": "string" },
+              "threshold": { "type": "string" },
+              "message": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "ok": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "alarm_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "op",
+          "name",
+          "namespace",
+          "metric_name",
+          "comparison_operator",
+          "threshold",
+          "period",
+          "evaluation_periods",
+          "severity",
+          "description"
+        ],
+        "properties": {
+          "op": { "const": "create-or-update-alarm-rule" },
+          "name": {
+            "type": "string",
+            "enum": [
+              "gcl-overall-pass-rate-critical",
+              "gcl-overall-pass-rate-warn",
+              "gcl-safety-fail-critical",
+              "gcl-max-iter-warning"
+            ]
+          },
+          "namespace": { "const": "CUSTOM.GCL" },
+          "metric_name": {
+            "type": "string",
+            "enum": [
+              "gcl_overall_pass_rate",
+              "gcl_safety_fail_count",
+              "gcl_max_iter_count"
+            ]
+          },
+          "comparison_operator": { "enum": ["LT", "GT", "LE", "GE", "EQ", "NE"] },
+          "threshold": { "type": "number" },
+          "period": { "type": "integer", "minimum": 1 },
+          "evaluation_periods": { "type": "integer", "minimum": 1 },
+          "severity": { "enum": ["INFO", "WARN", "CRITICAL"] },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "dry_run": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

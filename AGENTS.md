@@ -117,6 +117,19 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 **For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
 
+## Python Style & Lint (P0)
+
+- Repository linter is **ruff** (`ruff check .`, pinned to `0.11.8` in CI).
+- **After every Python script change, run `ruff check` locally before declaring the task complete.** Do not batch — fix lint findings introduced by the change immediately.
+- New scripts MUST:
+  - Start with a module docstring describing purpose.
+  - Avoid unused imports / unreachable code / bare `except:`.
+  - Prefer `argparse` with explicit `--help` text for CLIs.
+  - Keep functions short; favor pure helpers that are unit-testable.
+- Shared helpers (`json_schema_subset`, `gcl_security_scan`) MUST be reused instead of copy-pasted patterns — same rule as TE-6.
+- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`.
+- CI runs the full `validate_local.py` suite; local dev MUST run the same suite before pushing.
+
 ## Docker Sandbox
 
 ```bash

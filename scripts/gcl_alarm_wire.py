@@ -18,6 +18,7 @@ import json
 import shlex
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,8 @@ GCL_NAMESPACE = "CUSTOM.GCL"
 GCL_PASS_RATE_METRIC = "gcl_overall_pass_rate"
 GCL_SAFETY_FAIL_METRIC = "gcl_safety_fail_count"
 GCL_MAX_ITER_METRIC = "gcl_max_iter_count"
+
+PLAN_GLOB = "audit-results/gcl-alarm-plan-*.json"
 
 
 def load_latest_summary(audit_dir: Path) -> Path | None:
@@ -193,6 +196,9 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, An
     evaluation["_pass_rate_critical"] = thresholds["pass_rate_critical"]
     evaluation["_max_iter_warn_count"] = thresholds["max_iter_warn_count"]
     report = {
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "cloud": "huaweicloud",
+        "metric_namespace": GCL_NAMESPACE,
         "summary_path": str(summary_path),
         "thresholds": thresholds,
         "evaluation": {key: value for key, value in evaluation.items() if not key.startswith("_")},
@@ -201,12 +207,24 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, An
     return report, evaluation
 
 
+def write_plan(root: Path, report: dict[str, Any], suffix: str) -> Path:
+    audit_dir = root / "audit-results"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = audit_dir / f"gcl-alarm-plan-{stamp}-{suffix}.json"
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     built = build_report(args)
     if built is None:
         return 2
     report, evaluation = built
     print(json.dumps(report, indent=2, ensure_ascii=False))
+    if getattr(args, "write_plan", False):
+        path = write_plan(args.root, report, suffix="plan")
+        print(f"[plan] wrote {path}", file=sys.stderr)
     if not evaluation["ok"]:
         print(f"SLO breach detected — {len(evaluation['breaches'])} item(s).", file=sys.stderr)
         return 1
@@ -220,7 +238,10 @@ def cmd_apply(args: argparse.Namespace) -> int:
     report, _evaluation = built
     plan = report["alarm_plan"]
     if args.dry_run:
-        print(json.dumps({"dry_run": True, "plan": plan}, indent=2, ensure_ascii=False))
+        report = {**report, "dry_run": True}
+        path = write_plan(args.root, report, suffix="dry-run")
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        print(f"[apply] dry-run wrote {path}", file=sys.stderr)
         return 0
 
     rc = 0
@@ -267,6 +288,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan = subparsers.add_parser("plan", help="Evaluate summary, render CES alarm plan")
     plan.add_argument("--config", type=Path, default=Path("huaweicloud-ces-ops/assets/example-config.yaml"))
     plan.add_argument("--summary", type=Path, default=None)
+    plan.add_argument("--write-plan", action="store_true", help="Persist the plan JSON to audit-results/ for CI validation")
     plan.set_defaults(func=cmd_plan)
 
     apply = subparsers.add_parser("apply", help="Apply CES alarm plan via hcloud")

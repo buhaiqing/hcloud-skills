@@ -53,4 +53,11 @@ jobs:
       - name: GCL alarm wire plan (no mutations)
         run: |
           python3 scripts/gcl_alarm_wire.py plan \
-            --summary scripts/fixtures/gcl-quality-summary-healthy.json
+            --summary scripts/fixtures/gcl-quality-summary-healthy.json \
+            --write-plan
+
+      - name: GCL alarm plan schema
+        run: python3 scripts/validate_gcl_alarm_plan_schema.py --include-fixture
+
+      - name: GCL alarm plan security
+        run: python3 scripts/check_gcl_alarm_plan_security.py --include-fixture

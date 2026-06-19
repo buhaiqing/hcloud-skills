@@ -86,14 +86,14 @@ class EvaluateTests(unittest.TestCase):
 class PlanTests(unittest.TestCase):
     def test_no_summary_returns_2(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            args = argparse.Namespace(root=Path(tmp), summary=None, config=Path(tmp) / "missing.yaml")
+            args = argparse.Namespace(root=Path(tmp), summary=None, config=Path(tmp) / "missing.yaml", write_plan=False)
             self.assertEqual(quiet_call(gaw.cmd_plan, args), 2)
 
     def test_plan_does_not_call_subprocess_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             summary = write_summary(root, healthy_summary())
-            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml")
+            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml", write_plan=False)
             with patch.object(gaw.subprocess, "run") as run:
                 self.assertEqual(quiet_call(gaw.cmd_plan, args), 0)
                 run.assert_not_called()
@@ -105,8 +105,22 @@ class PlanTests(unittest.TestCase):
                 "pass_rate": 0.60,
                 "totals": {"PASS": 6, "MAX_ITER": 0, "SAFETY_FAIL": 1, "total_runs": 10},
             })
-            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml")
+            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml", write_plan=False)
             self.assertEqual(quiet_call(gaw.cmd_plan, args), 1)
+
+    def test_plan_write_plan_persists_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            summary = write_summary(root, healthy_summary())
+            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml", write_plan=True)
+            self.assertEqual(quiet_call(gaw.cmd_plan, args), 0)
+            persisted = sorted((root / "audit-results").glob("gcl-alarm-plan-*-plan.json"))
+            self.assertEqual(len(persisted), 1)
+            payload = json.loads(persisted[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["cloud"], "huaweicloud")
+            self.assertEqual(payload["metric_namespace"], "CUSTOM.GCL")
+            self.assertIn("generated_at", payload)
+            self.assertEqual(len(payload["alarm_plan"]), 4)
 
 
 class ApplyTests(unittest.TestCase):
@@ -118,6 +132,18 @@ class ApplyTests(unittest.TestCase):
             with patch.object(gaw.subprocess, "run") as run:
                 self.assertEqual(quiet_call(gaw.cmd_apply, args), 0)
                 run.assert_not_called()
+
+    def test_apply_dry_run_persists_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            summary = write_summary(root, healthy_summary())
+            args = argparse.Namespace(root=root, summary=summary, config=root / "missing.yaml", dry_run=True)
+            quiet_call(gaw.cmd_apply, args)
+            persisted = sorted((root / "audit-results").glob("gcl-alarm-plan-*-dry-run.json"))
+            self.assertEqual(len(persisted), 1)
+            payload = json.loads(persisted[0].read_text(encoding="utf-8"))
+            self.assertTrue(payload["dry_run"])
+            self.assertEqual(payload["metric_namespace"], "CUSTOM.GCL")
 
     def test_apply_uses_hcloud_ces_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
