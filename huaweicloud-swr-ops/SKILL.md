@@ -92,8 +92,8 @@ Huawei Cloud SWR provides fully-managed container image repository service with 
 - Task keywords: **SWR**, **Docker**, **image**, **repository**, **organization**, **container**, **镜像**, **推送**, **拉取**
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing/account management → delegate to: billing skill (when present)
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about container orchestration (CCE/K8s) → delegate to: `huaweicloud-cce-ops`
 - Task is about host-level vulnerability scanning → delegate to: `huaweicloud-hss-ops` (when present)

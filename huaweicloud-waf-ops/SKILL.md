@@ -103,8 +103,8 @@ Web Application Firewall (WAF) protects web applications from common web exploit
 - User describes symptoms: website attack, DDoS, bot traffic, SQL injection attempts, XSS attempts
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing / account management → delegate to: billing skill (when present)
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about VPC/subnet/security group → delegate to: `huaweicloud-vpc-ops`
 - Task is about SSL certificate from SCM → delegate to: `huaweicloud-scm-ops` (when present)

@@ -96,7 +96,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 
 ### SHOULD NOT Use This Skill When
 
-- Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops` (when present)
+- Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops`
 - Task is IAM permission model only → delegate to: `huaweicloud-iam-ops` (when present)
 - Task is VPC/subnet creation → delegate to: `huaweicloud-vpc-ops` (when present)
 - Task is ELB listener/backend setup → delegate to: `huaweicloud-elb-ops` (when present)
@@ -620,7 +620,7 @@ This skill's operations are evaluated against:
 
 ## FinOps — ECS Cost Optimization
 
-This skill provides ECS-specific cost optimization guidance. For cross-resource cost analysis, delegate to `huaweicloud-billing-ops` (when available).
+This skill provides ECS-specific cost optimization guidance. For cross-resource cost analysis, delegate to `huaweicloud-billing-ops`.
 
 ### Quick Cost Queries
 

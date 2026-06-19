@@ -93,6 +93,7 @@ Trigger when the user's intent matches any of:
 - **Log Retention**: adjust `ttl_in_days` on log groups
 
 ## SHOULD NOT Use
+- **Billing / cost analysis / 费用 / 预算** → delegate to `huaweicloud-billing-ops`
 
 - **IAM/Role management** → delegate to `huaweicloud-iam-ops`
 - **Cloud resource monitoring/alarms (CES)** → delegate to `huaweicloud-ces-ops`

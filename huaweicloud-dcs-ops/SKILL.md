@@ -90,8 +90,8 @@ Huawei Cloud DCS provides fully-managed Redis (4.0/5.0/6.0) and Memcached instan
 - User asks to deploy, configure, troubleshoot, or monitor DCS via API, SDK, CLI, or automation
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing/account management → delegate to: billing skill (when present)
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about ECS hosting the Redis application → delegate to: `huaweicloud-ecs-ops`
 - Task is about network/VPC without DCS involvement → delegate to: `huaweicloud-vpc-ops`

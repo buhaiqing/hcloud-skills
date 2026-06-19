@@ -115,8 +115,8 @@ Cloud Search Service (CSS) is Huawei Cloud's fully managed search engine service
 - User describes symptoms: cluster unavailable, search latency high, shard allocation failed, snapshot restore failed, disk full
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing / account management → delegate to: billing skill (when present)
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about Log Tank Service (LTS) → delegate to: `huaweicloud-lts-ops`
 - Task is about VPC/subnet/security group → delegate to: `huaweicloud-vpc-ops`

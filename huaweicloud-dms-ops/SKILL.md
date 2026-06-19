@@ -90,8 +90,8 @@ Huawei Cloud DMS provides fully-managed Kafka and RabbitMQ message queue instanc
 - User asks to deploy, configure, troubleshoot, or monitor DMS via API, SDK, CLI, or automation
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing/account management → delegate to: billing skill (when present)
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about network infrastructure (VPC/subnet/security group) → delegate to: `huaweicloud-vpc-ops`
 - Task is about monitoring/alarm rules configuration → delegate to: `huaweicloud-ces-ops`

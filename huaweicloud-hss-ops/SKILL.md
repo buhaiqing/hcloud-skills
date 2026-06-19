@@ -108,8 +108,8 @@ Host Security Service (HSS) provides server security including intrusion detecti
 - User describes symptoms: server compromised, malware detected, vulnerability found, baseline failure, ransomware detected
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing / account management → delegate to: billing skill (when present)
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about WAF (web application firewall) → delegate to: `huaweicloud-waf-ops`
 - Task is about Anti-DDoS → delegate to: `huaweicloud-antiddos-ops` (when present)

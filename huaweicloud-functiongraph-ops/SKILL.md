@@ -95,7 +95,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 
 ### SHOULD NOT Use This Skill When
 
-- Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops` (when present)
+- Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops`
 - Task is IAM permission model only → delegate to: `huaweicloud-iam-ops` (when present)
 - Task is OBS bucket/object management → delegate to: `huaweicloud-obs-ops` (when present)
 - Task is API Gateway (APIG) configuration → delegate to: `huaweicloud-apig-ops` (when present)

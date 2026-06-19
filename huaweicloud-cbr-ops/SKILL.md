@@ -91,8 +91,8 @@ Huawei Cloud CBR provides fully-managed backup and recovery services for ECS, RD
 - Task keywords: **backup**, **restore**, **vault**, **recovery point**, **replication**, **CBR**, **云备份**, **RPO**, **RTO**
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing/account management → delegate to: billing skill (when present)
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about instance-level backup that CBR uses (ECS/DCS/RDS) → delegate to respective skill for instance operations
 - Task is about monitoring/alarm rules → delegate to: `huaweicloud-ces-ops`

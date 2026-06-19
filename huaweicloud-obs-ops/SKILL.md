@@ -91,8 +91,8 @@ Huawei Cloud OBS is an S3-compatible object storage service providing scalable, 
 - User asks to deploy, configure, troubleshoot, or monitor OBS via API, SDK, CLI, obsutil, or automation
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing/account management → delegate to: billing skill (when present)
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about ECS filesystem/local disk → delegate to: `huaweicloud-ecs-ops`
 - Task is about database backup specific to RDS → delegate to: `huaweicloud-rds-ops`

@@ -117,7 +117,7 @@ This skill maps operations to Huawei Cloud's Well-Architected Framework five pil
 
 ### SHOULD NOT Use This Skill When
 
-- Task is purely billing / account management → delegate to: `huaweicloud-billing-ops` (when present)
+- Task is purely billing / account management → delegate to: `huaweicloud-billing-ops`
 - Task is VPC / network only → delegate to: `huaweicloud-vpc-ops`
 - Task is about specific resource operations (ECS, RDS, etc.) → delegate to the respective skill
 - Task is about monitoring/alerting only → delegate to: `huaweicloud-ces-ops`

@@ -106,8 +106,8 @@ GaussDB (for openGauss) is Huawei Cloud's enterprise-grade distributed relationa
 - User describes symptoms: connection refused, disk full, backup failure, slow query, password reset needed
 
 ### SHOULD NOT Use This Skill When
+- Task is purely billing / cost analysis / 费用 / 预算 → delegate to: `huaweicloud-billing-ops`
 
-- Task is purely billing / account management → delegate to: billing skill (when present)
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about RDS MySQL/PostgreSQL → delegate to: `huaweicloud-rds-ops`
 - Task is about DCS Redis/Memcached → delegate to: `huaweicloud-dcs-ops`
