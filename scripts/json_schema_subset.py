@@ -65,6 +65,9 @@ def validate_value(value: Any, schema: dict[str, Any], path: str = "$") -> list[
     if schema.get("format") == "date-time" and isinstance(value, str):
         errors.extend(validate_datetime(value, path))
 
+    if isinstance(value, str) and "minLength" in schema and len(value) < schema["minLength"]:
+        errors.append(f"{path}: string length {len(value)} < minLength {schema['minLength']}")
+
     if isinstance(value, dict):
         required = schema.get("required", [])
         for key in required:
@@ -85,12 +88,37 @@ def validate_value(value: Any, schema: dict[str, Any], path: str = "$") -> list[
             elif isinstance(additional, dict):
                 errors.extend(validate_value(item, additional, f"{path}.{key}"))
 
-    if isinstance(value, list) and isinstance(schema.get("items"), dict):
-        item_schema = schema["items"]
-        for index, item in enumerate(value):
-            errors.extend(validate_value(item, item_schema, f"{path}[{index}]"))
+    if isinstance(value, list):
+        if "minItems" in schema and len(value) < schema["minItems"]:
+            errors.append(f"{path}: array length {len(value)} < minItems {schema['minItems']}")
+        item_schema = schema.get("items")
+        if isinstance(item_schema, dict):
+            for index, item in enumerate(value):
+                errors.extend(validate_value(item, item_schema, f"{path}[{index}]"))
 
     return errors
+
+
+def resolve_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
+    defs = schema.get("$defs", {})
+
+    def resolve(node: Any) -> Any:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                name = ref.rsplit("/", 1)[-1]
+                if name not in defs:
+                    raise KeyError(f"unknown schema $ref: {ref}")
+                return resolve(defs[name])
+            return {key: resolve(value) for key, value in node.items() if key != "$ref"}
+        if isinstance(node, list):
+            return [resolve(item) for item in node]
+        return node
+
+    resolved = resolve(schema)
+    if not isinstance(resolved, dict):
+        raise TypeError("schema root must resolve to an object")
+    return resolved
 
 
 def load_json(path: Path) -> Any:

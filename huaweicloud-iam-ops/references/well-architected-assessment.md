@@ -10,8 +10,8 @@
 
 1. [Framework Overview](#1-framework-overview)
 2. [Five Pillar Assessment](#2-five-pillar-assessment)
-3. [FinOps Integration](#3-finops-)
-4. [SecOps Integration](#4-secops-)
+3. [FinOps Integration](#3-finops-财务运营)
+4. [SecOps Integration](#4-secops-安全运营)
 5. [AIOps Integration](#5-aiops-integration)
 6. [Compliance Checklists](#6-compliance-checklists)
 

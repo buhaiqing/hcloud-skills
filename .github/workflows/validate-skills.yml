@@ -46,6 +46,12 @@ jobs:
       - name: Generator GCL contract
         run: python3 scripts/check_generator_contract.py
 
+      - name: references/ deep link health
+        run: python3 scripts/check_references_link_health.py
+
+      - name: eval_queries.json schema
+        run: python3 scripts/validate_eval_queries_schema.py
+
       - name: GCL Tier-A conformance
         run: python3 scripts/check_gcl_conformance.py
 

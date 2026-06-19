@@ -663,6 +663,6 @@ This skill's operations are evaluated against Huawei Cloud's Well-Architected Fr
 - [Cost Assessment](references/well-architected-assessment.md#23-成本支柱-cost)
 - [Efficiency Assessment](references/well-architected-assessment.md#24-效率支柱-efficiency)
 - [Performance Assessment](references/well-architected-assessment.md#25-性能支柱-performance)
-- [FinOps Integration](references/well-architected-assessment.md#3-finops-)
-- [SecOps Integration](references/well-architected-assessment.md#4-secops-)
+- [FinOps Integration](references/well-architected-assessment.md#3-finops-财务运营)
+- [SecOps Integration](references/well-architected-assessment.md#4-secops-安全运营)
 - [AIOps Integration](references/advanced/aiops-best-practices.md)
