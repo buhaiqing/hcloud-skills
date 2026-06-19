@@ -47,6 +47,9 @@ jobs:
       - name: GCL quality summary schema
         run: python3 scripts/validate_gcl_summary_schema.py
 
+      - name: GCL quality summary security
+        run: python3 scripts/check_gcl_summary_security.py --include-fixture
+
       - name: GCL alarm wire plan (no mutations)
         run: |
           python3 scripts/gcl_alarm_wire.py plan \

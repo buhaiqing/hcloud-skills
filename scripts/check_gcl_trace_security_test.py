@@ -57,35 +57,35 @@ def find_finding(results, field: str) -> dict | None:
 
 class ScanTests(unittest.TestCase):
     def test_clean_trace_passes(self) -> None:
-        self.assertEqual(cts.scan_trace(clean_trace()), [])
+        self.assertEqual(cts.scan_payload(clean_trace()), [])
 
     def test_already_masked_value_passes(self) -> None:
         trace = clean_trace()
         trace["request"] = "HW_SECRET_ACCESS_KEY=<masked>"
-        self.assertEqual(cts.scan_trace(trace), [])
+        self.assertEqual(cts.scan_payload(trace), [])
 
     def test_hw_secret_key_leak_detected(self) -> None:
         trace = clean_trace()
         trace["request"] = "run with HW_SECRET_ACCESS_KEY=supersecretvalue"
-        findings = cts.scan_trace(trace)
+        findings = cts.scan_payload(trace)
         self.assertTrue(any("HW_SECRET_ACCESS_KEY" in finding["pattern"] for finding in findings))
 
     def test_bearer_token_leak_detected(self) -> None:
         trace = clean_trace()
         trace["iterations"][0]["generator"]["result_excerpt"] = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz1234567890"
-        findings = cts.scan_trace(trace)
+        findings = cts.scan_payload(trace)
         self.assertTrue(any("extra:" in finding["pattern"] for finding in findings))
 
     def test_private_key_leak_detected(self) -> None:
         trace = clean_trace()
         trace["iterations"][0]["generator"]["result_excerpt"] = "-----BEGIN RSA PRIVATE KEY-----"
-        findings = cts.scan_trace(trace)
+        findings = cts.scan_payload(trace)
         self.assertTrue(any("private_key_block" in finding["pattern"] for finding in findings))
 
     def test_password_leak_detected(self) -> None:
         trace = clean_trace()
         trace["request"] = "credentials: password=TopSecret1234"
-        findings = cts.scan_trace(trace)
+        findings = cts.scan_payload(trace)
         self.assertTrue(any("password_assignment" in finding["pattern"] for finding in findings))
 
 
