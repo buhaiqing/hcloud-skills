@@ -6,6 +6,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import stat
 import sys
 import tempfile
 import unittest
@@ -216,6 +217,30 @@ class CmdRunEndToEndTests(unittest.TestCase):
         data = json.loads(next((root / "audit-results").glob("gcl-trace-*.json")).read_text(encoding="utf-8"))
         self.assertEqual(data["final"]["status"], "MAX_ITER")
         self.assertIn("idempotency", data["final"]["unresolved"])
+
+
+class AuditResultsDirModeTests(unittest.TestCase):
+    """Lock the contract that `persist_trace` (and its siblings) create
+    `audit-results/` as mode 0700. `check_audit_results_guard` hard-gates
+    on this; a 0755 default umask would fail the guard on first run.
+
+    Regression: CI run #6 surfaced a local audit-results/ at mode 0755
+    after the first GCL run because `mkdir(parents=True, exist_ok=True)`
+    was called without `mode=0o700`. The dir is gitignored so CI's
+    fresh-checkout path was unaffected, but the local-dev path was."""
+
+    def test_persist_trace_creates_audit_results_at_0700(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            trace = {
+                "final": {"status": "PASS", "iter": 0, "output": "x"},
+                "operation_intent": {},
+            }
+            gcl_runner.persist_trace(root, trace)
+            audit = root / "audit-results"
+            self.assertTrue(audit.is_dir())
+            mode = stat.S_IMODE(audit.stat().st_mode)
+            self.assertEqual(mode, 0o700, f"expected 0700, got {oct(mode)}")
 
 
 if __name__ == "__main__":

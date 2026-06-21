@@ -138,5 +138,23 @@ class MainTests(unittest.TestCase):
             self.assertEqual(data["totals"]["PASS"], 1)
 
 
+class AuditResultsDirModeTests(unittest.TestCase):
+    """`persist_summary` must create `audit-results/` at mode 0700 so the
+    `check_audit_results_guard` gate passes. Regression: the dir was
+    created with default umask (0755) on first run, which the guard
+    hard-fails (see gcl_runner_test.AuditResultsDirModeTests)."""
+
+    def test_persist_summary_creates_audit_results_at_0700(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gta.persist_summary(root, {"totals": {"PASS": 0}})
+            audit = root / "audit-results"
+            self.assertTrue(audit.is_dir())
+            import stat
+
+            mode = stat.S_IMODE(audit.stat().st_mode)
+            self.assertEqual(mode, 0o700, f"expected 0700, got {oct(mode)}")
+
+
 if __name__ == "__main__":
     unittest.main()

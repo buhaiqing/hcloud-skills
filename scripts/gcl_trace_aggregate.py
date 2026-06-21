@@ -113,7 +113,10 @@ def collect_paths(root: Path, inputs: list[str] | None, since_hours: int | None)
 
 def persist_summary(root: Path, summary: dict[str, Any]) -> Path:
     out_dir = root / "audit-results"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # Mode 0700 (owner-only) is required by `check_audit_results_guard`; a
+    # default umask would create the dir as 0755 and fail the guard on the
+    # first runtime call.
+    out_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = out_dir / f"gcl-quality-summary-{ts}.json"
     path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

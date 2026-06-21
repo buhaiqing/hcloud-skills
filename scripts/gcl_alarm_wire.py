@@ -233,7 +233,10 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, An
 
 def write_plan(root: Path, report: dict[str, Any], suffix: str) -> Path:
     audit_dir = root / "audit-results"
-    audit_dir.mkdir(parents=True, exist_ok=True)
+    # Mode 0700 (owner-only) is required by `check_audit_results_guard`; a
+    # default umask would create the dir as 0755 and fail the guard on the
+    # first runtime call.
+    audit_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     path = audit_dir / f"gcl-alarm-plan-{stamp}-{suffix}.json"
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

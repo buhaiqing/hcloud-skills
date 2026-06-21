@@ -160,5 +160,24 @@ class ApplyTests(unittest.TestCase):
                 self.assertEqual(first_call[:3], ["hcloud", "ces", "create-alarm-rule"])
 
 
+class AuditResultsDirModeTests(unittest.TestCase):
+    """`write_plan` must create `audit-results/` at mode 0700 so the
+    `check_audit_results_guard` gate passes. Regression: the dir was
+    created with default umask (0755) on first run, which the guard
+    hard-fails (see gcl_runner_test.AuditResultsDirModeTests)."""
+
+    def test_write_plan_creates_audit_results_at_0700(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan = {"thresholds": {}, "alarms": []}
+            gaw.write_plan(root, plan, suffix="test")
+            audit = root / "audit-results"
+            self.assertTrue(audit.is_dir())
+            import stat
+
+            mode = stat.S_IMODE(audit.stat().st_mode)
+            self.assertEqual(mode, 0o700, f"expected 0700, got {oct(mode)}")
+
+
 if __name__ == "__main__":
     unittest.main()
