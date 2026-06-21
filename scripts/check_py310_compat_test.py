@@ -86,6 +86,69 @@ class CompileTests(unittest.TestCase):
             self.assertTrue(message, "expected a non-empty error from python3.10")
 
 
+class ImportTests(unittest.TestCase):
+    """Lock the contract that the import dry-run catches 3.11-only names
+    (``from datetime import UTC`` is the bug the gate was added for). A
+    failure here means a 3.11+ symbol silently leaked into ``scripts/``."""
+
+    def test_clean_script_imports_on_3_10(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = write_script(
+                root,
+                "clean.py",
+                "import json\nimport pathlib\nx = json.dumps({'k': 1})\n",
+            )
+            ok, message = cpc.import_one(cpc.resolve_python_bin(None), script)
+            self.assertTrue(ok, message)
+
+    def test_datetime_utc_import_fails_on_3_10(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = write_script(
+                root,
+                "uses_utc.py",
+                "from datetime import UTC, datetime\nx = datetime.now(UTC)\n",
+            )
+            ok, message = cpc.import_one(cpc.resolve_python_bin(None), script)
+            self.assertFalse(ok)
+            self.assertIn("UTC", message)
+
+    def test_tomllib_import_fails_on_3_10(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            script = write_script(root, "uses_tomllib.py", "import tomllib\n")
+            ok, message = cpc.import_one(cpc.resolve_python_bin(None), script)
+            self.assertFalse(ok)
+            self.assertIn("tomllib", message)
+
+    def test_no_import_check_flag_skips_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_script(
+                root,
+                "uses_utc.py",
+                "from datetime import UTC, datetime\nx = datetime.now(UTC)\n",
+            )
+            old_argv = sys.argv
+            try:
+                sys.argv = [
+                    "check_py310_compat.py",
+                    "--root",
+                    str(root),
+                    "--no-import-check",
+                    "--json",
+                ]
+                with contextlib.redirect_stdout(io.StringIO()) as stdout:
+                    rc = cpc.main()
+                payload = json.loads(stdout.getvalue())
+                # Syntax check passes; import check is opt-out.
+                self.assertEqual(rc, 0)
+                self.assertTrue(payload["results"][0]["ok"])
+            finally:
+                sys.argv = old_argv
+
+
 class CliTests(unittest.TestCase):
     def test_main_clean_repo_passes(self) -> None:
         old_argv = sys.argv

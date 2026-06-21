@@ -144,8 +144,15 @@ def sync(root: Path, dry_run: bool) -> dict[str, Any]:
     runtime = root / RUNTIME_REL
     if not canonical.is_dir():
         return {"ok": False, "errors": [f"{canonical}: missing"], "actions": []}
+    # The runtime copy is gitignored and may not exist on a fresh checkout
+    # (e.g. CI). Bootstrap it on demand so `sync` is self-healing instead of
+    # erroring out before any file copy runs.
     if not runtime.is_dir():
-        return {"ok": False, "errors": [f"{runtime}: missing"], "actions": []}
+        actions: list[str] = [f"create {runtime}"]
+        if not dry_run:
+            runtime.mkdir(parents=True, exist_ok=True)
+        actions.extend(_sync_files(canonical, runtime, dry_run=dry_run))
+        return {"ok": True, "errors": [], "actions": actions, "dry_run": dry_run}
     actions = _sync_files(canonical, runtime, dry_run=dry_run)
     return {"ok": True, "errors": [], "actions": actions, "dry_run": dry_run}
 

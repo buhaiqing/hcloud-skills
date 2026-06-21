@@ -69,11 +69,18 @@ def check_gitignore(root: Path) -> tuple[bool, list[str]]:
 
 
 def check_directory(root: Path) -> tuple[bool, list[str]]:
+    """Verify ``audit-results/`` mode is 0700 *when present*.
+
+    The directory is intentionally gitignored and is created on demand by GCL
+    runtime scripts. A fresh checkout (e.g. CI) without the dir is NOT a
+    failure: only the gitignore contract and the existing-dir mode are
+    hard-gated. Tracked-file / git history violations are checked separately
+    in :func:`check_tracked_files`.
+    """
     errors: list[str] = []
     audit_dir = root / "audit-results"
     if not audit_dir.is_dir():
-        errors.append(f"{audit_dir}: missing (GCL runtime scripts will create it on demand)")
-        return False, errors
+        return True, errors
     mode = stat.S_IMODE(audit_dir.stat().st_mode)
     if mode & 0o077:
         errors.append(f"{audit_dir}: mode {oct(mode)} is too permissive; GCL traces should be owner-only (chmod 700)")

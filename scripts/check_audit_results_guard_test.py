@@ -60,12 +60,15 @@ class GitignoreTests(unittest.TestCase):
 
 
 class DirectoryTests(unittest.TestCase):
-    def test_missing_dir_fails(self) -> None:
+    def test_missing_dir_passes(self) -> None:
+        # audit-results/ is gitignored and created on demand by GCL runtime
+        # scripts. A fresh checkout without the dir must NOT fail the gate;
+        # the gitignore contract (checked separately) is what protects us.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             ok, errors = cag.check_directory(root)
-            self.assertFalse(ok)
-            self.assertTrue(any("missing" in e for e in errors))
+            self.assertTrue(ok, errors)
+            self.assertEqual(errors, [])
 
     def test_permissive_mode_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

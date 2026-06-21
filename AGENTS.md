@@ -144,15 +144,80 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ## Python 3.10 Syntax Compatibility (P0)
 
-- Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only syntax silently breaks the agent.
-- Disallowed in `scripts/*.py`:
-  - PEP 695 type aliases (`type Alias = int`) and PEP 695 type parameters (`class C[T]: ...`, `def f[T](x: T) -> T: ...`).
-  - `tomllib` (use `json`/`yaml` instead).
-  - `Self` from `typing` used without `from __future__ import annotations`; `Self` itself is fine in 3.11+ but keep using `from typing import Self` only when 3.10 is supported.
-  - Any other 3.11+ stdlib symbol used at runtime (not just in annotations).
-- All scripts MUST start with `from __future__ import annotations` so PEP 604 / new-style generics remain *string* and are safe across 3.10 / 3.11 / 3.12.
-- Enforcement: `scripts/check_py310_compat.py` invokes `python3.10 -m py_compile` on every `scripts/*.py`. Local: `python3 scripts/check_py310_compat.py`. CI: same command on `python-version: "3.10"`.
-- **After every Python script change, the script MUST still compile under Python 3.10.** CI and `validate_local.py` both enforce this gate; a regression is a release-blocker.
+- Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only symbol silently breaks the agent.
+- **Why two checks instead of one.** `py_compile` only validates parse-time
+  syntax; it does NOT execute imports. The original `from datetime import UTC`
+  bug shipped through CI because the syntax is valid on 3.10 — only name
+  resolution fails at runtime. The gate below now does both checks under
+  3.10: `py_compile` for syntax, plus an import dry-run for name resolution.
+- Disallowed in `scripts/*.py` (any 3.11+-only stdlib symbol used at runtime):
+
+  | Symbol | Why | 3.10 replacement |
+  |--------|-----|------------------|
+  | `from datetime import UTC` (and `datetime.UTC`) | 3.11+ alias | `from datetime import timezone; UTC = timezone.utc` with `# noqa: UP017` (see existing usage in `gcl_runner.py`) |
+  | `import tomllib` | 3.11+ stdlib module | `import json` (rewrite TOML to JSON/YAML) or `pip install tomli` + `import tomli as tomllib` |
+  | `typing.Self` (without `from __future__ import annotations`) | 3.11+ at runtime | `from typing import Self` (works on 3.10) |
+  | PEP 695 type aliases (`type Alias = int`) | 3.12+ syntax | `Alias = int` (plain assignment) |
+  | PEP 695 type parameters (`class C[T]:`, `def f[T](x: T)`) | 3.12+ syntax | `from typing import TypeVar, Generic` |
+  | `datetime.timezone.utc` 3.11+ features (`datetime.GregorianCalendar`, etc.) | varies | 3.10 compatible equivalent |
+
+  The list above is non-exhaustive; the import dry-run in
+  `check_py310_compat.py` is the source of truth. Add a new entry here when
+  you discover a new trap.
+- All scripts MUST start with `from __future__ import annotations` so PEP 604
+  / new-style generics remain *string* and are safe across 3.10 / 3.11 / 3.12.
+- **Enforcement** (`scripts/check_py310_compat.py`):
+  1. `python3.10 -m py_compile` on every `scripts/*.py` — syntax gate.
+  2. `python3.10 -c "import importlib.util; …"` per script — **import dry-run**
+     that actually loads the module so import-time 3.11+ names are caught.
+  3. Both run in fresh subprocesses; module-level state never leaks.
+  - Local: `python3 scripts/check_py310_compat.py` (uses the first available
+    `python3.10` / `python310`).
+  - CI: same command, pinned to `python-version: "3.10"`.
+  - The `Python unit tests` workflow step **MUST** be pinned to 3.10 too;
+    without `setup-python: "3.10"` it inherits 3.11 and silently misses
+    3.10-only import errors.
+  - `--no-import-check` is reserved for bisecting a gate failure; it is
+    **not** a way to ship a 3.11+ symbol.
+- **After every Python script change, the script MUST pass both gates under
+  Python 3.10.** A regression is a release-blocker. Add a regression test
+  to `check_py310_compat_test.py::ImportTests` whenever you encounter a new
+  3.11+ symbol that the import dry-run catches.
+
+## Test Hermeticity — Runtime-State Tests (P0)
+
+- **Tests that touch the real repo (`Path(__file__).resolve().parents[1]`)
+  are NOT hermetic by default.** They depend on state that exists locally
+  (e.g. `audit-results/` populated by prior GCL runs,
+  `.agents/skills/huaweicloud-skill-generator/` populated by the agent
+  runtime) but does **not** exist on a fresh CI checkout. The two
+  `test_main_repo_passes` / `test_repo_passes_after_sync` failures in CI run
+  #6 are the canonical example.
+- Rules for runtime-state tests:
+  1. **CLI-style smoke tests** (e.g. `cag.main()`, `csgd.check_drift(ROOT)`)
+     MUST tolerate the *absent* state, not just the *wrong* state. The
+     audit-results guard was changed: a missing `audit-results/` directory
+     is no longer a failure (runtime scripts create it on demand), only
+     wrong mode or tracked files fail.
+  2. **Bootstrap functions** (e.g. `sync()`) MUST self-heal — if the
+     runtime copy is missing, `mkdir(parents=True, exist_ok=True)` before
+     copying. Don't expect callers to pre-create the destination.
+  3. **Fixture-style tests** that *do* need the runtime state (e.g.
+     drift-check end-to-end) MUST use `tempfile.TemporaryDirectory()` with
+     a controlled `mkdir` setup, **not** `ROOT`. Mark such tests with a
+     `# REPO-ROOT-DEPENDENT` docstring so reviewers can spot them.
+  4. **No silent state mutation in CI.** A test that calls
+     `csgd.sync(ROOT, dry_run=False)` will leave the runtime copy populated
+     in the CI workspace, polluting subsequent runs. Either guard with
+     `unittest.skipUnless(Path("…").exists(), "requires runtime state")` or
+     copy the populated dir into a tempdir and operate there.
+- When a guard's `check_*` function reports "missing" as an error, ask:
+  is the missing state something the *runtime* creates on demand? If yes,
+  the guard is wrong — the contract is "guard what must already be true",
+  not "guard what will be true after the first runtime call". Use the
+  gitignore / mode / tracked-files checks as the hard gates; let "exists
+  and is correct" be a soft expectation enforced by smoke tests in
+  `validate_local.py`, not by `unittest discover` on a fresh checkout.
 
 ## Docker Sandbox
 

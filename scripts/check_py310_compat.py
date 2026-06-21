@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""Verify that every Python script under ``scripts/`` compiles on Python 3.10.
+"""Verify that every Python script under ``scripts/`` runs on Python 3.10.
 
-CI runs the repository on Python 3.11, but the agent runtime environment is
-still on 3.10. Any script that uses a 3.11-only syntax feature (PEP 695 type
-aliases, ``tomllib``, ``Self`` without ``from __future__``, etc.) silently
-breaks the agent. This gate fails fast by invoking ``python3.10 -m py_compile``
-on every script and reporting any compile error.
+CI lints the repository with Python 3.11, but the agent runtime environment is
+still on 3.10. Any script that uses a 3.11-only feature silently breaks the
+agent. This gate runs **two** checks per script under ``python3.10``:
+
+1. ``py_compile`` — catches parse-time syntax errors (PEP 695, etc.).
+2. **Import dry-run** — actually loads the module via ``importlib`` so that
+   import-time 3.11-only stdlib names (``from datetime import UTC``,
+   ``import tomllib``, ``typing.Self`` without ``from __future__``, etc.) are
+   caught. ``py_compile`` alone misses these because the syntax is valid in
+   3.10; only resolution fails at runtime. See AGENTS.md §Python 3.10 Syntax
+   Compatibility for the forbidden-symbol list.
+
+Both checks run in fresh subprocesses so module-level state never leaks
+between scripts.
 
 Usage:
   python3 scripts/check_py310_compat.py
   python3 scripts/check_py310_compat.py --python-bin python3.10
+  python3 scripts/check_py310_compat.py --no-import-check scripts/check_x.py
   python3 scripts/check_py310_compat.py scripts/check_gcl_trace_security.py
 """
 
@@ -56,6 +66,44 @@ def compile_one(python_bin: str, script: Path) -> tuple[bool, str]:
     return False, message
 
 
+IMPORT_PROBE_TEMPLATE = (
+    "import importlib.util, sys, pathlib; "
+    "p = pathlib.Path({path!r}); "
+    "sys.path.insert(0, str(p.parent)); "
+    "spec = importlib.util.spec_from_file_location('_py310_probe', p); "
+    "mod = importlib.util.module_from_spec(spec); "
+    # Register the module in sys.modules BEFORE exec_module so that decorators
+    # like @dataclass (which introspect sys.modules[cls.__module__]) work on
+    # Python 3.10. Without this, scripts that combine
+    # `from __future__ import annotations` with @dataclass raise a confusing
+    # AttributeError on 3.10 when loaded via importlib. This mirrors the
+    # normal "run as __main__" behaviour where the module is auto-registered.
+    "sys.modules[spec.name] = mod; "
+    "spec.loader.exec_module(mod); "
+    "sys.exit(0)"
+)
+
+
+def import_one(python_bin: str, script: Path) -> tuple[bool, str]:
+    """Run a 3.10 import dry-run for ``script``.
+
+    We deliberately do NOT just ``python3.10 -c 'import script_name'`` because
+    module names with ``-`` and the test files (``*_test.py``) cannot be
+    imported by their bare name. ``importlib.util.spec_from_file_location``
+    loads the file by path so every script under ``scripts/`` can be probed
+    uniformly.
+    """
+    proc = subprocess.run(
+        [python_bin, "-c", IMPORT_PROBE_TEMPLATE.format(path=str(script))],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode == 0:
+        return True, ""
+    message = (proc.stderr or proc.stdout).strip()
+    return False, message
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
@@ -63,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--python-bin",
         default=None,
         help="Python interpreter to use (default: first available among python3.10/python310).",
+    )
+    parser.add_argument(
+        "--no-import-check",
+        action="store_true",
+        help="Skip the import dry-run (syntax check only). Use only when bisecting a gate failure.",
     )
     parser.add_argument("--json", action="store_true")
     parser.add_argument("script", nargs="*", type=Path)
@@ -83,12 +136,20 @@ def main() -> int:
 
     results: list[dict[str, str]] = []
     for script in scripts:
-        ok, message = compile_one(python_bin, script)
         try:
             display = str(script.relative_to(root))
         except ValueError:
             display = str(script)
-        results.append({"script": display, "ok": ok, "error": message})
+        ok, message = compile_one(python_bin, script)
+        if not ok:
+            results.append({"script": display, "ok": False, "stage": "compile", "error": message})
+            continue
+        if not args.no_import_check:
+            ok, message = import_one(python_bin, script)
+            if not ok:
+                results.append({"script": display, "ok": False, "stage": "import", "error": message})
+                continue
+        results.append({"script": display, "ok": True, "stage": "ok", "error": ""})
 
     ok = all(result["ok"] for result in results)
     if args.json:
@@ -104,7 +165,7 @@ def main() -> int:
             status = "OK" if result["ok"] else "FAIL"
             print(f"{status}: {result['script']}")
             if not result["ok"]:
-                print(f"  - {result['error']}")
+                print(f"  - [{result['stage']}] {result['error']}")
     return 0 if ok else 1
 
 

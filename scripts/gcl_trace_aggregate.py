@@ -15,7 +15,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# `datetime.UTC` is a 3.11+ alias; the agent runtime is still on Python 3.10
+# (see AGENTS.md §Python 3.10 Syntax Compatibility). Use `timezone.utc` and
+# expose it under the name `UTC` so call sites stay short.
+UTC = timezone.utc  # noqa: UP017
 from pathlib import Path
 from typing import Any
 
