@@ -30,16 +30,482 @@ CES is the monitoring tool, but it also has operational metrics to track:
 - Bandwidth consumption trends
 - Storage utilization with projected costs
 
-## Multi-Metric Anomaly Patterns
+## Multi-Metric Anomaly Detection Scripts
 
-| Pattern | Metrics Involved | Detection Logic | Severity | Interpretation |
-|---------|-----------------|-----------------|----------|----------------|
-| cpu_mem_dual_high | SYS.ECS > cpu_util + AGT.ECS > memory_util | cpu > 90% AND mem > 85% | Critical | 资源双高压，可能OOM |
-| disk_io_bottleneck | SYS.ECS > disk_read_bytes_rate + disk_write_bytes_rate + AGT.ECS > disk_util | I/O rate spike AND diskUtil > 90% | Warning | 磁盘IO瓶颈 |
-| mem_leak_trend | AGT.ECS > memory_util (30min slope) | slope > 0.5%/min continuously | Critical | 内存泄漏趋势 |
-| sudden_cpu_spike | SYS.ECS > cpu_util | delta(5min) > 50% | Warning | 突发性CPU飙升 |
-| network_saturation | SYS.ECS > network_in_bytes_rate + network_out_bytes_rate | inbound/outbound > 90% of bandwidth limit | Critical | 网络带宽饱和 |
-| rds_connection_exhaustion | SYS.RDS > rds003_conn_usage + SYS.RDS > rds007_qps | conn > 90% AND qps drops | Critical | 数据库连接池耗尽 |
+This section provides executable jq-based detection scripts for 6 common anomaly patterns. Each script queries CES metrics and outputs JSON detection results.
+
+### Detection Criteria Summary
+
+| Pattern | Metrics | Threshold | Severity |
+|---------|---------|-----------|----------|
+| cpu_mem_dual_high | cpu_util + memory_util | cpu > 90% AND mem > 85% | Critical |
+| disk_io_bottleneck | disk_read/write_bytes_rate + disk_util | I/O spike AND util > 90% | Warning |
+| mem_leak_trend | memory_util slope (30min) | slope > 0.5%/min | Critical |
+| sudden_cpu_spike | cpu_util delta (5min) | delta > 50% | Warning |
+| network_saturation | network_in/out_bytes_rate | > 90% of bandwidth | Critical |
+| rds_connection_exhaustion | rds003_conn_usage + rds007_qps | conn > 90% AND qps drops | Critical |
+
+### Execution — CLI (Multi-Pattern Anomaly Detection)
+
+```bash
+#!/bin/bash
+# Multi-metric anomaly detection scripts
+# Detects 6 common patterns: cpu_mem_dual_high, disk_io_bottleneck,
+# mem_leak_trend, sudden_cpu_spike, network_saturation, rds_connection_exhaustion
+
+REGION="{{env.HW_REGION_ID}}"
+INSTANCE_ID="{{user.instance_id}}"
+OUTPUT_DIR="anomaly-detection-results"
+
+mkdir -p "$OUTPUT_DIR"
+
+# ============================================================================
+# Pattern 1: cpu_mem_dual_high
+# Severity: Critical — cpu > 90% AND mem > 85%
+# ============================================================================
+detect_cpu_mem_dual_high() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 600))000
+  local to_ts=$(date +%s)000
+
+  # Query CPU utilization (SYS.ECS)
+  local cpu_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name cpu_util \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Query Memory utilization (AGT.ECS)
+  local mem_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace AGT.ECS \
+    --metric-name memory_util \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Extract latest values
+  local cpu_util=$(echo "$cpu_data" | jq -r '.datapoints[0].value // 0')
+  local mem_util=$(echo "$mem_data" | jq -r '.datapoints[0].value // 0')
+
+  # Detection logic: cpu > 90 AND mem > 85
+  local detected=false
+  if (( $(echo "$cpu_util > 90" | bc -l) )) && \
+     (( $(echo "$mem_util > 85" | bc -l) )); then
+    detected=true
+  fi
+
+  # Output JSON result
+  jq -n \
+    --arg pattern "cpu_mem_dual_high" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 3 \
+    --argjson cpu_util "$cpu_util" \
+    --argjson memory_util "$mem_util" \
+    --arg severity "Critical" \
+    --arg recommendation "资源双高压可能导致OOM，建议：(1)检查高负载进程 (2)考虑扩容CPU/内存 (3)检查内存泄漏" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {cpu_util: $cpu_util, memory_util: $memory_util},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Pattern 2: disk_io_bottleneck
+# Severity: Warning — I/O rate spike AND disk_util > 90%
+# ============================================================================
+detect_disk_io_bottleneck() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 600))000
+  local to_ts=$(date +%s)000
+
+  # Query disk read bytes rate
+  local read_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name disk_read_bytes_rate \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Query disk write bytes rate
+  local write_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name disk_write_bytes_rate \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Query disk utilization (AGT.ECS)
+  local util_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace AGT.ECS \
+    --metric-name disk_util \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  local read_rate=$(echo "$read_data" | jq -r '.datapoints[0].value // 0')
+  local write_rate=$(echo "$write_data" | jq -r '.datapoints[0].value // 0')
+  local disk_util=$(echo "$util_data" | jq -r '.datapoints[0].value // 0')
+
+  # Calculate total I/O rate and detect spike (threshold: 100MB/s = 104857600 bytes/s)
+  local io_rate=$(echo "$read_rate + $write_rate" | bc -l)
+  local io_spike=false
+  if (( $(echo "$io_rate > 104857600" | bc -l) )); then
+    io_spike=true
+  fi
+
+  # Detection: I/O spike AND disk_util > 90%
+  local detected=false
+  if [ "$io_spike" = true ] && \
+     (( $(echo "$disk_util > 90" | bc -l) )); then
+    detected=true
+  fi
+
+  jq -n \
+    --arg pattern "disk_io_bottleneck" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 3 \
+    --argjson read_rate "$read_rate" \
+    --argjson write_rate "$write_rate" \
+    --argjson io_rate "$io_rate" \
+    --argjson disk_util "$disk_util" \
+    --arg severity "Warning" \
+    --arg recommendation "磁盘IO瓶颈，建议：(1)检查IO密集型进程 (2)考虑使用高速云盘 (3)优化IO读写模式" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {read_rate_Bps: $read_rate, write_rate_Bps: $write_rate, total_io_Bps: $io_rate, disk_util_pct: $disk_util},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Pattern 3: mem_leak_trend
+# Severity: Critical — memory_util slope > 0.5%/min continuously
+# ============================================================================
+detect_mem_leak_trend() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 1800))000  # 30 min window
+  local to_ts=$(date +%s)000
+
+  # Query memory utilization over 30 minutes (6 data points, 5min apart)
+  local mem_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace AGT.ECS \
+    --metric-name memory_util \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 300 \
+    --output json 2>/dev/null)
+
+  # Extract all datapoints for slope calculation
+  local datapoints=$(echo "$mem_data" | jq '.datapoints | map(.value)')
+
+  # Calculate linear slope using jq
+  # y = mx + b, m = (n*sum(xy) - sum(x)*sum(y)) / (n*sum(x^2) - (sum(x))^2)
+  local slope_result=$(echo "$datapoints" | jq --argjson n 6 '
+    to_entries | map({
+      x: (.key | tonumber),
+      y: (.value | tonumber)
+    }) | reduce .[] as $p (
+      {sx: 0, sy: 0, sxx: 0, sxy: 0};
+      {
+        sx: (.sx + $p.x),
+        sy: (.sy + $p.y),
+        sxx: (.sxx + ($p.x * $p.x)),
+        sxy: (.sxy + ($p.x * $p.y))
+      }
+    ) | {
+      slope: ((6 * .sxy - .sx * .sy) / (6 * .sxx - .sx * .sx)),
+      points: .
+    }
+  ')
+
+  local slope=$(echo "$slope_result" | jq '.slope')
+  # slope is per 5-min interval; convert to %/min: slope / 5
+  local slope_per_min=$(echo "$slope" | jq '(. / 5)')
+
+  # Detection: slope > 0.5% per minute continuously
+  local detected=false
+  if (( $(echo "$slope_per_min > 0.5" | bc -l) )); then
+    detected=true
+  fi
+
+  jq -n \
+    --arg pattern "mem_leak_trend" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 6 \
+    --argjson slope "$slope" \
+    --argjson slope_per_min "$slope_per_min" \
+    --argjson threshold 0.5 \
+    --arg severity "Critical" \
+    --arg recommendation "检测到内存泄漏趋势，建议：(1)分析内存使用进程 (2)检查内存泄漏代码 (3)考虑重启应用或扩容" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {slope_per_interval: $slope, slope_per_min: $slope_per_min, threshold_per_min: $threshold},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Pattern 4: sudden_cpu_spike
+# Severity: Warning — delta(5min) > 50%
+# ============================================================================
+detect_sudden_cpu_spike() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 600))000
+  local to_ts=$(date +%s)000
+
+  # Query CPU utilization
+  local cpu_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name cpu_util \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Get current and 5-min-ago values
+  local current_cpu=$(echo "$cpu_data" | jq -r '.datapoints[0].value // 0')
+  local prev_cpu=$(echo "$cpu_data" | jq -r '.datapoints[5].value // 0')
+
+  # Calculate delta
+  local delta=$(echo "$current_cpu - $prev_cpu" | bc -l)
+  local abs_delta=${delta#-}  # absolute value
+
+  # Detection: |delta| > 50%
+  local detected=false
+  if (( $(echo "$abs_delta > 50" | bc -l) )); then
+    detected=true
+  fi
+
+  jq -n \
+    --arg pattern "sudden_cpu_spike" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 3 \
+    --argjson current_cpu "$current_cpu" \
+    --argjson prev_cpu "$prev_cpu" \
+    --argjson delta "$delta" \
+    --argjson threshold 50 \
+    --arg severity "Warning" \
+    --arg recommendation "检测到CPU突变，建议：(1)检查触发突变的进程 (2)分析突发负载来源 (3)考虑限流或扩容" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {current_cpu_pct: $current_cpu, prev_cpu_pct: $prev_cpu, delta_pct: $delta, threshold_pct: $threshold},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Pattern 5: network_saturation
+# Severity: Critical — inbound/outbound > 90% of bandwidth limit
+# ============================================================================
+detect_network_saturation() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 600))000
+  local to_ts=$(date +%s)000
+
+  # Query network in bytes rate
+  local net_in=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name network_in_bytes_rate \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Query network out bytes rate
+  local net_out=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.ECS \
+    --metric-name network_out_bytes_rate \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  local in_rate=$(echo "$net_in" | jq -r '.datapoints[0].value // 0')
+  local out_rate=$(echo "$net_out" | jq -r '.datapoints[0].value // 0')
+
+  # Default bandwidth limit: 1000Mbps = 125000000 bytes/s (if not provided)
+  local bandwidth_limit=$(echo "125000000" | jq -r '. // 125000000')
+  local threshold_rate=$(echo "$bandwidth_limit * 0.9" | bc -l)
+
+  # Detection: inbound OR outbound > 90% of bandwidth
+  local detected=false
+  if (( $(echo "$in_rate > $threshold_rate" | bc -l) )) || \
+     (( $(echo "$out_rate > $threshold_rate" | bc -l) )); then
+    detected=true
+  fi
+
+  jq -n \
+    --arg pattern "network_saturation" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 3 \
+    --argjson inbound_rate "$in_rate" \
+    --argjson outbound_rate "$out_rate" \
+    --argjson bandwidth_limit "$bandwidth_limit" \
+    --argjson threshold_pct 90 \
+    --arg severity "Critical" \
+    --arg recommendation "网络带宽饱和，建议：(1)优化网络流量 (2)启用流量压缩 (3)考虑升级带宽 (4)检查异常流量来源" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {inbound_Bps: $inbound_rate, outbound_Bps: $outbound_rate, bandwidth_limit_Bps: $bandwidth_limit, threshold_pct: $threshold_pct},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Pattern 6: rds_connection_exhaustion
+# Severity: Critical — conn > 90% AND qps drops
+# ============================================================================
+detect_rds_connection_exhaustion() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  local from_ts=$(($(date +%s) - 600))000
+  local to_ts=$(date +%s)000
+
+  # Query RDS connection usage (rds003_conn_usage)
+  local conn_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.RDS \
+    --metric-name rds003_conn_usage \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  # Query RDS QPS (rds007_qps)
+  local qps_data=$(hcloud ces query-metric-data \
+    --region "$REGION" \
+    --namespace SYS.RDS \
+    --metric-name rds007_qps \
+    --dimension "instance_id:$instance_id" \
+    --from "$from_ts" \
+    --to "$to_ts" \
+    --period 60 \
+    --output json 2>/dev/null)
+
+  local conn_usage=$(echo "$conn_data" | jq -r '.datapoints[0].value // 0')
+  local current_qps=$(echo "$qps_data" | jq -r '.datapoints[0].value // 0')
+  local prev_qps=$(echo "$qps_data" | jq -r '.datapoints[5].value // 0')
+
+  # Detection: conn > 90% AND qps drops
+  local detected=false
+  if (( $(echo "$conn_usage > 90" | bc -l) )) && \
+     (( $(echo "$current_qps < $prev_qps * 0.8" | bc -l) )); then
+    detected=true
+  fi
+
+  jq -n \
+    --arg pattern "rds_connection_exhaustion" \
+    --argjson detected "$detected" \
+    --arg timestamp "$(date -Iseconds)" \
+    --arg resource_id "$instance_id" \
+    --json-float 3 \
+    --argjson conn_usage_pct "$conn_usage" \
+    --argjson current_qps "$current_qps" \
+    --argjson prev_qps "$prev_qps" \
+    --argjson qps_drop_pct "$(echo "if $prev_qps > 0 then (($current_qps - $prev_qps) / $prev_qps * 100) else 0 end" | bc -l)" \
+    --arg severity "Critical" \
+    --arg recommendation "数据库连接池接近耗尽，建议：(1)检查连接泄漏 (2)优化连接池配置 (3)考虑扩容数据库实例 (4)优化慢查询" \
+    '{
+      pattern: $pattern,
+      detected: $detected,
+      timestamp: $timestamp,
+      resource_id: $resource_id,
+      metric_values: {conn_usage_pct: $conn_usage_pct, current_qps: $current_qps, prev_qps: $prev_qps},
+      severity: $severity,
+      recommendation: $recommendation
+    }'
+}
+
+# ============================================================================
+# Main: Run all detections for specified instance
+# ============================================================================
+run_all_detections() {
+  local instance_id="${1:-$INSTANCE_ID}"
+  echo "Running anomaly detection for instance: $instance_id"
+  echo "=============================================="
+
+  echo "--- cpu_mem_dual_high ---"
+  detect_cpu_mem_dual_high "$instance_id" | tee "$OUTPUT_DIR/cpu_mem_dual_high.json"
+
+  echo "--- disk_io_bottleneck ---"
+  detect_disk_io_bottleneck "$instance_id" | tee "$OUTPUT_DIR/disk_io_bottleneck.json"
+
+  echo "--- mem_leak_trend ---"
+  detect_mem_leak_trend "$instance_id" | tee "$OUTPUT_DIR/mem_leak_trend.json"
+
+  echo "--- sudden_cpu_spike ---"
+  detect_sudden_cpu_spike "$instance_id" | tee "$OUTPUT_DIR/sudden_cpu_spike.json"
+
+  echo "--- network_saturation ---"
+  detect_network_saturation "$instance_id" | tee "$OUTPUT_DIR/network_saturation.json"
+
+  echo "--- rds_connection_exhaustion ---"
+  detect_rds_connection_exhaustion "$instance_id" | tee "$OUTPUT_DIR/rds_connection_exhaustion.json"
+
+  echo "=============================================="
+  echo "Results saved to: $OUTPUT_DIR/"
+}
+
+# Run if executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  run_all_detections "$@"
+fi
+```
 
 ## Alarm Storm Patterns and Suppression
 
@@ -474,7 +940,7 @@ fi
 ### Execution — CLI (Cascade Pattern Correlation)
 
 ```bash
-#!/binbash
+#!/bin/bash
 # Cascade pattern correlation algorithm
 # Identifies cascading alarm sequences for root cause analysis
 
