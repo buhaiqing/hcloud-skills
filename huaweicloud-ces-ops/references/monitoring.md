@@ -107,7 +107,6 @@ detect_cpu_mem_dual_high() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 3 \
     --argjson cpu_util "$cpu_util" \
     --argjson memory_util "$mem_util" \
     --arg severity "Critical" \
@@ -188,7 +187,6 @@ detect_disk_io_bottleneck() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 3 \
     --argjson read_rate "$read_rate" \
     --argjson write_rate "$write_rate" \
     --argjson io_rate "$io_rate" \
@@ -264,7 +262,6 @@ detect_mem_leak_trend() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 6 \
     --argjson slope "$slope" \
     --argjson slope_per_min "$slope_per_min" \
     --argjson threshold 0.5 \
@@ -320,7 +317,6 @@ detect_sudden_cpu_spike() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 3 \
     --argjson current_cpu "$current_cpu" \
     --argjson prev_cpu "$prev_cpu" \
     --argjson delta "$delta" \
@@ -372,7 +368,7 @@ detect_network_saturation() {
   local in_rate=$(echo "$net_in" | jq -r '.datapoints[0].value // 0')
   local out_rate=$(echo "$net_out" | jq -r '.datapoints[0].value // 0')
 
-  # Default bandwidth limit: 1000Mbps = 125000000 bytes/s (if not provided)
+  # Default bandwidth limit: 1000Mbps = 125000000 bytes/s (假设值，实际应替换为 {{user.bandwidth_limit}} 或通过API查询)
   local bandwidth_limit=$(echo "125000000" | jq -r '. // 125000000')
   local threshold_rate=$(echo "$bandwidth_limit * 0.9" | bc -l)
 
@@ -388,7 +384,6 @@ detect_network_saturation() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 3 \
     --argjson inbound_rate "$in_rate" \
     --argjson outbound_rate "$out_rate" \
     --argjson bandwidth_limit "$bandwidth_limit" \
@@ -441,7 +436,7 @@ detect_rds_connection_exhaustion() {
   local current_qps=$(echo "$qps_data" | jq -r '.datapoints[0].value // 0')
   local prev_qps=$(echo "$qps_data" | jq -r '.datapoints[5].value // 0')
 
-  # Detection: conn > 90% AND qps drops
+  # Detection: conn > 90% AND qps drops (qps < prev_qps * 0.8 意味着20%以上的QPS下降)
   local detected=false
   if (( $(echo "$conn_usage > 90" | bc -l) )) && \
      (( $(echo "$current_qps < $prev_qps * 0.8" | bc -l) )); then
@@ -453,7 +448,6 @@ detect_rds_connection_exhaustion() {
     --argjson detected "$detected" \
     --arg timestamp "$(date -Iseconds)" \
     --arg resource_id "$instance_id" \
-    --json-float 3 \
     --argjson conn_usage_pct "$conn_usage" \
     --argjson current_qps "$current_qps" \
     --argjson prev_qps "$prev_qps" \
