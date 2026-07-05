@@ -423,35 +423,16 @@ hcloud BSS ListCosts --time-range="LAST_90_DAYS" --interval="MONTHLY"
 
 #### Mining Patterns (8 Categories)
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  OPTIMIZATION MINING — 8 PATTERNS                                     │
-├──────────────────────────────────────────────────────────────────────┤
-│  P1  Idle / Orphaned Resources  (持续 < 5% 利用率 > 7 天)            │
-│      → Stop / Release via huaweicloud-{product}-ops                   │
-│                                                                      │
-│  P2  Right-size (over/under-provisioned)  (CPU < 20% or > 80%)      │
-│      → Resize via huaweicloud-{product}-ops                           │
-│                                                                      │
-│  P3  Reserved Instance Opportunity  (on-demand > 30% for 30d)       │
-│      → Buy reserved via Op 13                                         │
-│                                                                      │
-│  P4  Resource Package Waste  (utilization < 40%)                     │
-│      → Downsize / refund package                                      │
-│                                                                      │
-│  P5  Storage Tiering  (data not accessed > 90 days)                  │
-│      → Archive / lifecycle policy via huaweicloud-obs-ops             │
-│                                                                      │
-│  P6  Log Retention  (logs > 30 days)                                  │
-│      → Prune / archive via huaweicloud-lts-ops                        │
-│                                                                      │
-│  P7  Idle Resource Package  (balance unused > 70%)                   │
-│      → Refund via Op 7                                                │
-│                                                                      │
-│  P8  Zombie Resources  (no billing activity > 30 days)               │
-│      → Review / release via huaweicloud-{product}-ops                 │
-└──────────────────────────────────────────────────────────────────────┘
-```
+| # | Pattern | Trigger | Action |
+|---|---------|---------|--------|
+| P1 | Idle/Orphaned | utilization < 5% > 7d | Stop/Release via product skill |
+| P2 | Right-size | CPU < 20% or > 80% | Resize via product skill |
+| P3 | Reserved Opportunity | on-demand > 30% for 30d | Buy reserved (Op 13) |
+| P4 | Package Waste | utilization < 40% | Downsize/refund |
+| P5 | Storage Tiering | data untouched > 90d | Archive via obs-ops |
+| P6 | Log Retention | logs > 30d | Prune via lts-ops |
+| P7 | Idle Package | balance unused > 70% | Refund (Op 7) |
+| P8 | Zombie Resources | no billing activity > 30d | Review/release |
 
 #### Prioritization Formula
 
@@ -513,29 +494,16 @@ hcloud BSS ListCosts --time-range="LAST_30_DAYS" --group-by="service_type"
 
 #### Lifecycle
 
-```
-DETECTED (Op 12/13) ──▶ PENDING_REVIEW ──▶ APPROVED
-                                               │
-                      ┌────────────────────────┘
-                      ▼
-                   APPLIED (via product skill)
-                      │
-                      ▼
-                   MEASURING
-                      │
-                 ┌────┴────┐
-                 ▼         ▼
-            VALIDATED  REGRESSED
-            (savings   (savings < 50%
-             ≥ 80%)     or cost ↑)
-                 │         │
-                 ▼         ▼
-              CLOSED   ROLLED_BACK
-                 │         │
-                 └──┬──────┘
-                    ▼
-                ARCHIVED
-```
+| From | To | Trigger |
+|------|----|---------|
+| DETECTED | PENDING_REVIEW | Auto (Op 12/13) |
+| PENDING_REVIEW | APPROVED | User confirms |
+| APPROVED | APPLIED | Execute via product skill |
+| APPLIED | MEASURING | Auto (7-day window) |
+| MEASURING | VALIDATED | savings ≥ 80% |
+| MEASURING | REGRESSED | savings < 50% or cost ↑ |
+| REGRESSED | ROLLED_BACK | Auto (< 2h) |
+| VALIDATED/ROLLED_BACK | ARCHIVED | Auto |
 
 #### Log Format (JSONL)
 
@@ -597,151 +565,35 @@ File: `~/.hcloud/optimization_tracker.jsonl`
 
 ## Prompt Examples (常见用户提问示例)
 
-### A. Bill & Account (账单/余额)
-
-| # | Query (中文) | Query (English) | Expected Op |
-|---|-------------|-----------------|-------------|
-| 1 | "查看我的账户余额" | "Check my account balance" | Op 1 |
-| 2 | "查一下本月消费了多少" | "How much did I spend this month?" | Op 2 |
-| 3 | "上个月的账单明细给我看看" | "Show last month's bill details" | Op 3 |
-| 4 | "查一下账户上的欠款情况" | "Check any outstanding debts" | Op 1 |
-| 5 | "最近三个月的费用趋势" | "Cost trend for last 3 months" | Op 5 |
-
-### B. Budget & Alerts (预算/告警)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "帮我设置本月预算¥10,000" | Op 6 |
-| 2 | "当预算超过80%时发短信通知" | Op 6 |
-| 3 | "更新之前设定的预算金额" | Op 6 |
-| 4 | "查看当前的预算执行情况" | Op 6 |
-| 5 | "删除预算'生产环境月度预算'" | Op 6 |
-| 6 | "列出所有预算告警规则" | Op 6 |
-
-### C. Cost Analysis (成本分析)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "按产品分析最近一个月的成本" | Op 8 |
-| 2 | "按企业项目拆分费用" | Op 8 |
-| 3 | "按标签分析成本分布" | Op 8 |
-| 4 | "对比本月和上月的费用差异" | Op 8 + Op 11 |
-| 5 | "分析华东区域的费用构成" | Op 8 |
-| 6 | "Top 10 最贵的服务排行" | Op 8 |
-
-### D. Optimization & Savings (优化/省钱)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "帮我看一下有哪些地方可以省钱" | Op 12 |
-| 2 | "找出所有闲置资源" | Op 12 |
-| 3 | "分析存储成本优化机会" | Op 12 (P5) |
-| 4 | "哪些实例利用率太低需要降配" | Op 12 (P2) |
-| 5 | "有没有僵尸资源在白白扣费" | Op 12 (P8) |
-| 6 | "日志超过30天的能删掉吗" | Op 12 (P6) |
-
-### E. Reserved Capacity (包年包月/预留)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "哪些按需实例应该转包年包月？" | Op 13 |
-| 2 | "买3年预留实例划算还是1年？" | Op 10 + Op 13 |
-| 3 | "预留覆盖率建议" | Op 13 |
-| 4 | "按量和包年包月哪个更省钱" | Op 10 |
-| 5 | "预留实例的折扣是多少？" | Op 10 |
-
-### F. Resource Package (资源包)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "查看剩余资源包" | Op 7 |
-| 2 | "资源包快要到期了，帮我续费" | Op 7 |
-| 3 | "有哪些资源包可以退订" | Op 7 |
-| 4 | "退订未使用的资源包" | Op 7 |
-| 5 | "资源包使用率报告" | Op 7 |
-
-### G. Anomaly & Alerts (异常/告警)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "为什么这个月的费用突然涨了？" | Op 11 |
-| 2 | "帮我检测成本异常波动" | Op 11 |
-| 3 | "检查预算执行率是否异常" | Op 6 + Op 11 |
-| 4 | "过去30天有没有费用突增？" | Op 11 |
-| 5 | "对比上个月的费用变化" | Op 11 |
-| 6 | "预警：本月预算已消耗85%" | Op 6 |
-
-### H. FinOps Reporting (报告/对账)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "生成上个月的FinOps报告" | Op 5 + Op 8 |
-| 2 | "按成本中心的费用对账单" | Op 8 |
-| 3 | "各BU的成本分摊报表" | Op 8 |
-| 4 | "本月优化收益汇总" | Op 14 |
-| 5 | "查看闭环跟踪报告" | Op 14 |
-
-### I. Cross-Skill Cost Ops (跨技能)
-
-| # | Query | Delegate To |
-|---|-------|-------------|
-| 1 | "帮我看看哪些ECS可以降配" | P2 → huaweicloud-ecs-ops |
-| 2 | "分析RDS使用率并优化" | P2 → huaweicloud-rds-ops |
-| 3 | "CDN流量包快用完了" | P4 → huaweicloud-cdn-ops |
-| 4 | "存储费用太高了，怎么办" | P5 → huaweicloud-obs-ops |
-| 5 | "日志太多成本太高" | P6 → huaweicloud-lts-ops |
-| 6 | "ECS实例空闲太多" | P1 → huaweicloud-ecs-ops |
-
-### J. Maturity & Guidance (成熟度/指导)
-
-| # | Query | Expected Op |
-|---|-------|-------------|
-| 1 | "评估我的FinOps成熟度" | Op 15 |
-| 2 | "成本管理做到什么水平了？" | Op 15 |
-| 3 | "L4成熟度需要什么条件？" | Op 15 |
-| 4 | "给一份FinOps改进路线图" | Op 15 |
-| 5 | "怎么从L2升到L3？" | Op 15 |
-
-### Prompt Intent Map
-
-| Category | Intent | Example | Expected Op |
-|----------|--------|---------|-------------|
-| A | Query balance/credit | "查余额" | Op 1 |
-| A | Query monthly spending | "本月花了多少" | Op 2 |
-| B | Create/modify budget | "设置预算¥10,000" | Op 6 |
-| C | Multi-dimension analysis | "按产品分析成本" | Op 8 |
-| D | Find savings opportunities | "哪些可以优化" | Op 12 |
-| E | Reserved capacity advice | "该不该买包年" | Op 13 |
-| F | Manage resource packages | "查看资源包" | Op 7 |
-| G | Detect cost anomalies | "费用突然涨了" | Op 11 |
-| H | Generate reports | "FinOps报告" | Op 5 + Op 8 |
-| I | Cross-skill delegation | "ECS哪些能降配" | Delegate |
-| J | Maturity evaluation | "FinOps水平" | Op 15 |
+| Category | Example Query | Expected Op |
+|----------|--------------|-------------|
+| A Bill/Account | "查看账户余额" / "本月消费多少" | Op 1, 2, 3 |
+| B Budget | "设置预算¥10,000" / "超80%发短信" | Op 6 |
+| C Cost Analysis | "按产品分析成本" / "按项目拆分费用" | Op 8 |
+| D Optimization | "哪里可以省钱" / "找出闲置资源" | Op 12 |
+| E Reserved | "该不该买包年" / "预留覆盖率" | Op 10, 13 |
+| F Resource Package | "查看资源包" / "退订未使用的" | Op 7 |
+| G Anomaly | "费用突然涨了" / "检测异常波动" | Op 11 |
+| H Reporting | "FinOps报告" / "成本对账单" | Op 5, 8 |
+| I Cross-Skill | "ECS哪些能降配" / "存储费用太高" | Delegate |
+| J Maturity | "FinOps成熟度评估" / "改进路线图" | Op 15 |
 
 ## Cross-Skill Delegation Patterns
 
-| When User Says | Intent | This Skill Does | Delegates To | Expected Op |
-|---------------|--------|----------------|--------------|-------------|
-| "停止闲置ECS" | Stop idle resource | Detect idle via Op 12 | huaweicloud-ecs-ops (stop) | P1 |
-| "释放无用的磁盘" | Delete orphaned disk | Detect orphaned via Op 12 | huaweicloud-ecs-ops (delete) | P1 |
-| "ECS降配" | Resize down | Detect over-provisioned via Op 12 | huaweicloud-ecs-ops (resize) | P2 |
-| "RDS升配" | Resize up | Detect under-provisioned via Op 12 | huaweicloud-rds-ops (resize) | P2 |
-| "买包年包月" | Buy reserved | Coverage analysis via Op 13 | — (provide recommendation) | P3 |
-| "买资源包" | Buy resource package | Needs analysis via Op 13 | — (provide recommendation) | P4 |
-| "OBS归档旧数据" | Tier storage | Detect old data via Op 12 | huaweicloud-obs-ops (lifecycle) | P5 |
-| "清理日志" | Prune logs | Detect old logs via Op 12 | huaweicloud-lts-ops (delete) | P6 |
-| "退订闲置资源包" | Refund package | Detect idle via Op 12 | huaweicloud-billing-ops (refund) | P7 |
-| "检查僵尸资源" | Find zombie | Scan billing for inactive via Op 12 | huaweicloud-{product}-ops | P8 |
-| "创建ECS实例" | Provision | — (not billing) | huaweicloud-ecs-ops | — |
-| "配置安全组" | Network config | — (not billing) | huaweicloud-vpc-ops | — |
-| "创建IAM用户" | IAM operation | — (not billing) | huaweicloud-iam-ops | — |
-| "查看CPU使用率" | Monitor | — (not billing) | huaweicloud-ces-ops | — |
-| "备份RDS" | Backup | — (not billing) | huaweicloud-rds-ops | — |
-| "费用异常诊断" | Cross-diagnose | Cost analysis via Op 8+11 | huaweicloud-cts-ops (audit) | G |
-| "ECS费用为什么高" | Resource cost drill-down | Cost breakdown via Op 8 | huaweicloud-ecs-ops (config check) | C |
-| "CDN带宽费用分析" | Service cost analysis | Bandwidth cost via Op 8 | huaweicloud-cdn-ops (bandwidth) | C |
-| "容器集群成本优化" | Container optimization | Cluster cost via Op 8+12 | huaweicloud-cce-ops (node pool) | D |
-| "综合FinOps报告" | Full FinOps report | All Ops combined | Cross-skill aggregation | H |
+| Intent | This Skill Detects | Delegates To | Pattern |
+|--------|-------------------|--------------|---------|
+| Stop idle resource | Idle ECS (Op 12 P1) | huaweicloud-ecs-ops | P1 |
+| Delete orphaned disk | Orphaned EVS (Op 12 P1) | huaweicloud-ecs-ops | P1 |
+| Resize ECS | Over/under-provisioned (Op 12 P2) | huaweicloud-ecs-ops | P2 |
+| Resize RDS | Under-provisioned (Op 12 P2) | huaweicloud-rds-ops | P2 |
+| Buy reserved | Coverage gap (Op 13) | — (recommendation only) | P3 |
+| Archive storage | Old data (Op 12 P5) | huaweicloud-obs-ops | P5 |
+| Prune logs | Old logs (Op 12 P6) | huaweicloud-lts-ops | P6 |
+| Refund package | Idle package (Op 12 P7) | self (Op 7) | P7 |
+| Find zombies | Inactive resources (Op 12 P8) | huaweicloud-{product}-ops | P8 |
+| Cost drill-down | High service cost (Op 8) | huaweicloud-{product}-ops | C |
+| Container optimization | Cluster cost (Op 8+12) | huaweicloud-cce-ops | D |
+| Full FinOps report | All ops combined | Cross-skill aggregation | H |
 
 ## Quality Gate (GCL)
 
