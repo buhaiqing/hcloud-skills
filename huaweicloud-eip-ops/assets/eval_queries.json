@@ -1,0 +1,79 @@
+{
+  "skill": "huaweicloud-eip-ops",
+  "should_match": [
+    {
+      "query": "Allocate a 5 Mbps EIP and bind it to my ECS instance",
+      "reason": "Direct EIP allocate + bind request"
+    },
+    {
+      "query": "申请一个弹性公网IP，按带宽计费",
+      "reason": "Chinese EIP allocate request with explicit billing mode"
+    },
+    {
+      "query": "Resize the bandwidth on eip-12345 from 5 Mbps to 20 Mbps",
+      "reason": "Bandwidth resize operation"
+    },
+    {
+      "query": "Move EIP eip-12345 into shared bandwidth bw-pool-001",
+      "reason": "EIP shared-bandwidth migration"
+    },
+    {
+      "query": "Release all unbound EIPs in cn-north-4 older than 7 days",
+      "reason": "Idle EIP cleanup / cost leak remediation"
+    },
+    {
+      "query": "EIP 5xx errors, public access drops for my prod ECS",
+      "reason": "EIP-level traffic failure"
+    },
+    {
+      "query": "Switch this EIP from 按带宽 to 按流量 billing",
+      "reason": "Billing-mode change (FinOps)"
+    },
+    {
+      "query": "Unbind EIP eip-12345 from ECS server-abc",
+      "reason": "Unbind operation (prod context requires two-step)"
+    },
+    {
+      "query": "Why is my EIP bandwidth saturated at 95%?",
+      "reason": "AIOps pattern 1 (bandwidth saturation) — needs this skill + CES"
+    },
+    {
+      "query": "List all EIPs in cn-north-4 and their bandwidth sizes",
+      "reason": "Read-only inventory (GCL-exempt)"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "Create a VPC with CIDR 10.0.0.0/16",
+      "reason": "VPC creation, not EIP — delegate to huaweicloud-vpc-ops"
+    },
+    {
+      "query": "Add a security group rule to allow SSH from 10.0.0.0/8",
+      "reason": "Security group, not EIP — delegate to huaweicloud-vpc-ops"
+    },
+    {
+      "query": "Create a NAT gateway with SNAT for private subnet",
+      "reason": "NAT gateway — delegate to huaweicloud-nat-ops"
+    },
+    {
+      "query": "Set up DDoS protection for my EIP",
+      "reason": "DDoS policy — delegate to huaweicloud-ddos-ops (when present) or huaweicloud-hss-ops"
+    },
+    {
+      "query": "Reconcile last month's billing for ECS + EIP",
+      "reason": "Cross-resource billing — delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "Investigate ELB 502 errors for backend ECS",
+      "reason": "ELB troubleshooting — delegate to huaweicloud-elb-ops"
+    },
+    {
+      "query": "Show me my monthly Huawei Cloud invoice",
+      "reason": "Pure billing — delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "Create a CES alarm on CPU > 80% for ECS",
+      "reason": "CES / metric, not EIP — delegate to huaweicloud-ces-ops"
+    }
+  ]
+}

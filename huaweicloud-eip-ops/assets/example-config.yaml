@@ -1,0 +1,82 @@
+# EIP Example Configuration — Huawei Cloud Elastic IP
+
+# Bandwidth thresholds (anchored, reused across alarm templates)
+eip_alarm: &eip_alarm
+  bandwidth_util_warning: 80
+  bandwidth_util_critical: 95
+  burst_p99_p50_ratio: 10
+  idle_unbound_days: 7
+  billing_shock_ratio: 3
+
+# SMN notification topics (region + project scoped; use env placeholders)
+notification:
+  critical: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:eip-critical-alerts"
+  warning:  &notification_warning  "urn:smn:{{env.HW_REGION_ID}}{{env.HW_PROJECT_ID}}:eip-warning-alerts"
+
+# CES alarm templates reusing the anchors
+alarm_templates:
+  - <<: *eip_alarm
+    name: "eip-bandwidth-saturation-warning"
+    resource_type: "eip"
+    metric: "outgoing_bandwidth / bandwidth.size"
+    threshold: 80
+    alarm_level: 2
+    window_minutes: 5
+    alarm_actions: *notification_warning
+  - <<: *eip_alarm
+    name: "eip-bandwidth-saturation-critical"
+    resource_type: "eip"
+    metric: "outgoing_bandwidth / bandwidth.size"
+    threshold: 95
+    alarm_level: 1
+    window_minutes: 5
+    alarm_actions: *notification_critical
+  - <<: *eip_alarm
+    name: "eip-burst-ddos-shape"
+    resource_type: "eip"
+    metric: "incoming_bandwidth p99 / p50"
+    threshold: 10
+    alarm_level: 1
+    window_minutes: 10
+    alarm_actions: *notification_critical
+  - <<: *eip_alarm
+    name: "eip-idle-detector"
+    resource_type: "eip"
+    metric: "port_id == null for days"
+    threshold: 7
+    alarm_level: 3
+    window_minutes: 1440
+    alarm_actions: *notification_warning
+  - <<: *eip_alarm
+    name: "eip-billing-shock"
+    resource_type: "eip"
+    metric: "24h cost / 7d median"
+    threshold: 3
+    alarm_level: 2
+    window_minutes: 1440
+    alarm_actions: *notification_warning
+
+# Billing-mode decision matrix (read by agents to pick a default)
+billing_mode_defaults:
+  prod_24x7:    "bandwidth"
+  dev_spiky:    "traffic"
+  multi_eip:    "shared"
+  wholesale:    "95"
+
+# Idle EIP cost baselines (CNY; for cost-attribution estimates only)
+finops:
+  idle_eip_bandwidth_cny_per_mbps_per_hour: 0.067
+  idle_eip_window_days: 7
+  warm_pool_max_size: 1
+
+# Cost tagging contract (applied to every EIP at allocate)
+required_tags:
+  - owner
+  - purpose
+  - cost-center
+  - lifecycle
+
+# Shared-bandwidth sizing heuristic
+shared_bandwidth_heuristic:
+  min_eips_to_consider: 3
+  expected_savings_pct: 35
