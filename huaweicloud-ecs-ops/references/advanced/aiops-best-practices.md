@@ -133,210 +133,47 @@ correlation_groups:
     suppress_after_first: true
 ```
 
-### Alarm Storm Detection Script
+### Alarm Storm Detection
 
-**Purpose**: Detect alarm storms (high-frequency ECS alarm events) to trigger suppression workflow and prevent alert fatigue.
+> **Canonical implementation**: see [`huaweicloud-ces-ops/references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md#storm-detection-logic-cli) — the common storm detection pattern. ECS skill adds namespace filtering and instance-level grouping below.
 
-#### Detection Criteria
+#### ECS-Specific Detection Criteria
 
-| Criterion | Threshold | Detection Logic |
-|-----------|-----------|-----------------|
-| Alarm frequency | > 10 alarms / 5 minutes | Time-window counting |
-| Same instance spam | > 3 alarms on one ECS instance within 5 min | Group by instance_id |
-| Namespace dominance | > 50% alarms from SYS.ECS namespace | Namespace distribution analysis |
-| Cascade pattern | ECS alarm followed by downstream alarm within 2 min | Sequential timing correlation |
+| Criterion | Threshold | ECS-Specific Logic |
+|-----------|-----------|--------------------|
+| Alarm frequency | > 10 alarms / 5 minutes | Same as CES common |
+| Same instance spam | > 3 alarms on one ECS instance within 5 min | Group by `instance_id` dimension |
+| Namespace dominance | > 50% alarms from `SYS.ECS` | Filter `--namespace SYS.ECS` |
+| Cascade pattern | ECS alarm → downstream within 2 min | Sequential timing correlation |
 
-#### Execution — CLI (ECS Alarm Storm Detection)
+#### ECS Additions to Common Pattern
 
+The CES common storm detection script handles frequency counting, time-window filtering, and cascade detection. ECS adds three extensions:
+
+**1. Namespace filter** — scope to ECS alarms only:
 ```bash
-#!/bin/bash
-# ECS alarm storm detection script
-# Detects high-frequency alarm events for suppression trigger
-# Adapted from CES storm detection for SYS.ECS namespace
-
-REGION="{{env.HW_REGION_ID}}"
-ECS_NAMESPACE="SYS.ECS"
-STORM_WINDOW_MINUTES=5
-STORM_THRESHOLD=10
-SAME_INSTANCE_THRESHOLD=3
-
-# Step 1: Query recent ECS alarm events (last 15 minutes for analysis)
-ALARM_EVENTS=$(hcloud ces list-alarm-history \
-  --region "$REGION" \
-  --namespace "$ECS_NAMESPACE" \
-  --from "$(date -d '-15 minutes' +%s)000" \
-  --to "$(date +%s)000" \
-  --output json)
-
-# Step 2: Count alarms in storm window (last 5 minutes)
-WINDOW_START=$(date -d "-${STORM_WINDOW_MINUTES} minutes" +%s)
-RECENT_ALARMS=$(echo "$ALARM_EVENTS" | jq --arg start "$WINDOW_START" '
-  [.alarm_histories[] | select((.alarm_time | strftime("%s") | tonumber) > ($start | tonumber))]
-')
-
-ALARM_COUNT=$(echo "$RECENT_ALARMS" | jq 'length')
-
-# Step 3: Storm detection - frequency check
-if [ "$ALARM_COUNT" -ge "$STORM_THRESHOLD" ]; then
-  echo "🚨 ECS ALARM STORM DETECTED: $ALARM_COUNT alarms in last $STORM_WINDOW_MINUTES minutes"
-  
-  # Step 4: Instance spam analysis (ECS-specific: group by instance_id)
-  INSTANCE_SPAM=$(echo "$RECENT_ALARMS" | jq --argjson threshold "$SAME_INSTANCE_THRESHOLD" '
-    group_by(.dimensions[] | select(.name == "instance_id") | .value) | map(select(length > $threshold)) | map({
-      instance_id: .[0].dimensions[] | select(.name == "instance_id") | .value,
-      alarm_count: length,
-      alarm_names: [.[].alarm_name],
-      alarm_types: [.[].metric_name]
-    })
-  ')
-  
-  SPAM_COUNT=$(echo "$INSTANCE_SPAM" | jq 'length')
-  if [ "$SPAM_COUNT" -gt 0 ]; then
-    echo "⚠️ Instance spam detected: $SPAM_COUNT ECS instances with > $SAME_INSTANCE_THRESHOLD alarms"
-    echo "$INSTANCE_SPAM" | jq -r '.[] | "   Instance: \(.instance_id), Alarms: \(.alarm_count), Types: \(.alarm_types | join(", "))"'
-  fi
-  
-  # Step 5: Metric distribution analysis (ECS-specific: cpu_util, mem_usedPercent, diskUsage_percent)
-  METRIC_DOMINANCE=$(echo "$RECENT_ALARMS" | jq '
-    group_by(.metric_name) | map({metric: .[0].metric_name, count: length})
-    | sort_by(-.count) | .[0]
-  ')
-  
-  DOMINANT_METRIC=$(echo "$METRIC_DOMINANCE" | jq -r '.metric')
-  DOMINANT_PERCENT=$(echo "$METRIC_DOMINANCE" | jq --argjson total "$ALARM_COUNT" '.count * 100 / $total')
-  
-  if [ "$DOMINANT_PERCENT" -gt 50 ]; then
-    echo "📊 Metric dominance: $DOMINANT_METRIC accounts for ${DOMINANT_PERCENT}% of alarms"
-    
-    # ECS-specific: suggest root cause based on dominant metric
-    case "$DOMINANT_METRIC" in
-      cpu_util) echo "   💡 Likely cause: CPU saturation, process storm, or workload spike" ;;
-      mem_usedPercent) echo "   💡 Likely cause: Memory leak, OOM risk, or app memory bloat" ;;
-      diskUsage_percent) echo "   💡 Likely cause: Disk filling, log accumulation, or storage exhaustion" ;;
-      net_bits|net_pps) echo "   💡 Likely cause: Network storm, DDoS, or bandwidth saturation" ;;
-      *) echo "   💡 Check ECS instance health for root cause" ;;
-    esac
-  fi
-  
-  # Step 6: Cascade pattern detection (ECS → downstream services)
-  CASCADE_PATTERN=$(echo "$RECENT_ALARMS" | jq '
-    sort_by(.alarm_time) | [.[]] | 
-    reduce .[] as $alarm (
-      {patterns: [], prev: null};
-      if .prev != null and (($alarm.alarm_time | strftime("%s") | tonumber) - (.prev.alarm_time | strftime("%s") | tonumber)) < 120
-      then .patterns += [{
-        first: .prev.alarm_name,
-        first_metric: .prev.metric_name,
-        second: $alarm.alarm_name,
-        second_metric: $alarm.metric_name,
-        time_diff_seconds: (($alarm.alarm_time | strftime("%s") | tonumber) - (.prev.alarm_time | strftime("%s") | tonumber))
-      }]
-      else .
-      end |
-      .prev = $alarm
-    ) | .patterns
-  ')
-  
-  CASCADE_COUNT=$(echo "$CASCADE_PATTERN" | jq 'length')
-  if [ "$CASCADE_COUNT" -gt 0 ]; then
-    echo "🔗 Cascade patterns detected: $CASCADE_COUNT potential cascade sequences"
-    echo "$CASCADE_PATTERN" | jq -r '.[] | "   \(.first) [\(.first_metric)] → \(.second) [\(.second_metric)] (\(.time_diff_seconds)s)"'
-  fi
-  
-  # Step 7: Trigger suppression workflow
-  echo "📋 Triggering ECS alarm suppression workflow..."
-  
-  # Identify root alarm (earliest in storm)
-  ROOT_ALARM=$(echo "$RECENT_ALARMS" | jq 'sort_by(.alarm_time) | .[0]')
-  ROOT_ALARM_ID=$(echo "$ROOT_ALARM" | jq -r '.alarm_id')
-  ROOT_ALARM_NAME=$(echo "$ROOT_ALARM" | jq -r '.alarm_name')
-  ROOT_INSTANCE_ID=$(echo "$ROOT_ALARM" | jq -r '.dimensions[] | select(.name == "instance_id") | .value')
-  
-  echo "   Root alarm identified: $ROOT_ALARM_NAME ($ROOT_ALARM_ID)"
-  echo "   Affected instance: $ROOT_INSTANCE_ID"
-  
-  # ECS-specific: delegate to appropriate skill based on root alarm type
-  ROOT_METRIC=$(echo "$ROOT_ALARM" | jq -r '.metric_name')
-  case "$ROOT_METRIC" in
-    cpu_util|mem_usedPercent) echo "   → Delegate to: huaweicloud-ecs-ops (instance-level diagnosis)" ;;
-    diskUsage_percent) echo "   → Delegate to: huaweicloud-ecs-ops + storage cleanup" ;;
-    net_bits|net_pps) echo "   → Delegate to: huaweicloud-waf-ops (potential DDoS)" ;;
-  esac
-  
-  # Output storm report for automation
-  jq -n \
-    --argjson storm_detected true \
-    --argjson alarm_count "$ALARM_COUNT" \
-    --argjson window_minutes "$STORM_WINDOW_MINUTES" \
-    --argjson instance_spam "$INSTANCE_SPAM" \
-    --arg dominant_metric "$DOMINANT_METRIC" \
-    --argjson dominant_percent "$DOMINANT_PERCENT" \
-    --argjson cascade_patterns "$CASCADE_PATTERN" \
-    --arg root_alarm_id "$ROOT_ALARM_ID" \
-    --arg root_alarm_name "$ROOT_ALARM_NAME" \
-    --arg root_instance_id "$ROOT_INSTANCE_ID" \
-    --arg root_metric "$ROOT_METRIC" \
-    --arg timestamp "$(date -Iseconds)" \
-    '{
-      storm_detected: $storm_detected,
-      alarm_count: $alarm_count,
-      window_minutes: $window_minutes,
-      instance_spam: $instance_spam,
-      dominant_metric: $dominant_metric,
-      dominant_percent: $dominant_percent,
-      cascade_patterns: $cascade_patterns,
-      root_alarm: {
-        alarm_id: $root_alarm_id,
-        alarm_name: $root_alarm_name,
-        instance_id: $root_instance_id,
-        metric: $root_metric
-      },
-      timestamp: $timestamp,
-      action: "trigger_suppression_workflow",
-      delegation_target: (if $root_metric | test("cpu|mem") then "huaweicloud-ecs-ops" elif $root_metric | test("disk") then "huaweicloud-ecs-ops+storage" elif $root_metric | test("net") then "huaweicloud-waf-ops" else "huaweicloud-ecs-ops" end)
-    }' | tee ecs-storm-detection-report.json
-  
-else
-  echo "✅ No ECS alarm storm: $ALARM_COUNT alarms in last $STORM_WINDOW_MINUTES minutes (threshold: $STORM_THRESHOLD)"
-fi
+ALARM_EVENTS=$(hcloud ces list-alarm-history --region "$REGION" \
+  --namespace "SYS.ECS" \
+  --from "$(date -d '-15 minutes' +%s)000" --to "$(date +%s)000" --output json)
 ```
 
-#### Storm Detection Output Format
+**2. Instance spam analysis** — group by `instance_id` dimension:
+```bash
+INSTANCE_SPAM=$(echo "$RECENT_ALARMS" | jq --argjson threshold 3 '
+  group_by(.dimensions[] | select(.name == "instance_id") | .value)
+  | map(select(length > $threshold))
+  | map({instance_id: .[0].dimensions[] | select(.name == "instance_id").value, alarm_count: length})
+')
+```
 
-```json
-{
-  "storm_detected": true,
-  "alarm_count": 15,
-  "window_minutes": 5,
-  "instance_spam": [
-    {
-      "instance_id": "i-abc123",
-      "alarm_count": 5,
-      "alarm_names": ["cpu_high", "mem_high", "disk_high"],
-      "alarm_types": ["cpu_util", "mem_usedPercent", "diskUsage_percent"]
-    }
-  ],
-  "dominant_metric": "cpu_util",
-  "dominant_percent": 60,
-  "cascade_patterns": [
-    {
-      "first": "cpu_high",
-      "first_metric": "cpu_util",
-      "second": "mem_high",
-      "second_metric": "mem_usedPercent",
-      "time_diff_seconds": 45
-    }
-  ],
-  "root_alarm": {
-    "alarm_id": "alarm-001",
-    "alarm_name": "cpu_high",
-    "instance_id": "i-abc123",
-    "metric": "cpu_util"
-  },
-  "timestamp": "2026-05-26T10:30:00Z",
-  "action": "trigger_suppression_workflow",
-  "delegation_target": "huaweicloud-ecs-ops"
-}
+**3. ECS root-cause hints** — route by dominant metric:
+```bash
+case "$DOMINANT_METRIC" in
+  cpu_util)           echo "→ CPU saturation / process storm" ;;
+  mem_usedPercent)    echo "→ Memory leak / OOM risk" ;;
+  diskUsage_percent)  echo "→ Disk filling / log accumulation" ;;
+  net_bits|net_pps)   echo "→ Network storm / DDoS — delegate to huaweicloud-waf-ops" ;;
+esac
 ```
 
 #### Integration with ECS Suppression Workflow
