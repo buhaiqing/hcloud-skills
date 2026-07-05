@@ -1,5 +1,15 @@
 # AGENTS.md — hcloud-skills
 
+## Pre-flight Gate (每次执行前必跑)
+
+收到任务后，**先跑以下 checklist，再动手**：
+
+1. **Orchestrator 触发检查** — 任务是否涉及多文件 / 多阶段 / 多 skill / 用户提到「orchestrator」？→ 是则加载 `subagent-orchestrator` skill 并输出决策 JSON，再执行
+2. **Skill generator 检查** — 是否在创建 / 更新 `huaweicloud-*-ops`？→ 是则加载 `huaweicloud-skill-generator` skill
+3. **直接执行** — 以上均否 → 直接做
+
+> 违反此 gate = 流程违规，即使结果正确也需复盘。
+
 ## What This Repo Is
 
 Huawei Cloud Ops Skill collection — structured agent runbooks (`huaweicloud-[product]-ops`) executed via `hcloud` CLI (primary) with Go SDK JIT fallback. Not application code; no build/test/lint step.
