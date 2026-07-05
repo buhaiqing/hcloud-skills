@@ -34,6 +34,8 @@ CES is the monitoring tool, but it also has operational metrics to track:
 
 ### Detection Criteria
 
+> **Canonical pattern registry**: see [`references/advanced/anomaly-patterns.md`](advanced/anomaly-patterns.md) — single source of truth for pattern names, thresholds, and cross-skill metric mapping.
+
 | Pattern | Metrics | Threshold | Severity |
 |---------|---------|-----------|----------|
 | cpu_mem_dual_high | cpu_util + memory_util | cpu > 90% AND mem > 85% | Critical |

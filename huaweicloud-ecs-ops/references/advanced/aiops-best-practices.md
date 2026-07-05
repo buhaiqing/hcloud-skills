@@ -4,18 +4,18 @@ Intelligent operations integration patterns for ECS, enabling ML-driven anomaly 
 
 ## Multi-Metric Correlation Patterns
 
-ECS AIOps leverages multiple CES metrics for intelligent anomaly detection:
+> **Canonical pattern registry**: see [`huaweicloud-ces-ops/references/advanced/anomaly-patterns.md`](../../huaweicloud-ces-ops/references/advanced/anomaly-patterns.md) — single source of truth for pattern names, thresholds, and severity.
 
-### Pattern Detection Matrix
+ECS maps canonical patterns to product-specific metrics:
 
-| Pattern Name | Metrics Correlated | Logic | ML Feature Type | Severity |
-|--------------|-------------------|-------|-----------------|----------|
-| `cpu_mem_dual_high` | `cpu_util`, `mem_usedPercent` | cpu>80% AND mem>85% | boolean AND | Critical |
-| `disk_io_bottleneck` | `read_iops`, `write_iops`, `diskUsage_percent` | IOPS>limit AND diskUtil>90% | composite | Critical |
-| `mem_leak_trend` | `mem_usedPercent` (30min window) | slope > 0.5%/min | time_series_slope | Warning |
-| `sudden_cpu_spike` | `cpu_util` delta | delta(5min) > 50% | rate_of_change | Warning |
-| `network_storm` | `net_bits`, `net_pps` | pps > 10× baseline | anomaly_score | Critical |
-| `disk_fill_acceleration` | `diskUsage_percent` (1h halves) | rate_half2 > rate_half1 | acceleration | Critical |
+| Pattern | ECS Metrics | ECS Namespace | ML Feature Type |
+|---------|------------|---------------|------------------|
+| `cpu_mem_dual_high` | `cpu_util` + `mem_usedPercent` | SYS.ECS + AGT.ECS | boolean AND |
+| `disk_io_bottleneck` | `read_iops` + `write_iops` + `diskUsage_percent` | SYS.ECS + AGT.ECS | composite |
+| `mem_leak_trend` | `mem_usedPercent` (30min window) | AGT.ECS | time_series_slope |
+| `sudden_cpu_spike` | `cpu_util` delta (5min) | SYS.ECS | rate_of_change |
+| `network_storm` | `net_bits` + `net_pps` | SYS.ECS | anomaly_score |
+| `disk_fill_acceleration` | `diskUsage_percent` (1h halves) | AGT.ECS | acceleration |
 
 ## ML Integration Requirements
 
@@ -23,7 +23,7 @@ ECS AIOps leverages multiple CES metrics for intelligent anomaly detection:
 
 | Pattern | ML Feature | Training Window | Data Source |
 |---------|-----------|-----------------|-------------|
-| `cpu_mem_dual_high` | `cpu_util`, `mem_usedPercent` values | Real-time (5s) | CES DescribeMetricData |
+| `cpu_mem_dual_high` | `cpu_util`, `mem_usedPercent` | Real-time (5s) | CES DescribeMetricData |
 | `mem_leak_trend` | Slope coefficient | 30 min sliding | CES time-series |
 | `disk_fill_acceleration` | Fill rate half1, half2 | 1h window (2 × 30min) | CES aggregated |
 | `network_storm` | `net_pps` baseline, current | 7d baseline + current | CES historical |
