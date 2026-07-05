@@ -135,26 +135,6 @@ Huawei Cloud OBS is an S3-compatible object storage service providing scalable, 
 Create, manage, and monitor Huawei Cloud OBS buckets and objects using `hcloud` CLI, obsutil, or JIT Go SDK.
 
 ### Prerequisites
-- [ ] CLI installed (`hcloud`) or obsutil binary downloaded
-- [ ] Credentials configured: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Endpoint set: `HW_ENDPOINT`
-
-### Verify Setup
-```bash
-# List all buckets
-hcloud obs list-buckets
-```
-
-### Your First Command
-```bash
-# Create a bucket
-hcloud obs create-bucket --bucket "{{user.bucket_name}}" --acl private --storage-class standard
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — OBS architecture, storage classes, versioning
-- [Execution Flows](#execution-flows) — Create buckets, upload objects, manage lifecycle
-- [Troubleshooting](references/troubleshooting.md) — Fix access denied, upload failures
 
 ## Capabilities at a Glance
 
@@ -443,44 +423,7 @@ hcloud obs set-bucket-website \
 
 ## Prerequisites
 
-### 1. Install CLI
-
-```bash
-curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-hcloud version
-```
-
-### 2. Install obsutil (Alternative CLI)
-
-```bash
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-[ "$ARCH" = "x86_64" ] && ARCH="64" || ARCH="arm64"
-curl -fsSL "https://obs-community.obs.cn-north-4.myhuaweicloud.com/obsutil/current/obsutil_${OS}_${ARCH}.tar.gz" | tar -xz
-chmod +x obsutil
-./obsutil version
-```
-
-### 3. Configure obsutil
-
-```bash
-./obsutil config -i={{env.HW_ACCESS_KEY_ID}} -k={{env.HW_SECRET_ACCESS_KEY}} -e={{env.HW_ENDPOINT}}
-```
-
-### 4. Bootstrap Go Runtime (JIT SDK Fallback)
-
-```bash
-if ! command -v go &> /dev/null; then
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-    [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-    [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-    mkdir -p /tmp/go-runtime
-    curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-    export PATH="/tmp/go-runtime/go/bin:$PATH"
-    export GOPROXY="https://goproxy.cn,direct"
-fi
-```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

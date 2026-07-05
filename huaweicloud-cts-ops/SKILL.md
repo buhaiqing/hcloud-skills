@@ -125,31 +125,6 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 Manage Huawei Cloud CTS audit trails and trace queries: create trails, query audit events, inspect access history, and troubleshoot audit delivery.
 
 ### Prerequisites
-- [ ] Huawei Cloud CLI installed and configured
-- [ ] Go 1.21+ runtime (for JIT SDK fallback)
-- [ ] Credentials: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region: `HW_REGION_ID` (e.g., `cn-north-4`)
-- [ ] Project ID: `HW_PROJECT_ID`
-
-### Verify Setup
-```bash
-# CLI verification
-hcloud cts list-trails --region {{env.HW_REGION_ID}}
-
-# SDK verification
-go run ./main.go  # ListTrails query
-```
-
-### Your First Command
-```bash
-# List all CTS trails
-hcloud cts list-trails --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — Understand CTS architecture and event flow
-- [Common Operations](#execution-flows) — Create, query, manage trails
-- [Troubleshooting](references/troubleshooting.md) — Fix delivery and query issues
 
 ## API and Response Conventions
 
@@ -344,38 +319,7 @@ Verify `ShowTrail(trail_id)` returns 404 Not Found.
 
 ## Prerequisites
 
-1. **Install KooCLI** (if not present):
-
-    ```bash
-    curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-    hcloud version
-    ```
-
-2. **Bootstrap Go runtime** (JIT SDK fallback):
-
-    ```bash
-    if ! command -v go &> /dev/null; then
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m)
-        [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-        [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-        mkdir -p /tmp/go-runtime
-        curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-        export PATH="/tmp/go-runtime/go/bin:$PATH"
-        export GOPATH="/tmp/go-workspace"
-        export GOPROXY="https://goproxy.cn,direct"
-    fi
-    ```
-
-3. **Configure Credentials**:
-
-    ```bash
-    export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-    export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-    export HW_REGION_ID="{{env.HW_REGION_ID}}"
-    export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-    test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
-    ```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

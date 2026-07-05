@@ -155,25 +155,6 @@ Huawei Cloud Virtual Private Cloud (VPC / 虚拟私有云) provides isolated, cu
 Manages Huawei Cloud VPC (Virtual Private Cloud / 虚拟私有云) including VPC, subnets, security groups, route tables, EIPs, bandwidth, NAT gateways, and VPC peering.
 
 ### Prerequisites
-- [ ] Huawei Cloud CLI installed (or Go runtime for JIT fallback)
-- [ ] Credentials configured: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region and Project ID set: `HW_REGION_ID`, `HW_PROJECT_ID`
-
-### Verify Setup
-```bash
-hcloud vpc list --region {{env.HW_REGION_ID}}
-```
-
-### Your First Command
-```bash
-# List VPCs in region
-hcloud vpc list --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — Understand VPC architecture
-- [Execution Flows](#execution-flows) — VPC, subnet, security group, EIP operations
-- [Troubleshooting](references/troubleshooting.md) — Fix common VPC issues
 
 ## Capabilities at a Glance
 
@@ -524,10 +505,7 @@ hcloud vpc delete \
 
 ## Prerequisites
 
-1. **Install KooCLI**: `curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y`
-2. **Bootstrap Go runtime** (JIT SDK fallback — see [Integration](references/integration.md)).
-3. **Configure Credentials**: Set `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`, `HW_REGION_ID`, `HW_PROJECT_ID`.
-4. **Verify**: `hcloud vpc list --region {{env.HW_REGION_ID}}`
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

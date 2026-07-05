@@ -161,27 +161,6 @@ This skill maps operations to Huawei Cloud's Well-Architected Framework five pil
 This skill enables deployment, configuration, troubleshooting, and monitoring of Huawei Cloud RDS database instances using the `hcloud` CLI (primary) or JIT Go SDK (fallback).
 
 ### Prerequisites
-- [ ] Huawei Cloud CLI installed (or Go runtime for JIT fallback)
-- [ ] Credentials configured: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region and Project ID set: `HW_REGION_ID`, `HW_PROJECT_ID`
-- [ ] VPC and Subnet already created for the target region
-
-### Verify Setup
-```bash
-# Check CLI and credentials
-hcloud rds list --region {{env.HW_REGION_ID}}
-```
-
-### Your First Command
-```bash
-# Example: List RDS instances
-hcloud rds list --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — Understand RDS architecture
-- [Common Operations](#execution-flows) — Create, manage, and delete instances
-- [Troubleshooting](references/troubleshooting.md) — Fix common issues
 
 ## Capabilities at a Glance
 
@@ -451,45 +430,7 @@ hcloud rds modify-parameter \
 
 ## Prerequisites
 
-1. **Install KooCLI** (official binary):
-
-    ```bash
-    # Linux one-click install
-    curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-
-    # Verify
-    hcloud version
-    ```
-
-2. **Bootstrap Go runtime** (JIT SDK fallback — required only if CLI doesn't support operation):
-
-    ```bash
-    if ! command -v go &> /dev/null; then
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m)
-        [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-        [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-        
-        mkdir -p /tmp/go-runtime
-        curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-        export PATH="/tmp/go-runtime/go/bin:$PATH"
-        export GOPROXY="https://goproxy.cn,direct"
-    fi
-    ```
-
-3. **Configure Credentials**:
-
-    ```bash
-    export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-    export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-    export HW_REGION_ID="{{env.HW_REGION_ID}}"
-    export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-    ```
-
-4. **Verify Configuration**:
-    ```bash
-    hcloud rds list --region {{env.HW_REGION_ID}}
-    ```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

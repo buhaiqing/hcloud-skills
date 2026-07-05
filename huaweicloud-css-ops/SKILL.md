@@ -676,45 +676,7 @@ budget_alerts:
 
 ## Prerequisites
 
-1. **Install KooCLI** (official binary):
-
-    ```bash
-    # Linux one-click install
-    curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-
-    # Verify
-    hcloud version
-    ```
-
-2. **Bootstrap Go runtime** (JIT SDK fallback):
-
-    ```bash
-    if ! command -v go &> /dev/null; then
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m)
-        [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-        [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-        
-        mkdir -p /tmp/go-runtime
-        curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-        export PATH="/tmp/go-runtime/go/bin:$PATH"
-        export GOPROXY="https://goproxy.cn,direct"
-    fi
-    ```
-
-3. **Configure Credentials**:
-
-    ```bash
-    export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-    export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-    export HW_REGION_ID="{{env.HW_REGION_ID}}"
-    export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-    ```
-
-4. **Verify Configuration**:
-    ```bash
-    hcloud CSS ListClusters --cli-region="{{env.HW_REGION_ID}}"
-    ```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

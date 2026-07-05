@@ -160,26 +160,6 @@ Huawei Cloud Cloud Container Engine (CCE / 云容器引擎) is a managed Kuberne
 Manages Huawei Cloud CCE (Cloud Container Engine / 云容器引擎) cluster, node, node pool, and addon lifecycle operations.
 
 ### Prerequisites
-- [ ] Huawei Cloud CLI installed (or Go runtime for JIT fallback)
-- [ ] Credentials configured: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region and Project ID set: `HW_REGION_ID`, `HW_PROJECT_ID`
-- [ ] VPC and subnet available for cluster networking
-
-### Verify Setup
-```bash
-hcloud cce list-clusters --region {{env.HW_REGION_ID}}
-```
-
-### Your First Command
-```bash
-# List all CCE clusters in region
-hcloud cce list-clusters --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — Understand CCE architecture and cluster types
-- [Execution Flows](#execution-flows) — Cluster, node, nodepool, addon operations
-- [Troubleshooting](references/troubleshooting.md) — Fix common CCE issues
 
 ## Capabilities at a Glance
 
@@ -628,39 +608,7 @@ hcloud cce list-addon-templates \
 
 ## Prerequisites
 
-1. **Install KooCLI** (official binary):
-
-    ```bash
-    curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-    hcloud version
-    ```
-
-2. **Bootstrap Go runtime** (JIT SDK fallback):
-
-    ```bash
-    if ! command -v go &> /dev/null; then
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m)
-        [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-        [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-        mkdir -p /tmp/go-runtime
-        curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-        export PATH="/tmp/go-runtime/go/bin:$PATH"
-        export GOPROXY="https://goproxy.cn,direct"
-    fi
-    ```
-
-3. **Configure Credentials**:
-
-    ```bash
-    export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-    export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-    export HW_REGION_ID="{{env.HW_REGION_ID}}"
-    export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-    test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
-    ```
-
-4. **Verify Configuration**: `hcloud cce list-clusters --region {{env.HW_REGION_ID}}`
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

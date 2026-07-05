@@ -135,25 +135,6 @@ Huawei Cloud DCS provides fully-managed Redis (4.0/5.0/6.0) and Memcached instan
 Deploy, configure, troubleshoot, and monitor Huawei Cloud DCS (Redis/Memcached) instances using `hcloud` CLI (primary) or JIT Go SDK (fallback).
 
 ### Prerequisites
-- [ ] Huawei Cloud CLI installed (or Go runtime for JIT fallback)
-- [ ] Credentials configured: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region set: `HW_REGION_ID`
-
-### Verify Setup
-```bash
-hcloud dcs list-instances --region {{env.HW_REGION_ID}}
-```
-
-### Your First Command
-```bash
-# List all DCS instances in the region
-hcloud dcs list-instances --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [Core Concepts](references/core-concepts.md) — DCS architecture and instance types
-- [Execution Flows](#execution-flows) — Create, manage, and backup instances
-- [Troubleshooting](references/troubleshooting.md) — Fix connection and OOM issues
 
 ## Capabilities at a Glance
 
@@ -442,48 +423,7 @@ hcloud dcs update-whitelist \
 
 ## Prerequisites
 
-### 1. Install KooCLI
-
-```bash
-# Linux one-click install
-curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-
-# Verification
-hcloud version
-```
-
-### 2. Bootstrap Go Runtime (JIT SDK Fallback)
-
-```bash
-if ! command -v go &> /dev/null; then
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-    [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-    [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-
-    mkdir -p /tmp/go-runtime
-    curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-    export PATH="/tmp/go-runtime/go/bin:$PATH"
-    export GOPROXY="https://goproxy.cn,direct"
-fi
-```
-
-### 3. Configure Credentials
-
-```bash
-export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-export HW_REGION_ID="{{env.HW_REGION_ID}}"
-export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-# Verify (existence only, NEVER echo values)
-test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
-```
-
-### 4. Verify Configuration
-
-```bash
-hcloud dcs list-instances --region {{env.HW_REGION_ID}}
-```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 

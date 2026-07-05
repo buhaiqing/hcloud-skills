@@ -132,30 +132,6 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 Manage Huawei Cloud ECS instances: create, start/stop, resize, delete, monitor, and execute remote commands via CloudShell or Cloud-Cell Agent.
 
 ### Prerequisites
-- [ ] Go 1.21+ runtime (for JIT SDK fallback)
-- [ ] Credentials: `HW_ACCESS_KEY_ID`, `HW_SECRET_ACCESS_KEY`
-- [ ] Region: `HW_REGION_ID` (e.g., `cn-north-4`)
-- [ ] Project ID: `HW_PROJECT_ID`
-
-### Verify Setup
-```bash
-# CLI verification
-hcloud ecs list-instances --region {{env.HW_REGION_ID}}
-# Or SDK
-go run ./main.go  # describeservers query
-```
-
-### Your First Command
-```bash
-# List all ECS instances
-hcloud ecs list-instances --region {{env.HW_REGION_ID}}
-```
-
-### Next Steps
-- [ECS Operations](#execution-flows) — Create, manage, resize, delete
-- [CloudShell Remote Execution](#cloudshell-remote-execution) — Commands, file transfer
-- [Cloud-Cell Agent](#cloud-cell-agent-verification) — Host diagnostics
-- [Troubleshooting](references/troubleshooting.md) — Fix common ECS issues
 
 ## API and Response Conventions
 
@@ -423,44 +399,7 @@ hcloud ecs cloud-cell-download \
 
 ## Prerequisites
 
-1. **Install KooCLI** (official binary, single executable):
-
-```bash
-# Linux one-click install
-curl -sSL https://cn-north-4.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-
-# macOS
-curl -sSL https://ap-southeast-3-hwcloudcli.obs.ap-southeast-3.myhuaweicloud.com/cli/latest/hcloud_install.sh -o ./hcloud_install.sh && bash ./hcloud_install.sh -y
-
-# Verify
-hcloud version
-```
-
-2. **Bootstrap Go Runtime** (JIT SDK fallback):
-
-```bash
-if ! command -v go &> /dev/null; then
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-    [ "$ARCH" = "x86_64" ] && ARCH="amd64"
-    [ "$ARCH" = "aarch64" ] && ARCH="arm64"
-    mkdir -p /tmp/go-runtime
-    curl -fsSL "https://go.dev/dl/go1.25.0.${OS}-${ARCH}.tar.gz" | tar -xz -C /tmp/go-runtime
-    export PATH="/tmp/go-runtime/go/bin:$PATH"
-    export GOPROXY="https://goproxy.cn,direct"
-fi
-```
-
-3. **Configure Credentials**:
-
-```bash
-export HW_ACCESS_KEY_ID="{{env.HW_ACCESS_KEY_ID}}"
-export HW_SECRET_ACCESS_KEY="{{env.HW_SECRET_ACCESS_KEY}}"
-export HW_REGION_ID="{{env.HW_REGION_ID}}"
-export HW_PROJECT_ID="{{env.HW_PROJECT_ID}}"
-# Verify existence only — never echo values
-test -n "$HW_SECRET_ACCESS_KEY" && echo "✅ Credentials configured"
-```
+> Full installation scripts (KooCLI + Go runtime + Credentials): see [references/common-prerequisites.md](../references/common-prerequisites.md)
 
 ## Quality Gate (GCL)
 
