@@ -14,15 +14,15 @@ This file contains ECS-specific well-architessed assessment patterns. The genera
 | ResizeServer | `ecs:*Resize*` | `ecs:server:*` |
 | CloudCell Execute | `ecs:*CloudCell*` | `ecs:server:*` |
 
-### Credential Management
-- Use IAM agency (委托) for ECS→EVS/CS cross-service access
-- Do NOT embed AK/SK in cloud-init scripts or user_data
-- Rotate AK/SK every 90 days
+### Credential & Network Security
 
-### Network Security
-- Security group: deny all inbound by default, allow only required ports
-- Cloud-Cell Agent: outbound HTTPS (443) + ECS service domain whitelist
-- EIP: only bind when public access required, use WAF for HTTPS traffic
+| Rule | Detail |
+|------|--------|
+| IAM agency | Use 委托 for ECS→EVS/CS cross-service access |
+| AK/SK | Never embed in cloud-init/user_data; rotate every 90 days |
+| Security group | Deny all inbound by default; allow only required ports |
+| Cloud-Cell Agent | Outbound HTTPS (443) + ECS service domain whitelist |
+| EIP | Bind only when public access required; use WAF for HTTPS |
 
 ## 2. Stability (稳定) — ECS
 
@@ -40,20 +40,11 @@ This file contains ECS-specific well-architessed assessment patterns. The genera
 
 ### DR Runbook
 
-**Phase 1: Backup Verification**
-1. Confirm snapshot exists and status = `available`
-2. Verify snapshot covers all required volumes
-3. Confirm snapshot age within RPO window
-
-**Phase 2: Recovery Execution**
-1. Create instance from snapshot image
-2. Verify instance reaches `ACTIVE` state
-3. Update DNS/ELB backend to new instance
-
-**Phase 3: Post-Recovery Validation**
-1. SSH/CloudCell connectivity test
-2. Application health check (HTTP 200, DB connection)
-3. Verify data integrity (file checksums, DB row counts)
+| Phase | Steps |
+|-------|-------|
+| Backup Verification | Snapshot status=`available`, covers all volumes, age within RPO |
+| Recovery Execution | Create instance from snapshot → verify `ACTIVE` → update DNS/ELB backend |
+| Post-Recovery | SSH/CloudCell connectivity → app health check (HTTP 200, DB) → data integrity |
 
 ### Multi-AZ
 - Deploy production across ≥ 2 AZs via AS or multiple instances
@@ -62,43 +53,23 @@ This file contains ECS-specific well-architessed assessment patterns. The genera
 
 ## 3. Cost (成本) — ECS (FinOps)
 
-### Billing Model Comparison
+### Billing & Idle Detection
 
-| Billing | Best For | Savings | Risk |
-|---------|----------|---------|------|
-| 按需 (Pay-per-use) | Dev/test, short-term | N/A | Highest ongoing cost |
-| 包年包月 (Subscription) | Production 24/7 | Up to 83% vs 按需 | No flexibility |
-| 竞价 (Spot) | Batch, stateless, AS | Up to 90% vs 按需 | May be reclaimed |
+| Billing | Savings | Risk | Idle Action |
+|---------|---------|------|-------------|
+| 按需 | N/A | Highest cost | Stop <30d; Delete >30d |
+| 包年包月 | Up to 83% | No flexibility | Resize immediately |
+| 竞价 | Up to 90% | May reclaim | Already reclaimed |
 
-### Idle Detection
+> **⚠️ Stopping ECS does NOT stop EVS billing.** Net savings = ECS saved − EVS continued (may be negative).
 
-| Resource Type | Idle Condition | Detection Method | Action |
-|--------------|---------------|-----------------|--------|
-| ECS instance | `cpu_util` < 10% for 7+ days | CES DescribeMetricData | Stop or delete |
-| Stopped instance | `status: SHUTOFF` > 7 days | ListServersDetail | Delete (keeps billing EVS) |
-| Unattached EVS | No `server_id` association | EVS ListVolumes | Delete or snapshot+delete |
-| Zombie EIP | Not bound to any resource | VPC ListPublicIps | Release |
-| Orphaned snapshot | No associated image/volume | EVS ListSnapshots | Delete if > retention |
-
-### Idle Instance Financial Impact
-
-**Critical**: Stopping an ECS instance does NOT stop EVS billing!
-
-| Billing Model | ECS Stop Impact | EVS Billing | Recommended Action |
-|---------------|-----------------|-------------|-------------------|
-| Pay-per-use | CPU cost = 0 | EVS continues | Delete if > 30 days idle |
-| Subscription | No savings until term ends | Included | Resize immediately |
-| Spot | Terminated, no billing | Released | Already reclaimed |
-
-**Cost Calculation**:
-- Monthly savings from stop: `flavor_hourly_rate × 24 × 30`
-- EVS monthly cost continues: `disk_size_gb × gb_monthly_rate`
-- Net savings = ECS savings - EVS cost (may be negative!)
-
-**Recommendation**:
-- Pay-per-use idle (< 30 days): Stop (temporary savings)
-- Pay-per-use idle (> 30 days): Delete (full savings, snapshot first)
-- Subscription idle: Resize immediately for term savings
+| Idle Resource | Condition | Action |
+|--------------|-----------|--------|
+| ECS instance | `cpu_util` <10% for 7+ days | Stop or delete |
+| Stopped >7d | `SHUTOFF` >7 days | Delete (snapshot first) |
+| Unattached EVS | No `server_id` | Delete or snapshot+delete |
+| Zombie EIP | Not bound | Release |
+| Orphaned snapshot | No image/volume | Delete if >retention |
 
 ### Right-Sizing Matrix
 
@@ -147,14 +118,11 @@ This file contains ECS-specific well-architessed assessment patterns. The genera
 |--------|----------|-----------|--------|
 | `cpu_util` | > 80% for 5min | < 30% for 15min | 300s |
 | `mem_usedPercent` | > 85% for 5min | < 50% for 15min | 300s |
-| `load1` | > 0.8 × vCPU count | < 0.3 × vCPU count | 300s |
+| `load1` | > 0.8 × vCPU | < 0.3 × vCPU | 300s |
 
-### Performance Baseline Establishment
+### Performance Baseline
 
-1. Deploy test instance with target flavor
-2. Run benchmark: `sysbench cpu --cpu-max-prime=20000 run`
-3. Record baseline: CPU ops/sec, disk IOPS, network throughput
-4. Set alert threshold at 2σ deviation from baseline
+Benchmark: `sysbench cpu --cpu-max-prime=20000 run`. Set alert at 2σ deviation from baseline.
 
 ## 6. AIOps — ECS
 
@@ -168,84 +136,31 @@ Anomaly patterns supported:
 5. `network_storm` — Network pps > 10× baseline → DDoS or scan
 6. `disk_fill_acceleration` — Disk fill rate increasing → Imminent full disk
 
-### Cross-Skill Diagnosis Decision Tree
+### Cross-Skill Diagnosis
 
-```
-ECS Alarm → Verify metric is real → Check instance state
-    │
-    ├── CPU High? → CloudShell: top → If Java → AOM trace
-    │                                  → If unknown → HSS scan
-    ├── Memory High? → CloudShell: free -m → If trend ↑ → Knowledge-base: Memory leak
-    ├── Disk Full? → CloudShell: du -sh /var/log/* → Clean → LTS log config
-    └── Unreachable? → Check security group → Check VPC route → Check CloudCell agent
-```
+| Symptom | First Action | Delegate If |
+|---------|-------------|-------------|
+| CPU high | CloudShell: `top` | Java → AOM; unknown → HSS scan |
+| Memory high | CloudShell: `free -m` | Trend ↑ → knowledge-base ECS-003 |
+| Disk full | CloudShell: `du -sh /var/log/*` | → LTS log config |
+| Unreachable | Check SG → VPC route → CloudCell agent | — |
 ---
 
-## Worker Output Contract (Read-Only Assessment Mode)
+## Worker Output Contract
 
-> Invoked when Well-Architected review sets `{{user.mode}}=well-architected-readonly`.
-> Return **`{{output.product_assessment}}`** — field names MUST match the canonical schema.
+> Read-only assessment mode: `{{user.mode}}=well-architected-readonly` → return `{{output.product_assessment}}`.
 
-**Canonical schema:** [worker-output-schema.md](../../huaweicloud-skill-generator/references/worker-output-schema.md)
+**Schema:** [worker-output-schema.md](../../huaweicloud-skill-generator/references/worker-output-schema.md)
 
 | Constant | Value |
 |----------|-------|
 | `skill_id` | `huaweicloud-ecs-ops` |
 | `product` | `ecs` |
-| Finding `id` pattern | `ecs-{rel|sec|cost|eff}-NNN` |
+| Finding `id` | `ecs-{rel|sec|cost|eff}-NNN` |
 
-### Pillar → checklist map
-
-| `pillars` key | Checklist source in this document |
-|---------------|-------------------------------------|
-| `reliability` | Stability / DR / backup sections |
-| `security` | IAM / network / encryption sections |
-| `cost` | FinOps / billing / idle detection sections |
-| `efficiency` | Automation / batch / CI/CD sections |
-
-### Example `{{output.product_assessment}}`
-
-```json
-{
-  "skill_id": "huaweicloud-ecs-ops",
-  "product": "ecs",
-  "region": "cn-north-4",
-  "scope": "account-wide",
-  "assessment_date": "2026-06-19T10:00:00+08:00",
-  "status": "OK",
-  "partial": false,
-  "resource_count": 1,
-  "pillars": {
-    "cost": {
-      "score": 80,
-      "status": "assessed",
-      "findings": []
-    },
-    "efficiency": {
-      "score": 80,
-      "status": "assessed",
-      "findings": []
-    },
-    "reliability": {
-      "score": 80,
-      "status": "assessed",
-      "findings": []
-    },
-    "security": {
-      "score": 80,
-      "status": "assessed",
-      "findings": []
-    }
-  },
-  "recommendations": [],
-  "trace": {
-    "commands": [
-      "hcloud ecs read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)"
-    ],
-    "request_ids": [
-      "0123456789abcdef0123456789abcdef"
-    ]
-  },
-  "errors": []
-}
-```
+| `pillars` key | Source sections |
+|---------------|---------------|
+| `reliability` | Stability / DR / backup |
+| `security` | IAM / network / encryption |
+| `cost` | FinOps / billing / idle |
+| `efficiency` | Automation / batch / CI/CD |
