@@ -210,69 +210,7 @@ hcloud ecs create-server \
 
 #### Execution — JIT Go SDK (Fallback Path)
 
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "os"
-    
-    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
-    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
-    ecs "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2"
-    "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/model"
-    ecsregion "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/region"
-)
-
-func main() {
-    ak := os.Getenv("HW_ACCESS_KEY_ID")
-    sk := os.Getenv("HW_SECRET_ACCESS_KEY")
-    regionID := os.Getenv("HW_REGION_ID")
-    
-    cfg := config.DefaultHttpConfig()
-    client := ecs.NewEcsClient(
-        ecs.EcsClientBuilder().
-            WithRegion(ecsregion.ValueOf(regionID)).
-            WithCredential(basic.NewCredentialsBuilder().WithAk(ak).WithSk(sk).Build()).
-            WithHttpConfig(cfg).Build())
-    
-    rootVol := &model.ServerRootVolume{
-        Volumetype: model.GetServerRootVolumeVolumTypeEnum().SSD,
-        Size:       func() *int32 { v := int32(40); return &v }(),
-    }
-    
-    nics := []model.ServerNics{
-        {
-            SubnetId: os.Getenv("SUBNET_ID"),
-        },
-    }
-    
-    request := &model.CreateServersRequest{
-        Body: &model.CreateServersRequestBody{
-            Server: &model.PrePaidServer{
-                Name:             os.Getenv("INSTANCE_NAME"),
-                FlavorRef:        os.Getenv("FLAVOR_ID"),
-                ImageRef:         os.Getenv("IMAGE_ID"),
-                Vpcid:            os.Getenv("VPC_ID"),
-                Nics:             nics,
-                RootVolume:       rootVol,
-                AvailabilityZone: func() *string { v := os.Getenv("AZ"); return &v }(),
-                Count:            func() *int32 { v := int32(1); return &v }(),
-            },
-        },
-    }
-    
-    response, err := client.CreateServers(context.TODO(), request)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Create ECS failed: %v\n", err)
-        os.Exit(1)
-    }
-    
-    fmt.Printf("Job ID: %s\n", *response.JobId)
-    // Poll job status until SUCCESS
-}
-```
+> Full Go SDK implementation: see [`references/api-sdk-usage.md`](references/api-sdk-usage.md#jit-go-sdk-fallback)
 
 #### Post-execution Validation
 
@@ -620,58 +558,12 @@ This skill's operations are evaluated against:
 
 ## FinOps — ECS Cost Optimization
 
-This skill provides ECS-specific cost optimization guidance. For cross-resource cost analysis, delegate to `huaweicloud-billing-ops`.
+> Full FinOps guidance (billing models, idle detection, right-sizing, Spot strategy, cost tagging): see [`references/well-architected-assessment.md`](references/well-architected-assessment.md#3)
 
-### Quick Cost Queries
+Key actions:
+- **Idle detection**: `cpu_util` < 10% for 7+ days → stop or delete (30-100% savings)
+- **Right-sizing**: 7-day avg CPU < 20% → downgrade flavor (30-60% savings)
+- **Spot instances**: Up to 90% savings for batch/stateless workloads (5-15% reclaim risk)
+- **⚠️** Stopping ECS does NOT stop EVS billing
 
-```bash
-# List ECS monthly costs
-hcloud bss list-bills --resource-type ecs --region {{env.HW_REGION_ID}}
-
-# Query specific instance daily cost
-hcloud bss query-daily-cost --resource-id {{user.instance_id}}
-
-# Check subscription renewal costs
-hcloud bss list-orders --resource-type ecs
-```
-
-### Idle Instance Detection & Action
-
-| Condition | Detection Method | Recommended Action | Savings Potential |
-|-----------|-----------------|-------------------|-------------------|
-| `cpu_util` < 10% for 7+ days | CES DescribeMetricData | Stop or delete | 30-100% of ECS cost |
-| Stopped for > 30 days | ListServersDetail status | Delete (snapshot first) | 100% + EVS release |
-| Flavor oversized (avg CPU < 20%) | CES 7-day average | Downgrade flavor | 30-60% |
-
-**⚠️ Important**: Stopping ECS does NOT stop EVS billing. See [FinOps Cost Optimization](references/well-architected-assessment.md#3) for detailed impact analysis.
-
-### Spot Instance Cost Optimization
-
-| Billing Type | Savings | Risk Level | Best For |
-|--------------|---------|------------|----------|
-| 按需 (Pay-per-use) | Baseline | None | Dev/test, short-term |
-| 包年包月 (Subscription) | Up to 83% | Low | Production 24/7 |
-| 竞价 (Spot) | Up to 90% | Medium (5-15% reclaim rate) | Batch, stateless, AS |
-
-For Spot instance pre-reclaim detection and recovery, see [Knowledge Base: Pattern ECS-006](references/knowledge-base.md).
-
-### Right-Sizing Recommendations
-
-Based on 7-day CES metrics:
-
-| CPU avg(7d) | MEM avg(7d) | Current Flavor → Recommended | Savings |
-|-------------|------------|------------------------------|---------|
-| < 20% | < 30% | s3.large → s3.medium | 30-60% |
-| < 20% | > 80% | c3.xlarge → m3.xlarge | Better fit |
-| > 80% | > 80% | Upgrade or scale out | N/A |
-
-### Cost Tagging
-
-Tag new instances with:
-- `cost_center`: Department/project code
-- `project`: Project identifier
-- `environment`: prod/staging/dev
-- `owner`: Responsible user
-- `ttl`: Auto-decommission date (optional)
-
-See [Well-Architected Assessment](references/well-architected-assessment.md#3) for complete FinOps patterns.
+For cross-resource cost analysis, delegate to `huaweicloud-billing-ops`.

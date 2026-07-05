@@ -73,3 +73,65 @@ All list APIs support:
 | `count` | int32 | Yes | Number of instances (1-500) |
 | `clientToken` | string | No | Idempotency token |
 | `userData` / `user_data` | string | No | Cloud-init script (base64) |
+
+## JIT Go SDK Fallback
+
+Full Create ECS example (Go SDK):
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/config"
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/core/auth/basic"
+    ecs "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2"
+    "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/model"
+    ecsregion "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/ecs/v2/region"
+)
+
+func main() {
+    ak := os.Getenv("HW_ACCESS_KEY_ID")
+    sk := os.Getenv("HW_SECRET_ACCESS_KEY")
+    regionID := os.Getenv("HW_REGION_ID")
+
+    cfg := config.DefaultHttpConfig()
+    client := ecs.NewEcsClient(
+        ecs.EcsClientBuilder().
+            WithRegion(ecsregion.ValueOf(regionID)).
+            WithCredential(basic.NewCredentialsBuilder().WithAk(ak).WithSk(sk).Build()).
+            WithHttpConfig(cfg).Build())
+
+    rootVol := &model.ServerRootVolume{
+        Volumetype: model.GetServerRootVolumeVolumTypeEnum().SSD,
+        Size:       func() *int32 { v := int32(40); return &v }(),
+    }
+
+    nics := []model.ServerNics{{SubnetId: os.Getenv("SUBNET_ID")}}
+
+    request := &model.CreateServersRequest{
+        Body: &model.CreateServersRequestBody{
+            Server: &model.PrePaidServer{
+                Name:             os.Getenv("INSTANCE_NAME"),
+                FlavorRef:        os.Getenv("FLAVOR_ID"),
+                ImageRef:         os.Getenv("IMAGE_ID"),
+                Vpcid:            os.Getenv("VPC_ID"),
+                Nics:             nics,
+                RootVolume:       rootVol,
+                AvailabilityZone: func() *string { v := os.Getenv("AZ"); return &v }(),
+                Count:            func() *int32 { v := int32(1); return &v }(),
+            },
+        },
+    }
+
+    response, err := client.CreateServers(context.TODO(), request)
+    if err != nil {
+        fmt.Fprintf(os.Stderr, "Create ECS failed: %v\n", err)
+        os.Exit(1)
+    }
+    fmt.Printf("Job ID: %s\n", *response.JobId)
+}
+```
