@@ -222,6 +222,8 @@ __marimo__/
 .agents/
 .lingma/
 .codebuddy/
+.pi/
+.pi-subagents/
 
 # GCL (Generator-Critic-Loop) trace persistence
 # Append-only audit logs; never tracked by git
