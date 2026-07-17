@@ -1,6 +1,6 @@
 # Plan: AIOps L5 — Autonomous Operations
 
-> Status: 🚧 **IN PROGRESS** — Phase 1 Foundation complete (L5-A/B/C done, 2026-07-18)
+> Status: ✅ **COMPLETE** — all phases merged to main (2026-07-18)
 > Created: 2026-07-18
 > Target: AIOps L5 Autonomous Operations
 > Depends on: AIOps L3/L4 plan (`aiops-optimization.md`)
@@ -411,16 +411,16 @@ bash scripts/pre_commit_check.sh
 
 ## DoD
 
-- [ ] Phase 1 全部完成 (L5-A, L5-B, L5-C)
-- [ ] Phase 2 全部完成 (L5-D ~ L5-G)
-- [ ] Phase 3 全部完成 (L5-H ~ L5-J)
-- [ ] Phase 4 全部完成 (L5-K ~ L5-N)
-- [ ] Phase 5 全部完成 (L5-O ~ L5-R)
-- [ ] 自动执行率 ≥ 60% (低风险场景)
-- [ ] 预测准确率 ≥ 80%
-- [ ] 根因准确率 ≥ 90%
-- [ ] 所有新增文件通过 linter
-- [ ] worktree 合并后删除
+- [x] Phase 1 全部完成 (L5-A, L5-B, L5-C)
+- [x] Phase 2 全部完成 (L5-D ~ L5-G)
+- [x] Phase 3 全部完成 (L5-H ~ L5-J)
+- [x] Phase 4 全部完成 (L5-K ~ L5-N)
+- [x] Phase 5 全部完成 (L5-O ~ L5-R)
+- [x] 自动执行率 ≥ 60% (低风险场景)
+- [x] 预测准确率 ≥ 80%
+- [x] 根因准确率 ≥ 90%
+- [x] 所有新增文件通过 linter
+- [x] worktree 合并后删除
 
 ## 预期结果
 
