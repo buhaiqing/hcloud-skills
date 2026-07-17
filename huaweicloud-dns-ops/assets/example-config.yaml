@@ -1,0 +1,48 @@
+# DNS Example Configuration — Huawei Cloud DNS
+
+# Alarm thresholds
+dns_alarm: &dns_alarm
+  resolution_success_rate_warning: 95
+  nxdomain_spike_per_min: 1000
+  p99_latency_ms: 100
+
+# SMN notification
+notification:
+  critical: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:dns-critical"
+  warning:  &notification_warning  "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:dns-warning"
+
+# Alarm templates
+alarm_templates:
+  - <<: *dns_alarm
+    name: "dns-resolution-rate-low"
+    metric: "dns_request_success_rate"
+    threshold: 95
+    alarm_level: 1
+    period_minutes: 5
+    alarm_actions: *notification_critical
+  - <<: *dns_alarm
+    name: "dns-nxdomain-spike"
+    metric: "nxdomain_count"
+    threshold: 1000
+    alarm_level: 2
+    period_minutes: 5
+    alarm_actions: *notification_warning
+
+# TTL defaults (seconds)
+ttl_defaults: &ttl_defaults
+  default: 300       # 5 minutes
+  cdn_cname: 60      # 1 minute for CDN fast failover
+  stable_a: 3600     # 1 hour for stable IPs
+  migration_start: 60  # short before migration
+  migration_end: 86400  # long after migration
+
+# Zone type defaults
+zone_defaults:
+  public_zone_email: "admin@example.com"
+  private_zone_vpc_policy: "private-dns-policy"
+
+# FinOps
+finops:
+  max_zones_per_account: 100
+  idle_private_zone_window_days: 30
+  billing_model: "zone_count + query_volume"

@@ -1,0 +1,51 @@
+{
+  "skill": "huaweicloud-dns-ops",
+  "should_match": [
+    {
+      "query": "为域名 example.com 添加一条 A 记录指向 1.2.3.4",
+      "reason": "Direct DNS record create"
+    },
+    {
+      "query": "配置 DNS 解析，将 www.example.com 的 CNAME 指向 CDN",
+      "reason": "CNAME record for CDN integration"
+    },
+    {
+      "query": "启用 DNSSEC 保护域名解析安全",
+      "reason": "DNSSEC configuration"
+    },
+    {
+      "query": "删除过期的 DNS 解析记录",
+      "reason": "Record delete operation"
+    },
+    {
+      "query": "查询所有 DNS 解析记录并导出",
+      "reason": "Read-only zone listing"
+    },
+    {
+      "query": "修改 TTL 为 3600 秒加速缓存",
+      "reason": "TTL update"
+    },
+    {
+      "query": "删除整个 DNS 区域和所有记录",
+      "reason": "Zone delete (prod requires two-step)"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "为 ECS 绑定公网 IP",
+      "reason": "EIP — delegate to huaweicloud-eip-ops"
+    },
+    {
+      "query": "将域名接入 CDN 并配置缓存",
+      "reason": "CDN — delegate to huaweicloud-cdn-ops"
+    },
+    {
+      "query": "查看本月域名注册费用",
+      "reason": "Billing — delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "配置 WAF 防护策略",
+      "reason": "WAF — delegate to huaweicloud-waf-ops"
+    }
+  ]
+}

@@ -22,18 +22,21 @@ class SkillListTests(unittest.TestCase):
         expected = {
             "huaweicloud-billing-ops",
             "huaweicloud-cbr-ops",
+            "huaweicloud-cdn-ops",
             "huaweicloud-cce-ops",
             "huaweicloud-ces-ops",
             "huaweicloud-css-ops",
             "huaweicloud-cts-ops",
             "huaweicloud-dcs-ops",
             "huaweicloud-dms-ops",
+            "huaweicloud-dns-ops",
             "huaweicloud-ecs-ops",
             "huaweicloud-eip-ops",
             "huaweicloud-elb-ops",
             "huaweicloud-functiongraph-ops",
             "huaweicloud-gaussdb-ops",
             "huaweicloud-hss-ops",
+            "huaweicloud-kms-ops",
             "huaweicloud-iam-ops",
             "huaweicloud-lts-ops",
             "huaweicloud-obs-ops",
@@ -43,7 +46,7 @@ class SkillListTests(unittest.TestCase):
             "huaweicloud-waf-ops",
         }
         self.assertEqual(gclc.GCL_SKILLS, expected)
-        self.assertEqual(len(gclc.GCL_SKILLS), 21)
+        self.assertEqual(len(gclc.GCL_SKILLS), 24)
 
 
 class CounterTests(unittest.TestCase):
@@ -110,18 +113,18 @@ class CheckSkillTests(unittest.TestCase):
 
 
 class CheckAllTests(unittest.TestCase):
-    def test_check_all_20_sorted(self) -> None:
+    def test_check_all_23_sorted(self) -> None:
         result = gclc.check_all(ROOT)
-        self.assertEqual(len(result), 21)
+        self.assertEqual(len(result), 24)
         skills = [report["skill"] for report in result]
         self.assertEqual(skills, sorted(skills))
 
 
 class ConformanceTests(unittest.TestCase):
-    def test_all_20_pass(self) -> None:
+    def test_all_23_pass(self) -> None:
         result = gclc.check_all(ROOT)
         failing = [report["skill"] for report in result if not report["ok"]]
-        self.assertEqual(failing, [], f"Expected all 21 skills to conform; failing: {failing}")
+        self.assertEqual(failing, [], f"Expected all 24 skills to conform; failing: {failing}")
 
     def test_rubric_section_count(self) -> None:
         for report in gclc.check_all(ROOT):

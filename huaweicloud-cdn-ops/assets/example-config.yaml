@@ -1,0 +1,77 @@
+# CDN Example Configuration — Huawei Cloud CDN
+
+# Alarm thresholds (anchored, reused across alarm templates)
+cdn_alarm: &cdn_alarm
+  bandwidth_warning_pct: 80
+  bandwidth_critical_pct: 95
+  hit_rate_warning_pct: 70
+  hit_rate_critical_pct: 50
+  idle_domain_days: 7
+
+# SMN notification topics (region + project scoped)
+notification:
+  critical: &notification_critical "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:cdn-critical"
+  warning:  &notification_warning  "urn:smn:{{env.HW_REGION_ID}}:{{env.HW_PROJECT_ID}}:cdn-warning"
+
+# CES alarm templates
+alarm_templates:
+  - <<: *cdn_alarm
+    name: "cdn-bandwidth-warning"
+    resource_type: "cdn"
+    metric: "outgoing_bandwidth"
+    threshold_pct: 80
+    alarm_level: 2
+    period_minutes: 5
+    alarm_actions: *notification_warning
+  - <<: *cdn_alarm
+    name: "cdn-bandwidth-critical"
+    metric: "outgoing_bandwidth"
+    threshold_pct: 95
+    alarm_level: 1
+    period_minutes: 5
+    alarm_actions: *notification_critical
+  - <<: *cdn_alarm
+    name: "cdn-hit-rate-low"
+    metric: "flux_hit_rate"
+    threshold_pct: 70
+    alarm_level: 3
+    period_minutes: 60
+    alarm_actions: *notification_warning
+
+# Cache TTL rules (anchored)
+cache_rules: &cache_rules
+  - match_type: "all"
+    ttl: 300        # default: 5 min
+    priority: 0
+  - match_type: "suffix"
+    value: ".js,.css,.png,.jpg,.gif,.webp,.svg,.ico"
+    ttl: 86400      # static assets: 1 day
+    priority: 1
+  - match_type: "suffix"
+    value: ".html,.htm"
+    ttl: 3600       # HTML: 1 hour
+    priority: 2
+  - match_type: "exact"
+    value: "/"
+    ttl: 60         # homepage: 1 minute
+    priority: 3
+
+# Billing mode defaults
+finops:
+  billing_mode: "traffic"    # CDN bills by egress traffic + bandwidth peak
+  idle_domain_window_days: 7
+  purge_quota_per_day: 1000
+  batch_refresh_max_per_call: 100
+
+# Required tags
+required_tags:
+  - owner
+  - cost-center
+  - environment
+  - cdn-type
+
+# Service area defaults
+service_area_defaults:
+  mainland_china: "mainland_china"
+  global: "global"
+  overseas: "outside_mainland"

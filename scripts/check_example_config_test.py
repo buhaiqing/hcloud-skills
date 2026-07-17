@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RepoValidationTests(unittest.TestCase):
     def test_all_gcl_skills_have_example_config(self) -> None:
         report = cec.validate_all(ROOT)
-        self.assertEqual(len(report["reports"]), 21)
+        self.assertEqual(len(report["reports"]), 24)
         self.assertTrue(report["ok"], "\n".join(report["errors"]))
 
 

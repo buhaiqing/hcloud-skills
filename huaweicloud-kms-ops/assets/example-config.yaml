@@ -1,0 +1,47 @@
+# KMS Example Configuration — Huawei Cloud Key Management Service
+
+# Required tags (applied to every CMK at creation)
+required_tags:
+  - owner
+  - purpose
+  - cost-center
+  - lifecycle  # permanent | ephemeral
+
+# Deletion policy
+deletion_policy:
+  default_window_days: 30      # 7-1096, default 30
+  min_window_days: 7
+  require_grant_audit: true  # revoke all grants before scheduling
+
+# Key rotation
+rotation:
+  auto_enabled: false        # enable per-key, not globally
+  interval_days: 365
+
+# Grant audit
+grant_audit:
+  max_grants_per_key: 100
+  stale_grace_days: 90      # revoke grants from decommissioned services after 90d
+
+# FinOps baselines
+finops:
+  cmk_quota_default: 100
+  free_tier_api_calls: 10000  # per month
+  idle_key_days: 90           # flag for review after 90d of no API calls
+
+# CES alarm templates
+alarm_templates:
+  - name: kms-quota-usage-warning
+    metric: kms_quota_usage_ratio
+    namespace: SYS.KMS
+    threshold: 0.8
+    comparison: ">="
+    period: 86400
+    alarm_level: 2
+  - name: kms-api-error-rate
+    metric: kms_key_api_fail_count
+    namespace: SYS.KMS
+    threshold: 10
+    comparison: ">="
+    period: 300
+    alarm_level: 1

@@ -68,10 +68,13 @@ hcloud-skills/
 ├── huaweicloud-cce-ops/                  # CCE (Kubernetes)
 ├── huaweicloud-cts-ops/                  # CTS (audit)
 ├── huaweicloud-dms-ops/                  # DMS (Kafka/RabbitMQ)
+├── huaweicloud-dns-ops/                   # DNS (云解析DNS)
 ├── huaweicloud-cbr-ops/                  # CBR (backup)
+├── huaweicloud-cdn-ops/                   # CDN (Content Delivery Network)
 ├── huaweicloud-swr-ops/                  # SWR (container registry)
 ├── huaweicloud-gaussdb-ops/              # GaussDB
 ├── huaweicloud-hss-ops/                  # HSS (host security)
+├── huaweicloud-kms-ops/                  # KMS (Key Management)
 ├── huaweicloud-waf-ops/                  # WAF
 ├── huaweicloud-lts-ops/                   # LTS (logging)
 ├── huaweicloud-css-ops/                   # CSS (Cloud Search Service)
@@ -219,9 +222,12 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | `huaweicloud-iam-ops` | IAM | Users, groups, policies, agencies, AK/SK, MFA | ✅ Ready |
 | `huaweicloud-obs-ops` | OBS | Buckets, objects, ACL, lifecycle, CDN, static site | ✅ Ready |
 | `huaweicloud-dms-ops` | DMS | Kafka/RabbitMQ, topics/queues, consumer groups | ✅ Ready |
-| `huaweicloud-cbr-ops` | CBR | Vaults, policies, backup/restore, replication | ✅ Ready |
+| `huaweicloud-dns-ops` | DNS (云解析DNS) | Zones, recordsets, DNSSEC, PTR reverse DNS | ✅ Ready |
+| `huaweicloud-cbr-ops` | CBR | Vaults, policies, backup/restore, replication | ✅ |
+| `huaweicloud-cdn-ops` | CDN | Domain lifecycle, cache rules, refresh/preheat, HTTPS, statistics | ✅ |Ready |
 | `huaweicloud-swr-ops` | SWR | Orgs, repos, tags, retention, cross-region sync | ✅ Ready |
 | `huaweicloud-hss-ops` | HSS | Hosts, vulnerabilities, baselines, tamper protection | ✅ Ready |
+| `huaweicloud-kms-ops` | KMS (Key Management) | CMK lifecycle, grants, BYOK, data keys, key rotation | ✅ Ready |
 | `huaweicloud-waf-ops` | WAF | Policies, rules, domains, certificates, events | ✅ Ready |
 | `huaweicloud-lts-ops` | LTS | Log groups/streams, search, transfer, alarms | ✅ Ready |
 | `huaweicloud-gaussdb-ops` | GaussDB | Instances, backup, templates, DB/users, recycle bin | ✅ Ready |
@@ -243,7 +249,11 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | Log Tank Service | LTS | `services/lts/v2` | Log Group, Stream, Search |
 | Object Storage Service | OBS | `services/obs` | Bucket, Object, ACL |
 | Identity and Access Management | IAM | `services/iam/v3` | User, Group, Policy, Agency |
+| Key Management Service | KMS | `services/kms/v2` | Key, Grant, KeyMaterial |
+| Content Delivery Network | CDN | `services/cdn/v1` | Domain, Cache, Refresh, Preheat |
+
 | Distributed Message Service | DMS | `services/dms/v2` | Instance, Topic, Queue, Consumer Group |
+| Domain Name Service | DNS | `services/dns/v2` | Zone, RecordSet, DNSSEC |
 | Cloud Backup and Recovery | CBR | `services/cbr/v3` | Vault, Policy, Backup, Restore |
 | Cloud Search Service | CSS | `services/css/v1` | Cluster, Snapshot, Dictionary, Config |
 | Software Repository for Containers | SWR | `services/swr/v2` | Organization, Repository, Image |

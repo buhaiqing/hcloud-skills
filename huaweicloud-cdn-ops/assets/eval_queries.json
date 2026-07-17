@@ -1,0 +1,63 @@
+{
+  "skill": "huaweicloud-cdn-ops",
+  "should_match": [
+    {
+      "query": "Add example.com to CDN and configure HTTPS",
+      "reason": "Direct CDN domain create + configure request"
+    },
+    {
+      "query": "刷新CDN缓存，URL是 https://example.com/index.html",
+      "reason": "Cache refresh with explicit URL"
+    },
+    {
+      "query": "预热 CDN，在大促前缓存热门商品页面",
+      "reason": "Cache preheat for big event"
+    },
+    {
+      "query": "CDN命中率下降了，怎么排查",
+      "reason": "CDN hit rate degradation — AIOps pattern 2"
+    },
+    {
+      "query": "查询CDN带宽和流量报表",
+      "reason": "Statistics query — read-only"
+    },
+    {
+      "query": "停止未使用的加速域名节省成本",
+      "reason": "Idle domain stop — FinOps"
+    },
+    {
+      "query": "删除这个CDN域名",
+      "reason": "Domain delete (prod context requires two-step)"
+    },
+    {
+      "query": "CDN配置缓存规则，静态资源缓存1天",
+      "reason": "Cache rule configuration"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "创建VPC并配置子网",
+      "reason": "VPC — delegate to huaweicloud-vpc-ops"
+    },
+    {
+      "query": "为ECS申请公网IP并绑定",
+      "reason": "EIP — delegate to huaweicloud-eip-ops"
+    },
+    {
+      "query": "查看本月CDN账单",
+      "reason": "Billing — delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "在OBS上托管静态网站",
+      "reason": "OBS — delegate to huaweicloud-obs-ops"
+    },
+    {
+      "query": "配置WAF防护策略",
+      "reason": "WAF — delegate to huaweicloud-waf-ops"
+    },
+    {
+      "query": "查询ECS云服务器性能指标",
+      "reason": "ECS monitoring — delegate to huaweicloud-ecs-ops"
+    }
+  ]
+}

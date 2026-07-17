@@ -1,0 +1,71 @@
+{
+  "skill": "huaweicloud-kms-ops",
+  "should_match": [
+    {
+      "query": "Create a CMK with alias prod-master-key and enable rotation",
+      "reason": "Direct KMS key creation with rotation"
+    },
+    {
+      "query": "禁用密钥 kms-12345 并告知影响",
+      "reason": "Chinese disable-key request"
+    },
+    {
+      "query": "Schedule deletion of the key with 30-day window",
+      "reason": "Schedule key deletion with window"
+    },
+    {
+      "query": "Create a grant for the OBS service to use key kms-12345",
+      "reason": "Grant creation for service delegation"
+    },
+    {
+      "query": "Revoke all grants on kms-12345 before deleting",
+      "reason": "Grant revocation before key deletion"
+    },
+    {
+      "query": "Import BYOK key material for key kms-12345",
+      "reason": "BYOK key material import"
+    },
+    {
+      "query": "Generate a data key for client-side encryption",
+      "reason": "Data key generation (DEK)"
+    },
+    {
+      "query": "Why is my OBS upload failing with encryption error?",
+      "reason": "KMS-related OBS encryption failure — diagnose key state"
+    },
+    {
+      "query": "List all CMKs and check which ones are in PENDING_DELETION",
+      "reason": "Read-only inventory + deletion pending check"
+    },
+    {
+      "query": "Enable automatic key rotation for my master key",
+      "reason": "Key rotation toggle"
+    }
+  ],
+  "should_not_match": [
+    {
+      "query": "Upload a file to OBS bucket encrypted with this key",
+      "reason": "OBS operation — delegate to huaweicloud-obs-ops"
+    },
+    {
+      "query": "Enable TDE on RDS instance using this CMK",
+      "reason": "RDS TDE — delegate to huaweicloud-rds-ops"
+    },
+    {
+      "query": "Create an IAM policy allowing KMS access",
+      "reason": "IAM policy creation — delegate to huaweicloud-iam-ops"
+    },
+    {
+      "query": "Show me my monthly Huawei Cloud bill for KMS",
+      "reason": "Billing — delegate to huaweicloud-billing-ops"
+    },
+    {
+      "query": "Create an encryption alarm on KMS API error rate",
+      "reason": "CES alarm — delegate to huaweicloud-ces-ops"
+    },
+    {
+      "query": "Set up a WAF policy for my API",
+      "reason": "WAF — delegate to huaweicloud-waf-ops"
+    }
+  ]
+}
