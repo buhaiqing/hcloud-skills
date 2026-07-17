@@ -697,6 +697,11 @@ GCL-**exempt**.
 
 ### Five-Dimension Rubric (summary)
 
+> The five-dimension rubric (Correctness / Safety / Idempotency / Traceability / Spec Compliance),
+> default thresholds, termination contract (PASS / MAX_ITER / SAFETY_FAIL), and trace-persistence
+> rules are defined in [`docs/gcl-spec.md`](../../docs/gcl-spec.md) and the repo root
+> [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8. This skill overrides only the items below.
+
 | # | Dimension | Threshold | Notes |
 |---|-----------|-----------|-------|
 | 1 | Correctness | ≥ 0.5 (1.0 for `delete-cluster` / `restore-snapshot` / index delete) | `ShowClusterDetail` / `ShowSnapshot` / ES HEAD post-state |
@@ -717,20 +722,6 @@ GCL-**exempt**.
 - **S12** — ES `PUT /_cluster/settings` `cluster.routing.allocation.enable: none` without maintenance window
 - **S15** — ES `_reindex` on large index with `wait_for_completion: true`
 - **S16** — `update-snapshot-policy` `retention.days < 7`
-
-### Termination Contract (per `AGENTS.md` §5)
-
-| Condition | Status | Returned |
-|-----------|--------|----------|
-| All dimensions pass | **PASS** | Generator result + scores + trace path |
-| `iter == max_iter` (2) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
-| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
-
-### Trace Persistence (mandatory)
-
-Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
-`references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
-(see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
 
 ### See also
 
