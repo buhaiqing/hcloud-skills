@@ -1,41 +1,58 @@
-# LTS AIOps Patterns — Huawei Cloud Log Tank Service
+# AIOps Patterns — LTS
 
-> Advanced AIOps patterns for Log Tank Service.
-> Load when designing log-based anomaly detection, alarm routing, or
-> log retention optimization.
+> **Purpose**: LTS-specific anomaly detection patterns for log ingestion and storage.
+> **Version**: 1.0.0
+> **Last Updated**: 2026-07-18
 
-## 1. Multi-Source Log Correlation
+---
 
-| Source | Pattern | Detection |
-|--------|---------|-----------|
-| Application + Infrastructure | error_rate spike + cpu spike same 5m window | service degradation |
-| Audit + Performance | failed_login > 10 AND api_latency > p99 | credential attack |
-| Network + Application | bandwidth > 80% AND 5xx > baseline | traffic spike |
+## 1. Anomaly Patterns
 
-## 2. Alarm Storm Suppression
+### 1.1 Resource Pressure Patterns
 
-- Group identical `resource_id + metric` alarms in a 5-minute window
-- Emit one notification per group with severity worst-of
-- Suppress downstream notifications if upstream P0 is firing
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `log_ingestion_quota_near` | Ingestion rate > 80% of quota | Warning | 扩容或优化 |
+| `storage_quota_near` | Log storage > 80% of quota | Warning | 清理或扩容 |
+| `shard_capacity_near` | Shard usage > 85% | Warning | 分裂Shard |
 
-## 3. Log Retention Tiers
+### 1.2 Trend Anomaly Patterns
 
-| Tier | Storage | Retention | Use |
-|------|---------|-----------|-----|
-| Hot | LTS standard | 7 days | real-time queries |
-| Warm | LTS cold | 30 days | weekly review |
-| Archive | OBS + lifecycle | 365 days | compliance / forensic |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `ingestion_growth_acceleration` | Growth rate increasing | Warning | 分析原因 |
+| `log_volume_drop` | Volume < 50% of average | Warning | 检查数据源 |
 
-## 4. Knowledge-Base Patterns (≥5)
+### 1.3 Sudden Change Patterns
 
-| Pattern | Symptoms | Diagnostic |
-|---------|----------|------------|
-| Out of disk | `lts_disk_usage > 95%` | expand storage, archive |
-| Query latency | `query_p95 > 30s` | partition by date |
-| Log loss | `ingest_lag > 60s` | check agent health |
-| Index corruption | `index_error_count > 0` | rebuild index |
-| Permission denied | 403 spike | verify agency / policy |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `ingestion_spike` | Rate > 3x baseline | Warning | 检查数据源 |
+| `latency_spike` | Query latency > 1s | Warning | 检查存储状态 |
+| `error_rate_spike` | Index errors > 1% | Critical | 排查错误 |
 
-> **Security-Sensitive**: log stream deletion, log group purge, and
-> cross-region transfer MUST require explicit operator confirmation and
-> preserve evidence under the documented retention policy.
+### 1.4 Correlation Anomaly Patterns
+
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `ingestion_storage_correlation` | High ingestion + high storage | Warning | 正常增长 |
+| `latency_throughput_correlation` | Low throughput + high latency | Warning | 性能瓶颈 |
+
+---
+
+## 2. Multi-Metric Correlation
+
+| Metric Pair | Correlation | Interpretation |
+|------------|-------------|----------------|
+| Ingestion Rate + Storage | Positive | Normal growth |
+| Query Latency + Queue Depth | Positive | Backpressure |
+| Error Rate + Ingention | Negative | Data quality issue |
+
+---
+
+## 3. Alarm Storm Handling
+
+| Condition | Action |
+|-----------|--------|
+| > 10 alarms in 5 min | Aggregate into single alarm |
+| > 50% of log groups affected | Suppress individual alarms |
