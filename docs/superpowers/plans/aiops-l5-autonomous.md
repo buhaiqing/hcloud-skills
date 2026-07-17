@@ -1,6 +1,6 @@
 # Plan: AIOps L5 — Autonomous Operations
 
-> Status: 📋 **PLANNED** — not started
+> Status: 🚧 **IN PROGRESS** — L5-A done (2026-07-18)
 > Created: 2026-07-18
 > Target: AIOps L5 Autonomous Operations
 > Depends on: AIOps L3/L4 plan (`aiops-optimization.md`)
