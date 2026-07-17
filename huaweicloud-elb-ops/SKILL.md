@@ -476,6 +476,17 @@ This skill is **GCL-recommended** (per `AGENTS.md` §8). Every ELB mutating oper
 
 Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write (see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
 
+### Prompt Backbone
+
+Use `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` as the shared source
+for Generator/Critic/Orchestrator wording. Runtime Roles (Generator / Critic /
+Orchestrator) and their isolation constraints: see `docs/gcl-spec.md` §Runtime Roles
+and root `AGENTS.md` §5. Default rubric thresholds (correctness ≥0.5, safety =1.0,
+…): see `docs/gcl-spec.md` §Thresholds. Trace persistence + masking rules: see
+`docs/gcl-spec.md` §Trace and root `AGENTS.md` (credential masking mandatory).
+This skill's `references/prompt-templates.md` keeps ELB-specific overrides and must
+not introduce bare `{...}` placeholders.
+
 ### See also
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S13 rules, per-op thresholds
