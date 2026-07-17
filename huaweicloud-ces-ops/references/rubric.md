@@ -91,6 +91,12 @@
 | Any non-Safety < threshold, iter < max_iter | **RETRY** |
 | iter == max_iter | **MAX_ITER** |
 
+## 8.2 Changelog
+
+| Version | Date | Change |
+|---|---|---|
+| v1 | 2026-06-04 | Initial rubric. |
+
 ## 9. See also
 
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec

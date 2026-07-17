@@ -120,6 +120,12 @@ The Critic scores Traceability = 1 only if **all** are present in the trace:
 | Any non-Safety dimension < threshold AND `iter < max_iter` | **RETRY** (inject Critic suggestions) |
 | `iter == max_iter` (default 2) | **MAX_ITER** → return best-so-far + unresolved rubric items |
 
+## 8.2 Changelog
+
+| Version | Date | Change |
+|---|---|---|
+| v1 | 2026-06-04 | Initial rubric. |
+
 ## 9. See also
 
 - `AGENTS.md` §3, §5, §7, §8 — repository-wide GCL spec

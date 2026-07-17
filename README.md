@@ -62,6 +62,7 @@ hcloud-skills/
 ├── huaweicloud-dcs-ops/                  # DCS (Redis)
 ├── huaweicloud-obs-ops/                  # OBS
 ├── huaweicloud-ecs-ops/                  # ECS
+├── huaweicloud-eip-ops/                  # EIP (Elastic IP / Bandwidth)
 ├── huaweicloud-rds-ops/                  # RDS
 ├── huaweicloud-elb-ops/                  # ELB
 ├── huaweicloud-cce-ops/                  # CCE (Kubernetes)
@@ -207,6 +208,7 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | `huaweicloud-ces-ops` | CES (Cloud Eye) | Alarms, metrics, dashboards, events | ✅ Ready |
 | `huaweicloud-vpc-ops` | VPC | VPC, subnets, security groups, EIP, NAT, peering | ✅ Ready |
 | `huaweicloud-ecs-ops` | ECS | Instances, disks, snapshots, CloudShell | ✅ Ready |
+| `huaweicloud-eip-ops` | EIP (Elastic IP) | Allocate, bind/unbind, release EIP; bandwidth resize; shared bandwidth; 95th-percentile billing; idle EIP detection | ✅ Ready |
 | `huaweicloud-rds-ops` | RDS | Instances, backup/restore, parameters, performance | ✅ Ready |
 | `huaweicloud-elb-ops` | ELB | Listeners, pools, health checks | ✅ Ready |
 | `huaweicloud-cce-ops` | CCE | Clusters, nodes, node pools, add-ons | ✅ Ready |
@@ -233,6 +235,7 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | Cloud Eye Service | CES | `services/ces/v1` | Alarm, Metric, Dashboard |
 | Virtual Private Cloud | VPC | `services/vpc/v3` | VPC, Subnet, SecurityGroup |
 | Elastic Load Balance | ELB | `services/elb/v3` | Listener, Pool, Health |
+| Elastic IP | EIP | `services/eip/v2` | Publicip, Bandwidth, Shared Bandwidth |
 | Cloud Container Engine | CCE | `services/cce/v3` | Cluster, Node, Addon |
 | Distributed Cache Service | DCS | `services/dcs/v2` | Instance, Backup, Resize |
 | Host Security Service | HSS | `services/hss/v5` | Host, Vulnerability, Event |
