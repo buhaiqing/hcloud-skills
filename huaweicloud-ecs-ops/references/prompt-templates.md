@@ -44,18 +44,8 @@ rubric: {{output.rubric}}              # see rubric.md
 7. Async ops: poll ShowServerDetail/ShowJobStatus until terminal or budget exhausted.
 
 ## Output (strict JSON — no prose)
-{
-  "operation": "<op>",
-  "trace": [
-    { "step": "preflight", "ok": true|false, "details": "..." },
-    { "step": "execute", "command": "...", "args": {...}, "exit_code": 0, "stdout": "...", "stderr": "...", "request_id": "..." },
-    { "step": "validate", "ok": true|false, "post_state": {...} }
-  ],
-  "result": { "status": "success|failure|aborted", "resource_id": "...", "post_state": {...} },
-  "safety_block": null | "missing_confirmation" | "prod_double_confirm_missing" | "credential_leak" | "destructive_shell",
-  "iter": <int>
-}
-```
+
+> Shared Generator skeleton + JSON output schema: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §1.
 
 ---
 
@@ -84,21 +74,8 @@ trace: {{output.trace}}
 - No answer-aligned scoring: success status ≠ Correctness=1 if post_state mismatches.
 
 ## Output (strict JSON — no prose)
-{
-  "scores": { "correctness": 0|0.5|1, "safety": 0|1, "idempotency": 0|0.5|1,
-              "traceability": 0|0.5|1, "spec_compliance": 0|0.5|1 },
-  "evidence": {
-    "correctness": "<post_state match/miss per §3>",
-    "safety": "<S-rule hit or 'none'>",
-    "idempotency": "<§4 pattern used/not>",
-    "traceability": "<checklist present/missing>",
-    "spec_compliance": "<§6 anchor pass/fail>"
-  },
-  "suggestions": ["≤ 3 concrete, executable improvements"],
-  "blocking": true | false
-}
-blocking = true when Safety=0 OR any required dimension unmet (rubric.md §7).
-```
+
+> Shared Critic skeleton + JSON output schema: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §2.
 
 ---
 
@@ -116,43 +93,20 @@ max_iter: {{user.max_iter}}          # default 2 (AGENTS.md §8)
 audit_dir: ./audit-results/
 
 ## Loop
-iter=1; loop:
-  G = invoke_subagent(Generator, isolated, {user_request, critic_feedback, rubric})
-  persist_trace(audit_dir, iter, G)
-  C = invoke_subagent(Critic, isolated, {G, trace, rubric})
-  persist_trace(audit_dir, iter, C)
-  if C.blocking and C.scores.safety==0: return ABORT(SAFETY_FAIL)
-  if all_dims_pass(C.scores, rubric, G.operation): return PASS(G.result, C.scores)
-  if iter>=max_iter: return MAX_ITER(G.result, unresolved_dims(C.scores, rubric))
-  iter+=1; critic_feedback=C.suggestions
 
-## Termination (AGENTS.md §5)
-| Condition | Status | Returned |
-|-----------|--------|----------|
-| All dims pass | PASS | result + scores + trace |
-| iter == max_iter | MAX_ITER | best-so-far + unresolved items |
-| Safety == 0 | SAFETY_FAIL | violated S-rule; NEVER partial |
+> Shared Orchestrator skeleton + decision logic: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §3.
 
-## Trace schema: see AGENTS.md §6
 ```
 
 ---
 
 ## 4. Sanitization (mandatory before persisting trace)
 
-1. Replace `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / `sk-[A-Za-z0-9]{20,}` / `password` → `<masked>`.
-2. Replace user phone / email / ID-card → `<pii-masked>`.
-3. Truncate `stdout` to 4 KB; persist full log as `.stdout.txt` if needed.
-4. On failure: write `gcl-trace-*.sanitize-error.json` and continue.
+> Shared sanitization + failure-recovery anti-patterns: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §4.
 
 ## 5. Failure Recovery
 
-| Error | Action |
-|-------|--------|
-| Generator timeout (>120s) | Retry once (skip validation); else MAX_ITER |
-| Critic timeout | blocking=true → MAX_ITER |
-| Non-JSON response | Re-prompt once ("JSON only"); else MAX_ITER |
-| Trace write fails | Retry once; surface warning |
+> Shared failure-recovery anti-patterns: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §4.
 
 ## 6. Changelog
 
@@ -162,6 +116,7 @@ iter=1; loop:
 
 ## 7. See also
 
+- `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` (shared Generator/Critic/Orchestrator skeleton)
 - `AGENTS.md` §3, §5, §7, §8 — repository-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S10 rules
 - `references/core-concepts.md` — Spec Compliance anchors
