@@ -618,6 +618,17 @@ func main() {
 `references/prompt-templates.md` §3)。Trace 追加写,不入 Git;落盘前做脱敏
 (参见 `prompt-templates.md` §4)。
 
+### Prompt Backbone
+
+Use `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` as the shared source
+for Generator/Critic/Orchestrator wording. Runtime Roles (Generator / Critic /
+Orchestrator) and their isolation constraints: see `docs/gcl-spec.md` §Runtime Roles
+and root `AGENTS.md` §5. Default rubric thresholds (correctness ≥0.5, safety =1.0,
+…): see `docs/gcl-spec.md` §Thresholds. Trace persistence + masking rules: see
+`docs/gcl-spec.md` §Trace and root `AGENTS.md` (credential masking mandatory).
+This skill's `references/prompt-templates.md` keeps WAF-specific overrides and must
+not introduce bare `{...}` placeholders.
+
 ### 参见
 
 - [`references/rubric.md`](references/rubric.md) — 完整 rubric、S1–S17 规则、按操作阈值
