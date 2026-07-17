@@ -466,6 +466,17 @@ write (see `prompt-templates.md` §4). The path `./audit-results/` MUST be in `.
 | Sub-agent returns non-JSON | Re-prompt with "JSON object only"; MAX_ITER if still bad |
 | Trace file write fails | Retry once; surface a warning but do not silently continue |
 
+### Prompt Backbone
+
+Use `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` as the shared source
+for Generator/Critic/Orchestrator wording. Runtime Roles (Generator / Critic /
+Orchestrator) and their isolation constraints: see `docs/gcl-spec.md` §Runtime Roles
+and root `AGENTS.md` §5. Default rubric thresholds (correctness ≥0.5, safety =1.0,
+…): see `docs/gcl-spec.md` §Thresholds. Trace persistence + masking rules: see
+`docs/gcl-spec.md` §Trace and root `AGENTS.md` (credential masking mandatory).
+This skill's `references/prompt-templates.md` keeps ECS-specific overrides and must
+not introduce bare `{...}` placeholders.
+
 ### See also
 
 - [`references/rubric.md`](references/rubric.md) — full rubric, S1–S10 rules, per-op thresholds
