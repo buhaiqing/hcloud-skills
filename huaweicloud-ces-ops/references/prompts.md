@@ -1,475 +1,509 @@
-# Prompts — CES (Cloud Eye Service)
+# Prompts — Huawei Cloud CES
 
-> **Purpose**: Categorized AI prompts for CES monitoring operations.
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
-
----
-
-## 1. Prompt Categories
-
-| Category | Count | Description |
-|----------|-------|-------------|
-| Diagnosis | 6 | Root cause analysis prompts |
-| Investigation | 5 | Evidence gathering prompts |
-| Remediation | 4 | Fix action prompts |
-| 巡检 | 3 | Health check prompts |
-| 报告 | 2 | Summary report prompts |
+> **Purpose:** Structured prompts for CES (Cloud Eye Service) AIOps operations. Derived from `prompt-handbook-template.md`.
+> **Version:** 1.0.0
+> **Status:** Reference document
 
 ---
 
-## 2. Diagnosis Prompts
+## 1. Diagnostic Prompts
 
-### 2.1 Alarm Storm Detection
-
+### 1.1 Monitoring Health Check
 ```
-You are analyzing alarm storm on CES tenant {{tenant_id}}.
-Alarm count: {{alarm_count}} in {{time_window}} minutes
-Alarm types: {{alarm_types}}
-Top affected services: {{affected_services}}
+Analyze CES monitoring health status:
+- Monitored resources: {{resource_count}} across {{namespace_count}} namespaces
+- Active alarm rules: {{alarm_rule_count}}
+- Alarms triggered: {{alarm_count}} in past {{time_window}}
+- Data collection delay: {{collection_delay}} seconds
+- Notification delivery status: {{notification_status}}
+Determine if monitoring system is healthy and recommend actions.
 
-Investigate:
-1. Is this a single root cause triggering cascade?
-2. Which alarm is the root (not symptom)?
-3. Any recent changes that could trigger this?
-
-Prioritize:
-- Identify root alarm
-- Suppress redundant alarms
-- Address root cause
-
-Provide:
-- Root cause assessment
-- Alarm correlation analysis
-- Recommended suppression strategy
+CES health indicators: alarm rule evaluation latency, data ingestion delay, notification failure rate
 ```
 
-### 2.2 Metric Anomaly Detection
-
+### 1.2 Alarm Analysis
 ```
-You are analyzing metric anomaly on {{resource_type}} {{resource_id}}.
-Metric: {{metric_name}}
-Current value: {{current_value}}
-Expected range: {{min_value}} - {{max_value}}
-Deviation: {{deviation}}%
-Timestamp: {{timestamp}}
-
-Investigate:
-1. Is this a true anomaly or expected behavior?
-2. Correlate with other metrics on same resource
-3. Check for recent scaling events or deployments
-
-Provide:
-- Anomaly classification (spike, drift, step change)
-- Confidence level (High/Medium/Low)
-- Recommended threshold adjustment
-```
-
-### 2.3 Monitoring Agent Health
-
-```
-You are diagnosing CES agent health on instance {{resource_id}}.
-Agent status: {{agent_status}}
-Last heartbeat: {{last_heartbeat}}
-Metric gap: {{metric_gap}} minutes
-
-Investigate:
-1. Agent process running? Check via hcloud ECS describeInstances
-2. Agent logs available? Check LTS for agent-{{resource_id}} logs
-3. Network connectivity to CES endpoint?
-4. Disk space for metric buffering?
-
-Provide:
-- Agent health assessment
-- Recovery steps if unhealthy
-- Data gap impact analysis
-```
-
-### 2.4 Threshold Tuning Analysis
-
-```
-You are analyzing alarm threshold for {{resource_id}}.
-
-Current threshold: {{current_threshold}}
-Metric: {{metric_name}} = {{current_value}}%
-Alarm history:
-- Alarms triggered: {{alarm_count}} in past {{period}}
-- False positive rate: {{false_positive_rate}}%
-- True positive rate: {{true_positive_rate}}%
-
-Check:
-1. Is current threshold too sensitive or too loose?
-2. What's the business impact of missing an alarm?
-3. Can we use dynamic threshold based on time series?
-
-Provide:
-- Threshold adjustment recommendation
-- Expected alarm frequency change
-- Implementation risk
-```
-
-### 2.5 Cross-Service Correlation
-
-```
-You are analyzing cross-service alarm correlation for {{resource_id}}.
-
-Alarms triggered:
-{{alarm_list}}
-
-Time range: {{start_time}} to {{end_time}}
-
-Investigate:
-1. Which service is the root cause?
-2. Which alarms are downstream effects?
-3. Any dependency relationship between services?
-
-Use CES alarm correlation rules and dependency graph.
-
-Provide:
-- Root cause service identification
-- Downstream impact chain
-- Recommended alarm grouping
-```
-
-### 2.6 SLA Breach Prediction
-
-```
-You are predicting SLA breach risk for {{resource_id}}.
-
-Current metrics:
-- Availability: {{availability}}%
-- Latency P99: {{latency_p99}}ms
-- Error rate: {{error_rate}}%
-
-SLA targets:
-- Availability: {{sla_availability}}%
-- Latency P99: {{sla_latency}}ms
-- Error rate: {{sla_error_rate}}%
-
-Trend: {{trend}} over past {{days}} days
-
-Predict:
-1. Days until SLA breach at current trend
-2. Which metric will breach first?
-3. Required improvement to meet SLA?
-
-Provide breach risk assessment and mitigation recommendations.
-```
-
----
-
-## 3. Investigation Prompts
-
-### 3.1 Metric Data Gap Investigation
-
-```
-Investigate metric data gap for {{resource_id}}.
-
-Gap details:
+Analyze CES alarm {{alarm_id}}:
+- Alarm name: {{alarm_name}}
+- Namespace: {{namespace}} (e.g., SYS.ECS)
 - Metric: {{metric_name}}
-- Gap start: {{gap_start}}
-- Gap end: {{gap_end}}
-- Gap duration: {{gap_duration}} minutes
+- Current value: {{current_value}} (threshold: {{threshold}})
+- Duration: {{alarm_duration}} minutes
+- Affected resources: {{affected_resources}}
+- Related alarms: {{related_alarms}}
+Perform root cause analysis and recommend actions.
 
-Check:
-1. Was agent running during gap? Via hcloud CES listAgents
-2. Network connectivity at gap time?
-3. CES API availability status?
-4. Any scheduled maintenance?
-
-Provide:
-- Gap cause analysis
-- Data completeness percentage
-- Recovery options for historical data
+CES alarm namespaces: SYS.ECS, SYS.RDS, SYS.ELB, SYS.VPC, SYS.DCS, SERVICE.*
 ```
 
-### 3.2 Alarm Notification Investigation
-
+### 1.3 Metric Anomaly Diagnosis
 ```
-Investigate alarm notification delivery for alarm {{alarm_id}}.
+CES metric anomaly detected for {{namespace}}.{{metric_name}}:
+- Resource: {{resource_id}}
+- Current value: {{current_value}} (normal range: {{normal_range}})
+- Deviation: {{deviation_percent}}% from baseline
+- Historical pattern: {{historical_pattern}}
+- Aggregation method: {{aggregation_method}} (AVG/MAX/MIN)
+Determine if anomaly is significant and assess severity.
 
-Expected recipients: {{recipients}}
-Notification channels: {{channels}} (SMS/Email/Webhook)
-Delivery status: {{delivery_status}}
-
-Check via CTS:
-1. Was alarm triggered? Filter: alarm_id = {{alarm_id}}
-2. Were notifications sent?
-3. Any delivery failures logged?
-
-Provide:
-- Notification delivery status
-- Failure reason if any
-- Recommended fix for notification delivery
+CES aggregation: AVG smooths spikes, MAX captures peaks, MIN captures valleys
 ```
 
-### 3.3 Historical Trend Analysis
-
+### 1.4 Notification Delivery Analysis
 ```
-Analyze historical trends for {{resource_id}} metric {{metric_name}}.
+Analyze CES notification delivery for alarm {{alarm_id}}:
+- Notification type: {{notification_type}} (SMS/Email/SMS+Email)
+- Topic URN: {{topic_urn}}
+- Subscribers: {{subscriber_count}}
+- Delivery status: {{delivery_status}}
+- Delivery latency: {{delivery_latency}} seconds
+- SMN quota usage: {{smn_quota_usage}}%
+Identify delivery issues and recommend fixes.
 
-Time range: {{start_time}} to {{end_time}}
-Granularity: {{granularity}} (5min/1h/1d)
-
-Analyze:
-1. Daily/weekly/monthly patterns (seasonality)
-2. Anomaly history (when and why)
-3. Growth trajectory
-4. Correlation with other metrics
-
-Provide:
-- Trend summary with statistics
-- Forecast for next {{forecast_period}}
-- Anomaly explanation if significant
-```
-
-### 3.4 Resource Group Health Investigation
-
-```
-Investigate health of resource group {{group_id}}.
-
-Resources in group: {{resource_count}}
-Healthy: {{healthy_count}}
-Unhealthy: {{unhealthy_count}}
-Unknown: {{unknown_count}}
-
-For unhealthy resources:
-- List resources with active alarms
-- Identify common alarm patterns
-- Check for shared dependencies
-
-Provide:
-- Group health score
-- Critical issues requiring immediate attention
-- Recommended group-level actions
-```
-
-### 3.5 Dashboard Configuration Investigation
-
-```
-Investigate CES dashboard {{dashboard_id}} configuration.
-
-Dashboard name: {{dashboard_name}}
-Widgets: {{widget_count}}
-Last modified: {{last_modified}}
-
-Check:
-1. Are all widgets showing data (no stale metrics)?
-2. Are alarm widgets correctly configured?
-3. Any widgets referencing deleted resources?
-4. Are thresholds aligned with current SLA?
-
-Provide:
-- Dashboard health assessment
-- Stale widget list
-- Recommended configuration updates
+CES notification channels: SMN topic, FunctionGraph, webhook,钉钉/企业微信
 ```
 
 ---
 
-## 4. Remediation Prompts
+## 2. Inspection Prompts
 
-### 4.1 Alarm Suppression Recommendation
-
+### 2.1 Monitoring Coverage Inspection
 ```
-Analyze alarm suppression for CES alarm storm.
+Inspect CES monitoring coverage:
+- Total cloud resources: {{total_resources}}
+- Monitored resources: {{monitored_resources}} ({{coverage_percent}}%)
+- Unmonitored resources: {{unmonitored_resources}}
+- By namespace:
+  {{#each namespaces}}
+  - {{name}}: {{monitored}}/{{total}} ({{coverage}}%)
+  {{/each}}
+- Missing monitoring: {{missing_monitoring_details}}
+Identify resources without monitoring and prioritize enabling coverage.
 
-Situation:
-- Alarms: {{alarm_count}} in {{time_window}} minutes
-- Root cause: {{root_cause}}
-- Estimated duration: {{estimated_duration}}
-
-Recommend:
-1. Suppress alarms temporarily (yes/no)?
-2. Suppression scope (which alarms/-resources)?
-3. Suppression duration?
-
-Caution: Alarm suppression reduces visibility.
-
-Provide suppression plan with:
-- Scope definition
-- Duration justification
-- Communication plan
-- Auto-resume trigger
+CES monitoring agents: CES agent (AGT.* namespace), direct API push, service native push
 ```
 
-### 4.2 Metric Retention Adjustment
-
+### 2.2 Alarm Rule Optimization Scan
 ```
-Analyze metric retention settings for {{resource_id}}.
+Scan CES alarm rules for optimization:
+- Total alarm rules: {{alarm_rule_count}}
+- Alarm rules with no triggers in 30 days: {{unused_rules}}
+- Duplicate alarm rules: {{duplicate_rules}}
+- Overlapping thresholds: {{overlapping_rules}}
+- Alarm storm risk: {{alarm_storm_risk}} (rules that could fire together)
+Provide consolidation recommendations with estimated reduction.
 
-Current retention:
-- 5min granularity: {{retention_5min}} days
-- 1h granularity: {{retention_1h}} days
-- 1d granularity: {{retention_1d}} days
-
-Requirements:
-- Historical analysis depth: {{required_depth}} days
-- Storage cost concern: {{cost_constraint}}
-
-Recommend:
-1. Optimal retention per granularity
-2. Cost vs. analysis need tradeoff
-3. Archival strategy for long-term storage
-
-Provide retention plan with cost estimate.
+CES alarm optimization: merge similar rules, increase evaluation periods, add suppressions
 ```
 
-### 4.3 Alarm Template Remediation
-
+### 2.3 Data Quality Check
 ```
-Analyze alarm template remediation for {{template_id}}.
+Check CES metric data quality:
+- Namespace: {{namespace}}
+- Metric: {{metric_name}}
+- Data points (past 24h): {{data_points}} (expected: {{expected_points}})
+- Data gap ratio: {{gap_ratio}}%
+- Stale data (delay > 5min): {{stale_data_count}}
+- Unusual values (outlier detection): {{outlier_count}}
+Validate data integrity and flag quality issues.
 
-Template: {{template_name}}
-Active alarms using template: {{alarm_count}}
-Issue: {{issue_description}}
-
-Check:
-1. Current threshold values
-2. Recent true positive vs false positive rate
-3. Business impact of current settings
-
-Recommend:
-1. Threshold adjustments
-2. Additional conditions (e.g., consecutive checks)
-3. New alarm template design
-
-Provide updated template with justification.
+CES data quality issues: agent down, API rate limits, service outage, dimension mismatch
 ```
 
-### 4.4 Monitoring Plan Optimization
-
+### 2.4 Quota Usage Review
 ```
-Optimize monitoring plan for {{resource_id}}.
+Review CES and related service quotas:
+- CES alarm rules: {{alarm_rules_used}}/{{alarm_rules_limit}}
+- CES alarm history retention: {{retention_days}} days
+- SMN topics: {{smn_topics_used}}/{{smn_topics_limit}}
+- SMN subscriptions: {{smn_subs_used}}/{{smn_subs_limit}}
+- API rate limits: {{api_rate_used}}/{{api_rate_limit}}
+Identify quota risks and recommend cleanup or quota increase.
 
-Current plan:
-- Metrics monitored: {{metric_count}}
-- Alarm rules: {{alarm_count}}
-- Notification groups: {{notification_count}}
-
-Efficiency analysis:
-- Alarms with no action taken: {{no_action_count}}
-- Duplicate alarms: {{duplicate_count}}
-- Metrics never anomalous: {{unused_metric_count}}
-
-Recommend:
-1. Remove redundant alarms
-2. Consolidate duplicate monitoring
-3. Add monitoring gaps identified
-
-Provide optimization plan with expected improvement.
+CES quota management: alarm rules per namespace, dimensions per rule, notification frequency
 ```
 
 ---
 
-## 5. 巡检 Prompts
+## 3. Anomaly Detection Prompts
 
-### 5.1 Daily Monitoring Health Check
-
+### 3.1 Metric Anomaly Analysis
 ```
-Perform daily monitoring health check via CES.
+Analyze metric anomaly for {{namespace}}.{{metric_name}} on {{resource_id}}:
+- Current value: {{current_value}}
+- Baseline (7-day avg): {{baseline_value}}
+- Standard deviation: {{std_dev}}
+- Anomaly score: {{anomaly_score}}/100
+- Time range: {{start_time}} to {{end_time}}
+- CES aggregation: {{aggregation_method}}
+Determine if true anomaly, assess severity, and recommend investigation.
 
-Checks:
-1. All agents healthy? Via hcloud CES listAgents
-2. No metric data gaps > 30 minutes?
-3. All critical alarms acknowledged?
-4. Dashboard availability?
-
-Provide:
-- Monitoring system health score
-- Issues requiring attention
-- Recommendations for next 24h
+CES anomaly detection: uses sliding window + statistical threshold, may have false positives on volatile metrics
 ```
 
-### 5.2 Weekly Alarm Review
-
+### 3.2 Alarm Storm Detection
 ```
-Perform weekly alarm review for {{project_id}}.
+Detect alarm storm in CES:
+- Total alarms in past {{time_window}}: {{alarm_count}}
+- Unique resources: {{unique_resources}}
+- Unique namespaces: {{unique_namespaces}}
+- Top alarm types:
+  {{#each top_alarms}}
+  - {{type}}: {{count}} ({{percentage}}%)
+  {{/each}}
+- Alarm burst start time: {{burst_start_time}}
+- Probable root cause: {{probable_cause}}
+Recommend alarm suppression and investigation strategy.
 
-Review period: {{start_date}} to {{end_date}}
-
-Analyze:
-1. Alarm frequency by service
-2. Alarm true positive rate
-3. Mean time to acknowledge (MTTA)
-4. Mean time to resolve (MTTR)
-
-Provide:
-- Alarm efficiency metrics
-- Problematic alarm patterns
-- Recommended threshold adjustments
+CES alarm storm mitigation: CES alarm templates with dependencies, suppression rules, severity escalation
 ```
 
-### 5.3 Monthly Monitoring Coverage Audit
-
+### 3.3 Cross-Namespace Correlation
 ```
-Perform monthly monitoring coverage audit.
+Correlate metrics across CES namespaces:
+- Primary symptom: {{namespace}}.{{metric_name}} on {{resource_id}} = {{value}}
+- Correlated metrics:
+  - {{namespace2}}.{{metric2}}: {{value2}} (correlation: {{corr2}}%)
+  - {{namespace3}}.{{metric3}}: {{value3}} (correlation: {{corr3}}%)
+- Cross-service correlation: {{cross_service_correlation}}
+- Lag analysis: {{metric2}} {{lags_behind}} seconds behind {{metric1}}
+Identify root cause metric and propagation path.
 
-Audit scope: {{project_id}} / {{region}}
-
-Check:
-1. All critical resources have monitoring?
-2. All alarms have valid notification targets?
-3. Dashboard access for all stakeholders?
-4. Monitoring costs vs. value?
-
-Provide:
-- Coverage percentage by resource type
-- Gap list with prioritization
-- Cost optimization opportunities
+CES cross-namespace correlation: ECS CPU → RDS connections, ELB traffic → ECS metrics
 ```
 
----
-
-## 6. 报告 Prompts
-
-### 6.1 Incident Monitoring Analysis
-
+### 3.4 Trend Deviation Detection
 ```
-Generate monitoring analysis for incident {{incident_id}}.
+Detect metric trend deviation in CES:
+- Metric: {{namespace}}.{{metric_name}}
+- Resource: {{resource_id}}
+- Expected trend: {{expected_trend}}% daily
+- Actual trend: {{actual_trend}}% daily
+- Forecast deviation: {{forecast_deviation}}%
+- Seasonal pattern: {{seasonal_pattern}}
+- Anomaly confidence: {{confidence}}%
+Assess if deviation indicates future issue.
 
-Incident details:
-- Duration: {{start_time}} to {{end_time}}
-- Affected: {{affected_resources}}
-- Impact: {{impact_description}}
-
-Monitoring data:
-- Alarms triggered: {{alarm_list}}
-- Metric anomalies: {{anomaly_list}}
-- Timeline correlation
-
-Provide:
-- What monitoring observed before/during/after incident
-- Alarm response time analysis
-- Recommendations to improve monitoring response
-```
-
-### 6.2 Monthly Monitoring Summary
-
-```
-Generate monthly monitoring summary for {{project_id}}.
-
-Period: {{month}}
-
-Summary:
-- Total alarms: {{total_alarms}}
-- Alarm by severity: {{severity_breakdown}}
-- Top alerting resources: {{top_resources}}
-- Monitoring costs: {{costs}}
-
-Achievements:
-- Improved coverage: {{coverage_improvement}}
-- Reduced false positives: {{fp_reduction}}%
-
-Provide detailed monthly report with trends and recommendations.
+CES trend analysis: use historical data for baseline, detect gradual degradation vs sudden shift
 ```
 
 ---
 
-## 7. Compliance Checklist
+## 4. Operations Prompts
 
-- [x] 20 categorized prompts (6 diagnosis + 5 investigation + 4 remediation + 3 巡检 + 2 报告)
-- [x] Each prompt includes context variables ({{variable}})
-- [x] Each prompt specifies output format
-- [x] Diagnosis prompts include confidence level
-- [x] Commands reference hcloud CLI where applicable
+### 4.1 Alarm Rule Creation
+```
+Create CES alarm rule for {{namespace}}.{{metric_name}}:
+- Resource dimension: {{dimension}} = {{dimension_value}}
+- Comparison operator: {{operator}} (GT/GTE/LT/LTE/EQ)
+- Threshold: {{threshold}} ({{unit}})
+- Evaluation period: {{evaluation_period}} consecutive periods
+- Period length: {{period_length}} seconds
+- Alarm level: {{alarm_level}} (1=Critical, 2=Major, 3=Minor, 4=Info)
+- Notification: {{notification_method}}
+- OK actions: {{ok_actions}}
+- Alarm actions: {{alarm_actions}}
+Validate rule syntax and test with sample data.
+
+CES alarm rule constraints: max 30 dimensions per rule, evaluation period must align with data granularity
+```
+
+### 4.2 Alarm Suppression Configuration
+```
+Configure CES alarm suppression for {{alarm_pattern}}:
+- Suppression scope: {{scope}} (alarm/namespace/resource)
+- Suppression duration: {{duration_minutes}} minutes
+- Evaluation continues: {{evaluation_continues}} (yes/no)
+- Auto-resume: {{auto_resume}} (yes/no)
+- Related alarms to suppress: {{related_alarms}}
+Design suppression strategy that prevents alarm fatigue without masking real issues.
+
+CES suppression use cases: maintenance windows, planned changes, known false positives
+```
+
+### 4.3 Metric Dashboard Design
+```
+Design CES dashboard for {{use_case}}:
+- Dashboard name: {{dashboard_name}}
+- Required metrics:
+  {{#each metrics}}
+  - {{namespace}}.{{metric_name}} (dimension: {{dimension}})
+  {{/each}}
+- Visualization types: {{viz_types}} (line/graph/gauge/stat)
+- Refresh interval: {{refresh_interval}} seconds
+- Time range: {{time_range}}
+- Comparison period: {{comparison_period}}
+Create dashboard layout with optimal widget arrangement.
+
+CES dashboard best practices: max 12 widgets per dashboard, use templates for consistency
+```
+
+### 4.4 Notification Policy Update
+```
+Update CES notification policy for {{topic_name}}:
+- Current subscribers: {{current_subscribers}}
+- New subscriber: {{new_subscriber}} ({{subscriber_type}})
+- Notification content template: {{content_template}}
+- Retry policy: {{retry_policy}} ({{max_retries}} retries, {{retry_interval}}s interval)
+- Rate limiting: {{rate_limit}} notifications per minute
+- Quiet hours: {{quiet_hours}} (UTC{{quiet_hours_offset}})
+Validate policy changes won't cause notification gaps.
+
+CES notification best practices: use SMN topic with multiple subscriber types for redundancy
+```
+
+---
+
+## 5. Optimization Prompts
+
+### 5.1 Alarm Efficiency Optimization
+```
+Optimize CES alarm efficiency:
+- Current MTTD (mean time to detect): {{mttd}} minutes
+- Current false positive rate: {{false_positive_rate}}%
+- Alarm noise ratio: {{noise_ratio}}%
+- Proposed changes:
+  1. {{change_1}}: expected improvement {{improvement_1}}%
+  2. {{change_2}}: expected improvement {{improvement_2}}%
+Provide cost-benefit analysis of optimization.
+
+CES alarm efficiency: tune evaluation periods, use multi-condition alarms, add data validation
+```
+
+### 5.2 Monitoring Cost Optimization
+```
+Optimize CES monitoring costs:
+- Current monitoring cost: {{monthly_cost}} CNY
+- Data ingestion: {{data_ingestion}} metrics/month
+- Historical data storage: {{storage_gb}} GB
+- Cost allocation by namespace:
+  {{#each by_namespace}}
+  - {{name}}: {{cost}} ({{percentage}}%)
+  {{/each}}
+- Optimization opportunities:
+  - Reduce granularity for {{namespace}}: save {{savings_1}}
+  - Delete unused rules: save {{savings_2}}
+  - Adjust retention: save {{savings_3}}
+Provide prioritized cost reduction plan.
+
+CES cost optimization: reduce 1s metrics to 5min, delete unused rules, optimize retention periods
+```
+
+### 5.3 Threshold Tuning
+```
+Tune CES alarm thresholds based on historical data:
+- Metric: {{namespace}}.{{metric_name}}
+- Resource: {{resource_id}}
+- Current threshold: {{current_threshold}}
+- Historical data analysis (30 days):
+  - Min: {{min_value}}, Max: {{max_value}}, Avg: {{avg_value}}
+  - P50: {{p50}}, P90: {{p90}}, P99: {{p99}}
+- Recommended threshold: {{recommended_threshold}}
+- Confidence: {{confidence}}%
+Validate recommendation against business requirements.
+
+CES threshold tuning: use P95-P99 for critical alarms, avoid threshold near daily average
+```
+
+### 5.4 Multi-Condition Alarm Design
+```
+Design multi-condition CES alarm for {{use_case}}:
+- Condition 1: {{namespace1}}.{{metric1}} {{op1}} {{threshold1}} for {{periods1}} periods
+- Condition 2: {{namespace2}}.{{metric2}} {{op2}} {{threshold2}} for {{periods2}} periods
+- Logical operator: {{operator}} (AND/OR)
+- Alarm level: {{alarm_level}}
+- Require all conditions: {{require_all}}
+Design alarm that reduces false positives while maintaining detection sensitivity.
+
+CES multi-condition use cases: high CPU + high memory, high latency + high error rate
+```
+
+---
+
+## 6. Knowledge Base Prompts
+
+### 6.1 Alarm Pattern Matching
+```
+Match CES alarm to known patterns:
+- Alarm: {{alarm_name}} ({{alarm_id}})
+- Namespace: {{namespace}}
+- Metric: {{metric_name}}
+- Value: {{current_value}} vs threshold {{threshold}}
+- Duration: {{duration}} minutes
+- Known patterns:
+  1. Flash crowd: sudden spike, short duration (< 5min), no resource issue
+  2. Gradual degradation: monotonic increase over hours, approaching threshold
+  3. Metric collectors: CES agent issue, shows flatline or gaps
+  4. Resource exhaustion: sustained high value, slow recovery
+Identify most likely pattern and resolution guidance.
+```
+
+### 6.2 Resolution Guidance Retrieval
+```
+Retrieve resolution guidance for CES alarm:
+- Alarm ID: {{alarm_id}}
+- Alarm name: {{alarm_name}}
+- Namespace: {{namespace}}
+- Metric: {{metric_name}}
+- Affected resource: {{resource_id}}
+- Alarm history: {{alarm_history}}
+Return applicable runbook and success metrics.
+
+CES common resolutions: threshold tuning, resource scale-up, application restart, agent reinstall
+```
+
+### 6.3 Similar Alarm Analysis
+```
+Analyze similar past CES alarms:
+- Current alarm: {{alarm_name}} on {{resource_id}}
+- Namespace: {{namespace}}
+- Time window: past 90 days
+- Similarity criteria: same namespace, same metric, similar threshold
+- Found {{similar_count}} similar alarms:
+  {{#each similar_alarms}}
+  - {{date}}: {{resolution}}, {{resolution_time}} to resolve
+  {{/each}}
+Predict resolution time and recommend approach.
+```
+
+### 6.4 Best Practice Recommendation
+```
+Recommend CES best practices for {{use_case}}:
+- Current setup: {{current_setup}}
+- Industry best practices: {{industry_best_practices}}
+- Huawei Cloud Well-Architected monitoring alignment
+- Common pitfalls: over-alarming, under-alarming, no escalation path
+- Recommended alarm strategy: {{recommended_strategy}}
+Provide implementation roadmap.
+
+CES WAF alignment: Reliability (alarm response SLO), Cost (right-sized granularity), Operations (MTTD optimization)
+```
+
+---
+
+## 7. Change Management Prompts
+
+### 7.1 Change Impact Assessment
+```
+Assess impact of CES configuration change:
+- Change type: {{change_type}} (create/update/delete alarm rule)
+- Target: {{target}} (alarm rule / notification policy / dashboard)
+- Change window: {{change_window}}
+- Rollback plan: {{rollback_plan}}
+- Affected monitoring coverage: {{affected_coverage}}
+- Risk level: {{risk_level}} (Low/Medium/High/Critical)
+Evaluate if change can proceed safely.
+```
+
+### 7.2 Change Correlation Analysis
+```
+Correlate CES changes with downstream impact:
+- Issue observed: {{issue_description}}
+- Time of observation: {{issue_time}}
+- CES changes in past hour:
+  - {{change_1}}: {{change_details_1}}
+  - {{change_2}}: {{change_details_2}}
+- Downstream impact: {{downstream_impact}}
+Determine if CES changes caused or contributed to issue.
+
+CES change correlation: alarm rule modifications, threshold changes, notification updates
+```
+
+### 7.3 Pre-Change Validation
+```
+Validate CES change readiness:
+- Change details: {{change_details}}
+- Syntax validation: {{syntax_valid}} (yes/no)
+- Resource existence: {{resource_exists}} (yes/no)
+- Permission validation: {{permission_ok}} (yes/no)
+- Notification test: {{notification_test}} (sent/not sent)
+- Monitoring data availability: {{data_available}} (yes/no)
+Confirm change can proceed or list blocking issues.
+```
+
+### 7.4 Post-Change Verification
+```
+Verify CES change completed successfully:
+- Change ID: {{change_id}}
+- Change type: {{change_type}}
+- Expected outcome: {{expected_outcome}}
+- Verification steps:
+  1. Alarm rule exists: {{rule_exists}} (yes/no)
+  2. Metric data flowing: {{data_flowing}} (yes/no)
+  3. Test alarm triggered: {{test_alarm_triggered}} (yes/no)
+  4. Notification delivered: {{notification_delivered}} (yes/no)
+Confirm success or flag issues.
+```
+
+---
+
+## 8. Reporting Prompts
+
+### 8.1 Daily Monitoring Report
+```
+Generate daily CES monitoring report:
+- Total monitored resources: {{total_resources}}
+- Active alarms: {{active_alarms}} (Critical: {{critical}}, Major: {{major}})
+- Alarms triggered today: {{alarms_today}}
+- Mean time to detect: {{mttd}} minutes
+- Notification delivery rate: {{notification_rate}}%
+- Data quality score: {{data_quality_score}}/100
+- Action items: {{action_items}}
+```
+
+### 8.2 Weekly Alarm Analysis Report
+```
+Generate weekly CES alarm analysis report:
+- Alarm volume: {{alarm_count}} (vs {{prev_week_count}} last week, {{trend}}%)
+- Alarms by namespace:
+  {{#each by_namespace}}
+  - {{name}}: {{count}} ({{percentage}}%)
+  {{/each}}
+- Top alarm types:
+  {{#each top_types}}
+  - {{type}}: {{count}}
+  {{/each}}
+- False positive rate: {{false_positive_rate}}%
+- Alarm noise ratio: {{noise_ratio}}%
+- Recommendations: {{recommendations}}
+```
+
+### 8.3 Monthly Monitoring SLA Report
+```
+Generate monthly CES monitoring SLA report:
+- Monitoring availability: {{monitoring_availability}}% (target: 99.9%)
+- Data collection delay: {{avg_delay}}s (target: < 60s)
+- Alarm delivery latency: {{delivery_latency}}s (target: < 30s)
+- Alarm accuracy: {{alarm_accuracy}}% (no false positives)
+- Data completeness: {{data_completeness}}% (target: > 99%)
+- SLA violations: {{sla_violations}}
+- Root causes: {{violation_root_causes}}
+- Improvements: {{improvements}}
+```
+
+### 8.4 Executive Summary
+```
+Generate executive summary for monitoring operations:
+- Monitoring scope: {{monitored_count}} resources, {{namespace_count}} services
+- Alarm efficiency: {{alarm_efficiency}}% (actionable alarms / total)
+- MTTD improvement: {{mttd_improvement}}% vs last month
+- Cost performance: {{monthly_cost}} CNY for {{resource_count}} resources
+- Strategic recommendations: {{strategic_recommendations}}
+```
+
+---
+
+## Appendix: CES-Specific Placeholders
+
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{{namespace}}` | CES metric namespace | `SYS.ECS`, `SYS.RDS`, `SERVICE.custom` |
+| `{{metric_name}}` | CES metric name | `cpu_util`, `memory_util`, `latency_p99` |
+| `{{alarm_id}}` | CES alarm rule ID | `alarm-12345` |
+| `{{topic_urn}}` | SMN topic URN | `urn:smn:cn-north-4:123456:topic-name` |
+| `{{aggregation_method}}` | CES aggregation | `AVG`, `MAX`, `MIN`, `SUM` |
+| `{{period_length}}` | Evaluation period in seconds | `60`, `300`, `900` |
+
+---
+
+*Prompts version 1.0.0 — for AIOps L4 compliance (Prompt Handbook P1-3)*

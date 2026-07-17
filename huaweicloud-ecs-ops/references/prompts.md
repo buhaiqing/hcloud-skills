@@ -1,427 +1,468 @@
-# Prompts — ECS (Elastic Cloud Server)
+# Prompts — Huawei Cloud ECS
 
-> **Purpose**: Categorized AI prompts for ECS operations.
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
-
----
-
-## 1. Prompt Categories
-
-| Category | Count | Description |
-|----------|-------|-------------|
-| Diagnosis | 6 | Root cause analysis prompts |
-| Investigation | 5 | Evidence gathering prompts |
-| Remediation | 4 | Fix action prompts |
-| 巡检 | 3 | Health check prompts |
-| 报告 | 2 | Summary report prompts |
+> **Purpose:** Structured prompts for ECS AIOps operations. Derived from `prompt-handbook-template.md`.
+> **Version:** 1.0.0
+> **Status:** Reference document
 
 ---
 
-## 2. Diagnosis Prompts
+## 1. Diagnostic Prompts
 
-### 2.1 CPU Utilization High
-
+### 1.1 Instance Health Check
 ```
-You are analyzing CPU high alert on ECS instance {{resource_id}}.
-Metric: cpu_util = {{value}}%, threshold = {{threshold}}%
-Duration: {{duration}}
-Region: {{region}}
+Analyze ECS instance {{resource_id}} health status:
+- Current metric values: CPU {{cpu_usage}}%, Memory {{mem_usage}}%, Disk {{disk_usage}}%
+- Recent alert history: {{alert_count}} alerts in past {{time_window}}
+- Related events: {{event_summary}}
+Determine if instance is healthy and recommend actions.
 
-Investigate:
-1. Which process is consuming CPU? Run: hcloud ECS listInstances --os-type Linux && hcloud ECS describeInstances
-2. Is this normal behavior or anomaly? Check historical baseline from CES.
-3. Any recent changes (scaling, deployment) in the last 24h via CTS?
-
-Provide:
-- Root cause assessment (High/Medium/Low confidence)
-- Recommended actions
-- Whether scale-up or scale-out is recommended
+Applicable CES metrics: SYS.ECS.cpu_usage, SYS.ECS.mem_usedPercent, SYS.ECS.diskUsage_percent
 ```
 
-### 2.2 Memory Utilization High
-
+### 1.2 Root Cause Analysis
 ```
-You are analyzing memory high alert on ECS instance {{resource_id}}.
-Metric: memory_util = {{value}}%, threshold = {{threshold}}%
-Duration: {{duration}}
-Available memory: {{available}}MB
+Given ECS instance {{resource_id}} shows:
+- Symptom: {{symptom_description}}
+- First observed: {{first_observed_time}}
+- Metric anomaly: CPU {{cpu_anomaly}}%, Memory {{mem_anomaly}}%, Network {{net_anomaly}}%
+- Correlated CTS events: {{cts_events}}
+Perform root cause analysis and provide ranked hypothesis list with confidence scores.
 
-Investigate:
-1. Is memory monotonically increasing (potential leak)?
-2. Which process consuming most memory?
-3. Swap usage patterns?
-
-Provide:
-- Memory leak probability (High/Medium/Low)
-- Estimated exhaustion time if leak confirmed
-- Recommended actions
+Common ECS failure modes: agent disconnection, OS unresponsiveness, network partition, resource exhaustion
 ```
 
-### 2.3 Disk Full Warning
-
+### 1.3 Performance Degradation Diagnosis
 ```
-You are analyzing disk full warning on ECS instance {{resource_id}}.
-Disk usage: {{usage}}%
-Growth rate: {{rate}}%/hour
-Time to full: {{hours}} hours
-Disk type: {{disk_type}} (system/data)
+ECS instance {{resource_id}} performance degraded:
+- Latency increased from {{baseline_latency}}ms to {{current_latency}}ms
+- Error rate changed from {{baseline_error}}% to {{current_error}}%
+- Traffic {{traffic_change_direction}} by {{traffic_change_percent}}%
+- Resource utilization: CPU {{cpu_util}}%, Memory {{mem_util}}%, Disk IO {{io_util}}%
+Diagnose root cause and suggest remediation steps.
 
-Investigate:
-1. Which directories consuming most space? Run: df -h, du -sh /var/log/*
-2. Any large log files or core dumps?
-3. Is this normal growth or abnormal?
-
-Provide:
-- Root cause assessment
-- Cleanup recommendations (log rotation, old files)
-- Resize recommendation if cleanup insufficient
+Possible causes: CPU throttling, memory leak, disk I/O bottleneck, network congestion, application bug
 ```
 
-### 2.4 ECS Instance Unreachable
-
+### 1.4 Availability Incident Response
 ```
-You are diagnosing ECS instance {{resource_id}} unreachable.
-Status: {{status}}
-Last reachable: {{last_reachable}}
-VPC: {{vpc_id}}, Subnet: {{subnet_id}}
+ECS instance {{resource_id}} availability issue detected:
+- Availability: {{current_availability}}% (SLO target: 99.95%)
+- Impact duration: {{duration_minutes}} minutes
+- Affected scope: {{affected_scope}}
+- Instance state: {{instance_state}}
+- AZ: {{az}}
+Generate incident response playbook with next steps.
 
-Investigate:
-1. Instance status via hcloud ECS describeInstances --instance-ids {{resource_id}}
-2. VPC subnet ACL and security group rules
-3. Recent operations via CTS (stop, reboot, delete)
-4. Underlying host health (baremetal issues)
-
-Provide:
-- Reachability assessment
-- Next troubleshooting steps
-- Estimated recovery time
-```
-
-### 2.5 ECS Instance Performance Degradation
-
-```
-You are diagnosing performance degradation on ECS {{resource_id}}.
-Symptoms: {{symptoms}} (slow response, high latency, connection failures)
-Metrics:
-- CPU: {{cpu}}%
-- Memory: {{memory}}%
-- Disk IO: {{disk_io}}%
-- Network: {{network}}%
-
-Investigate:
-1. Is this compute-bound, memory-bound, IO-bound, or network-bound?
-2. Check for noisy neighbor via hcloud CES getMetrics
-3. Review internal processes and external traffic patterns
-
-Provide:
-- Bottleneck identification
-- Remediation recommendations
-- Whether migration to new host needed
-```
-
-### 2.6 Security Group Misconfiguration
-
-```
-You are diagnosing security group issue on ECS {{resource_id}}.
-Symptom: {{symptom}} (cannot connect, connection reset, timeout)
-Current security groups: {{sg_ids}}
-Expected ports/protocols: {{expected}}
-
-Investigate:
-1. Current SG rules via hcloud VPC listSecurityGroupRules
-2. Are required ports open?
-3. Is source IP correctly restricted?
-4. Any recent SG rule changes via CTS?
-
-Provide:
-- Misconfiguration details
-- Required rule changes
-- Risk assessment of proposed changes
+ECS-specific: Check system status, agent connectivity, underlying hypervisor health, and scheduling capacity
 ```
 
 ---
 
-## 3. Investigation Prompts
+## 2. Inspection Prompts
 
-### 3.1 Log Investigation
-
+### 2.1 Routine Health Inspection
 ```
-Search LTS logs for pattern "{{pattern}}" on ECS {{resource_id}}.
-Time range: {{start_time}} to {{end_time}}
-Log group: {{log_group}}, Log stream: {{log_stream}}
+Perform routine inspection on ECS instances:
+- List all ECS instances in {{scope}}
+- Check for instances with CPU > 80% OR Memory > 85% sustained for 30 minutes
+- Identify instances with no monitoring data for > 2 hours
+- Flag any instances with active CES alerts
+- Check for instances in error state or pending status
+Report findings in structured format.
 
-Extract:
-- Error frequency and distribution
-- Correlated events across other instances
-- Root error (not just symptom)
-
-Provide findings in structured format with timestamps.
+Scope options: region, AZ, VPC, tag-based resource group
 ```
 
-### 3.2 Change Correlation Investigation
-
+### 2.2 Cost Optimization Scan
 ```
-Find CTS changes on ECS {{resource_id}} between {{start_time}} and {{end_time}}.
-Filter: operation type = {{operation_types}}
+Scan ECS for cost optimization opportunities:
+- Identify idle instances (CPU < 5%, Network < 1MB/s for 14 days)
+- Find oversized instances (utilization < 30% over 30 days)
+- Check for instances without proper sizing (night/weekend waste)
+- Verify reserved capacity coverage vs on-demand usage
+- Check for overdue EIP associations (unused public IPs)
+Provide prioritized action list with estimated monthly savings.
 
-Correlate with alarm at {{alarm_time}}.
-
-Provide:
-- Chronological list of changes
-- Correlation score for each change
-- Most likely cause with confidence
-```
-
-### 3.3 Performance Baseline Investigation
-
-```
-Compare current performance of ECS {{resource_id}} against baseline.
-
-Current (last 1h):
-- CPU: {{cpu}}%
-- Memory: {{memory}}%
-- Disk: {{disk}}%
-- Network in: {{net_in}}Mbps, out: {{net_out}}Mbps
-
-Baseline (weekly average):
-- CPU: {{baseline_cpu}}%
-- Memory: {{baseline_memory}}%
-- Disk: {{baseline_disk}}%
-- Network in: {{baseline_net_in}}Mbps, out: {{baseline_net_out}}Mbps
-
-Identify anomalies and classify as:
-- Normal variance
-- Suspicious change requiring attention
-- Critical issue needing immediate action
+Right-sizing targets: avg CPU < 40% → downsize; avg CPU > 80% → upsize
 ```
 
-### 3.4 Dependency Health Investigation
-
+### 2.3 Security Compliance Check
 ```
-Investigate dependency health for ECS {{resource_id}}.
+Audit ECS security compliance:
+- Verify security groups follow least-privilege (no 0.0.0.0/0 unless explicitly required)
+- Check for exposed management ports (22, 3389 without IP restriction)
+- Validate VPC mode (no instances in default VPC with public access)
+- Confirm EVS encryption at rest is enabled
+- Check for instances missing security patches (OS level)
+- Verify IAM agent is running on all instances
+Report compliance status and remediation priorities.
 
-Dependencies:
-- RDS: {{rds_ids}}
-- OBS: {{obs_bucket}}
-- ELB: {{elb_id}}
-- Redis: {{redis_ids}}
-
-For each dependency:
-1. Reachability via hcloud DCS listInstances / hcloud RDS listInstances
-2. Latency from CES metrics
-3. Recent failure events
-
-Provide dependency health matrix with risk flags.
+Severity: Critical = exposed management port, High = default VPC with EIP, Medium = missing encryption
 ```
 
-### 3.5 Instance Migration Investigation
-
+### 2.4 Capacity Planning Review
 ```
-Investigate ECS {{resource_id}} for live migration fitness.
+Review ECS capacity for {{scope}}:
+- Current utilization: CPU {{cpu_util}}%, Memory {{mem_util}}%, EVS {{storage_util}}%
+- Instance type distribution: {{instance_type_distribution}}
+- Growth trend: {{growth_rate}}% weekly average
+- Projected capacity exhaustion: {{exhaustion_date}}
+- Available AZ capacity: {{az_capacity}}
+Provide scaling recommendations with timeline.
 
-Current state:
-- Status: {{status}}
-- CPU usage: {{cpu}}%
-- Memory usage: {{memory}}%
-- Disk type: {{disk_type}}
-- Attached volumes: {{volume_ids}}
-
-Check:
-1. Is instance in correct AZ for migration?
-2. Any volume type constraints (SSD vs SAS)?
-3. Memory overcommit settings?
-
-Provide migration eligibility and risk assessment.
+Capacity dimensions: vCPU quotas, EVS volume limits, EIP limits, security group rule limits
 ```
 
 ---
 
-## 4. Remediation Prompts
+## 3. Anomaly Detection Prompts
 
-### 4.1 Scale Up Recommendation
-
+### 3.1 Metric Anomaly Analysis
 ```
-Based on current ECS {{resource_id}} metrics:
-- CPU: {{cpu}}%
-- Memory: {{memory}}%
-- Current flavor: {{flavor}}
-- Trend: {{trend}} over past {{hours}}h
+Analyze metric anomaly for ECS instance {{resource_id}}:
+- Metric: {{metric_name}} (CES namespace: SYS.ECS)
+- Current value: {{current_value}} (baseline: {{baseline_value}})
+- Deviation: {{deviation_percent}}% from baseline
+- Duration: {{anomaly_duration}} minutes
+- Similar historical patterns: {{historical_patterns}}
+Determine if this is a true anomaly or false positive, and assess severity.
 
-Recommend:
-1. Scale up (larger flavor) or scale out (add instances)?
-2. Target flavor specification?
-3. Estimated cost impact (monthly)?
-
-Provide recommendation with confidence level and risk factors.
+ECS anomaly patterns: CPU spike (往往是瞬时负载), memory gradual increase (可能是 leak), disk I/O sudden drop (可能是路径变化)
 ```
 
-### 4.2 Disk Resize Recommendation
-
+### 3.2 Alarm Storm Triage
 ```
-Analyze disk resize need for ECS {{resource_id}}.
+Triage alarm storm affecting ECS:
+- Total alarms: {{alarm_count}} in past 15 minutes
+- Alarms by type: CPU {{cpu_alarms}}, Memory {{mem_alarms}}, Disk {{disk_alarms}}
+- Primary affected instances: {{affected_instances}}
+- Probable root cause: {{probable_root_cause}}
+- Recommended triage actions: suppress non-critical, investigate primary resource
+Prioritize alarms and suggest suppression strategy.
 
-Current:
-- System disk: {{system_disk}}GB, usage {{system_usage}}%
-- Data disk: {{data_disk}}GB, usage {{data_usage}}%
-- Growth rate: {{growth_rate}}GB/day
-
-Predict: Days until disk full at current growth rate = {{days_to_full}}
-
-Recommend:
-1. Resize now or schedule?
-2. Target size?
-3. Whether to migrate to EVS disk type?
-
-Provide resize plan with minimal downtime approach.
+ECS alarm storm common causes: AZ failure, hypervisor issue, underlying network partition
 ```
 
-### 4.3 Security Group Remediation
-
+### 3.3 Trend Analysis
 ```
-Analyze security group remediation for ECS {{resource_id}}.
+Analyze metric trend for ECS instance {{resource_id}}:
+- Metric: {{metric_name}} (SYS.ECS.{{metric_name}})
+- Time range: {{start_time}} to {{end_time}}
+- Trend direction: {{trend_direction}} (slope: {{trend_slope}}%/day)
+- Seasonal pattern: {{seasonal_pattern_detected}} (work hours vs off-hours)
+- Forecasted value at {{forecast_date}}: {{forecasted_value}}
+Assess if trend indicates impending issue.
 
-Current security group: {{sg_id}}
-Issue: {{issue_description}}
-Required access: {{required_access}}
-
-Check:
-1. Will proposed rules introduce security risk?
-2. Is there a staging SG to test rules?
-3. What's the rollback plan if access breaks?
-
-Provide:
-- Required SG rule changes
-- Implementation sequence
-- Validation steps
-- Rollback procedure
+Memory leak pattern: monotonic increase over days, never returns to baseline
 ```
 
-### 4.4 Instance Restart Recommendation
-
+### 3.4 Cross-Metric Correlation
 ```
-Analyze if ECS {{resource_id}} restart would help.
+Correlate metrics for ECS instance {{resource_id}}:
+- Primary symptom: {{primary_metric}} {{primary_direction}} to {{primary_value}}
+- Candidate causes:
+  - CPU: {{cpu_value}}% (normal: 20-70%)
+  - Memory: {{mem_value}}% (normal: 30-80%)
+  - Disk Read: {{disk_read}}KB/s (normal: varies)
+  - Disk Write: {{disk_write}}KB/s (normal: varies)
+  - Network In: {{net_in}}KB/s (normal: varies)
+Identify most likely correlation and suggest investigation path.
 
-Current state:
-- Uptime: {{uptime}} days
-- Memory leak probability: {{leak_probability}}%
-- Last restart: {{last_restart}}
-- Process issues: {{process_issues}}
-
-Recommend:
-1. Restart now or schedule maintenance window?
-2. Is graceful shutdown possible?
-3. What services need to be restarted after?
-
-Provide restart plan with health check verification.
+ECS correlation rules: CPU+Memory both high → application issue; Disk I/O high + CPU low → I/O bound workload
 ```
 
 ---
 
-## 5. 巡检 Prompts
+## 4. Operations Prompts
 
-### 5.1 Daily ECS Health Check
-
+### 4.1 Backup Verification
 ```
-Perform daily health check for ECS instance {{resource_id}}.
+Verify backup status for ECS instance {{resource_id}}:
+- CBS backups: {{cbs_backup_count}} snapshots, last: {{last_cbs_backup}}
+- Consistency group backup: {{cg_backup_status}}
+- Backup retention: {{retention_days}} days
+- Restoration test status: {{restoration_test_status}}
+- Related CBR vault: {{vault_id}}
+Validate backup completeness and recommend verification steps.
 
-Checks:
-1. CPU/Memory/Disk metrics within thresholds via CES
-2. Instance status via hcloud ECS describeInstances
-3. Security group rules unchanged via hcloud VPC listSecurityGroupRules
-4. No recent critical alarms
-5. Backup status if applicable
-
-Provide:
-- Health score (0-100)
-- Issues found with severity
-- Actions recommended
+ECS backup types: CBS snapshot (volume-level), CBR backup (application-consistent)
 ```
 
-### 5.2 Weekly Capacity Review
-
+### 4.2 Scaling Decision
 ```
-Perform weekly capacity review for ECS {{resource_id}}.
+Evaluate scaling needs for ECS auto scaling group {{scaling_group_id}}:
+- Current instances: {{current_instances}}
+- Current average CPU: {{avg_cpu}}%
+- Scaling policy: {{scaling_policy}} (target {{target_util}}%)
+- Cooldown period: {{cooldown_minutes}} minutes
+- Recent scaling history: {{scaling_history}}
+- Available AZ capacity: {{az_capacity}}
+Recommend whether to scale out, scale in, or take no action.
 
-Review:
-1. Resource utilization trends (CPU, memory, disk) via CES
-2. Capacity headroom for next 30 days
-3. Cost optimization opportunities (downsize underutilized)
-4. Upcoming traffic spikes (events, promotions)
-
-Provide capacity forecast and recommendations.
-```
-
-### 5.3 Monthly Security Audit
-
-```
-Perform monthly security audit for ECS {{resource_id}}.
-
-Audit:
-1. All security group rules via hcloud VPC listSecurityGroupRules
-2. Login history via CTS (filter: login events)
-3. Unused credentials or IAM policies
-4. Network exposure (public IPs, open ports)
-
-Provide security posture report with remediation priorities.
+Scale-out triggers: CPU > 70% for 5min, Network > 80% for 5min
+Scale-in triggers: CPU < 30% for 15min, no scaling in last 15min
 ```
 
----
-
-## 6. 报告 Prompts
-
-### 6.1 Incident Summary Report
-
+### 4.3 Configuration Drift Detection
 ```
-Generate incident summary for ECS incident.
+Detect configuration drift for ECS instance {{resource_id}}:
+- Expected security groups: {{expected_sg}}
+- Actual security groups: {{actual_sg}}
+- Expected tags: {{expected_tags}}
+- Actual tags: {{actual_tags}}
+- Instance metadata: {{instance_metadata}}
+- Related monitoring alerts: {{related_alerts}}
+Recommend reconciliation actions.
 
-Incident ID: {{incident_id}}
-Duration: {{start_time}} to {{end_time}}
-Affected instance: {{resource_id}}
-Impact: {{impact_description}}
-
-Timeline:
-{{timeline_entries}}
-
-Root cause: {{root_cause}}
-
-Actions taken:
-{{actions_taken}}
-
-Lessons learned:
-{{lessons_learned}}
-
-Provide formatted incident report.
+ECS drift sources: manual security group changes, tag modifications, instance attribute updates
 ```
 
-### 6.2 Weekly Operations Summary
-
+### 4.4 Disaster Recovery Drill
 ```
-Generate weekly ECS operations report for {{resource_id}}.
+Execute DR drill for ECS deployment:
+- Primary region: {{primary_region}}, AZ: {{primary_az}}
+- DR region: {{dr_region}}, AZ: {{dr_az}}
+- RTO target: {{rto_target}} minutes
+- RPO target: {{rpo_target}} minutes
+- Test type: {{test_type}} (table-top/functional/full)
+-_failover group: {{failover_group_id}}
+Validate DR procedures and document gaps.
 
-Period: {{start_date}} to {{end_date}}
-
-Metrics:
-- Availability: {{availability}}%
-- Avg CPU: {{avg_cpu}}%
-- Avg Memory: {{avg_memory}}%
-- Peak disk usage: {{peak_disk}}%
-
-Incidents:
-{{incident_list}}
-
-Changes:
-{{change_list}}
-
-Provide executive summary and detailed metrics.
+ECS DR mechanisms: AZ redundancy, multi-AZ ASG, volume replication via CBR
 ```
 
 ---
 
-## 7. Compliance Checklist
+## 5. Optimization Prompts
 
-- [x] 20 categorized prompts (6 diagnosis + 5 investigation + 4 remediation + 3 巡检 + 2 报告)
-- [x] Each prompt includes context variables ({{variable}})
-- [x] Each prompt specifies output format
-- [x] Diagnosis prompts include confidence level
-- [x] Commands reference hcloud CLI where applicable
+### 5.1 Performance Tuning Recommendation
+```
+Recommend performance tuning for ECS instance {{resource_id}}:
+- Current performance: latency {{latency}}ms, throughput {{throughput}}req/s
+- Target performance: latency {{target_latency}}ms, throughput {{target_throughput}}req/s
+- Resource constraints: vCPU {{vcpu}}, Memory {{memory}}GB
+- Recent changes: {{recent_changes}}
+Propose tuning actions with expected impact and risk assessment.
+
+ECS tuning options: kernel parameters (sysctl), application-level optimizations, instance type change
+```
+
+### 5.2 Architecture Review
+```
+Review architecture of ECS deployment:
+- Current architecture: {{architecture_description}}
+- Workload characteristics: {{workload_type}} ({{peak_rps}} peak RPS)
+- Performance requirements: latency < {{latency_target}}ms, availability {{availability_target}}%
+- Scalability requirements: {{scale_requirement}}
+- High availability setup: {{ha_setup}}
+Identify architectural improvements and trade-offs.
+
+ECS architecture patterns: standalone, ASG multi-AZ, mixed with containers (CCE), bare metal (BMS)
+```
+
+### 5.3 Resource Right-Sizing
+```
+Right-size ECS instance {{resource_id}}:
+- Current instance type: {{current_type}} ({{vcpu}}vCPU, {{memory}}GB Memory)
+- Current average utilization: CPU {{avg_cpu}}%, Memory {{avg_mem}}%
+- Peak utilization: CPU {{peak_cpu}}%, Memory {{peak_mem}}%
+- Application requirements: {{app_requirements}}
+- Cost sensitivity: {{cost_sensitivity}}
+Recommend optimal instance type with justification.
+
+Right-sizing workflow: analyze 30-day metrics → identify underutilization → select next smaller type → validate compatibility
+```
+
+### 5.4 Cost-Benefit Analysis
+```
+Perform cost-benefit analysis for ECS instance {{resource_id}}:
+- Current monthly cost: {{monthly_cost}} (on-demand/reserved)
+- Current performance: CPU {{avg_cpu}}%, Memory {{avg_mem}}%
+- Alternative instance types:
+  - {{alt_type_1}}: {{alt1_cost}}/mo, suitable for {{alt1_suitable}}
+  - {{alt_type_2}}: {{alt2_cost}}/mo, suitable for {{alt2_suitable}}
+- Reserved instance savings potential: {{ri_savings}}%
+Provide recommendation with ROI calculation.
+
+RI recommendation: utilization > 60% → consider RI; < 30% → consider downsizing
+```
+
+---
+
+## 6. Knowledge Base Prompts
+
+### 6.1 Fault Pattern Matching
+```
+Match current ECS situation to known fault patterns:
+- Current symptoms: {{symptoms}}
+- Affected instance: {{resource_id}} (AZ: {{az}})
+- Time of occurrence: {{occurrence_time}}
+- Known ECS fault patterns:
+  1. Agent disconnection: instance reachable but CES agent unresponsive
+  2. Hypervisor issues: instance CPU steal high, performance degradation
+  3. Network partition: instance isolated from specific CIDR ranges
+  4. Resource exhaustion: memory/CPU at 100% causing unresponsiveness
+  5. Disk I/O hang: EVS latency spike causing application timeout
+Identify most similar pattern and suggest resolution path.
+```
+
+### 6.2 Resolution Guidance Retrieval
+```
+Retrieve resolution guidance for ECS issue:
+- Issue type: {{issue_type}}
+- Error code/message: {{error_code}} (e.g., "InstanceFault", "AgentHeartbeatTimeout")
+- Instance state: {{instance_state}}
+- Recent actions taken: {{recent_actions}}
+Return relevant knowledge base entries with success rates.
+
+ECS common issues: instance stuck in "starting", agent installation failures, password reset failures
+```
+
+### 6.3 Similar Incident Search
+```
+Search for similar past ECS incidents:
+- Current incident: {{incident_description}}
+- Instance type: {{instance_type}}
+- AZ: {{az}}
+- Time window: past 90 days
+- Similarity criteria: same symptom, same instance type, same AZ
+Return past incidents with resolution approaches and outcomes.
+```
+
+### 6.4 Best Practice Recommendation
+```
+Recommend best practices for ECS deployment:
+- Current configuration: {{current_config}}
+- Workload type: {{workload_type}}
+- Industry best practices: use ASG for stateless workloads, multi-AZ for availability
+- Huawei Cloud Well-Architected Framework: use dedicated host for stateful, ASG for scaling
+- Common pitfalls: single AZ deployment, no monitoring agent, oversized instances
+Provide prioritized recommendation list.
+
+ECS WAF alignment: Security (security groups + VPC), Reliability (multi-AZ + ASG), Cost (right-sizing + RI)
+```
+
+---
+
+## 7. Change Management Prompts
+
+### 7.1 Change Impact Assessment
+```
+Assess impact of planned change on ECS:
+- Change type: {{change_type}} (e.g., instance resize, security group update)
+- Target instances: {{target_instances}}
+- Change window: {{change_window}}
+- Rollback plan: {{rollback_plan}}
+- Affected services: {{affected_services}} (ELB backends, RDS connections)
+Evaluate risk and provide approval recommendation.
+
+ECS change risks: resize causes brief outage (5-10min), security group changes immediate effect
+```
+
+### 7.2 Change Correlation Analysis
+```
+Correlate recent changes with ECS issues:
+- Issue observed: {{issue_description}}
+- Time of observation: {{issue_time}}
+- Changes in past 2 hours:
+  - {{change_1}} at {{time_1}}: {{change_details_1}}
+  - {{change_2}} at {{time_2}}: {{change_details_2}}
+Determine if any change likely caused the issue.
+
+Common ECS change triggers: scaling activities, security group updates, ASG policy changes
+```
+
+### 7.3 Pre-Change Validation
+```
+Validate readiness for ECS change:
+- Change details: {{change_details}}
+- Prerequisites met: {{prerequisites_status}} (backup, capacity check)
+- Instance health: {{instance_health_status}}
+- Backup status: {{backup_status}}
+- Monitoring coverage: {{monitoring_coverage}} (CES agent running)
+- Target AZ capacity: {{az_capacity_available}}
+Confirm change can proceed or list blocking issues.
+```
+
+### 7.4 Post-Change Verification
+```
+Verify ECS change completed successfully:
+- Change ID: {{change_id}}
+- Expected changes: {{expected_changes}}
+- Instance post-change state: {{instance_state}}
+- Monitoring metrics: CPU {{cpu}}, Memory {{mem}}, Network {{net}}
+- Alerts triggered: {{alerts_triggered}}
+- Application health check: {{app_health_check}}
+Confirm success or flag issues requiring attention.
+```
+
+---
+
+## 8. Reporting Prompts
+
+### 8.1 Daily Operations Report
+```
+Generate daily ECS operations report:
+- Total instances: {{total_instances}}
+- Instances with active alerts: {{alert_count}}
+- Major incidents: {{incident_count}} (resolved: {{resolved}}, ongoing: {{ongoing}})
+- Changes deployed: {{change_count}}
+- Performance summary:
+  - Avg CPU: {{avg_cpu}}%
+  - Avg Memory: {{avg_mem}}%
+  - Instances > 80% CPU: {{high_cpu_count}}
+- Action items: {{action_items}}
+```
+
+### 8.2 Weekly Trend Report
+```
+Generate weekly ECS trend report:
+- Alert volume trend: {{alert_trend}}% vs previous week ({{previous_week_count}} → {{this_week_count}})
+- Top alert types: {{top_alert_types}}
+- Incident summary: {{incident_count}} incidents, {{availability}}% uptime
+- Capacity utilization: {{capacity_trend}}% (CPU {{avg_cpu}}%, Memory {{avg_mem}}%)
+- Cost trend: {{cost_trend}}% (current: {{monthly_cost}}, previous: {{prev_monthly_cost}})
+- Recommendations: {{recommendations}}
+```
+
+### 8.3 Monthly SLA Report
+```
+Generate monthly SLA report for ECS:
+- SLO targets: Availability 99.95%, Latency P99 < 200ms
+- Actual performance:
+  - Availability: {{availability}}% (violations: {{availability_violations}})
+  - Latency P99: {{latency_p99}}ms
+  - Error rate: {{error_rate}}%
+- Error budget consumed: {{error_budget_consumed}}% of {{monthly_budget}}min
+- SLA violations: {{sla_violations}} incidents
+- Root cause of violations: {{violation_root_causes}}
+- Improvement actions: {{improvement_actions}}
+```
+
+### 8.4 Executive Summary
+```
+Generate executive summary for ECS operations:
+- Key metrics: {{total_instances}} instances, {{monthly_cost}} cost, {{availability}}% availability
+- Incidents: {{incident_count}} total, {{major_incidents}} major
+- Service level: {{sla_achievement}}% SLA compliance
+- Cost performance: {{cost_per_instance}}/instance/month
+- Strategic recommendations: {{strategic_recommendations}}
+```
+
+---
+
+## Appendix: ECS-Specific Placeholders
+
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{{resource_id}}` | ECS instance ID | `01b52a47-e23f-403a-9be8-4a5d2e1c3f67` |
+| `{{az}}` | Availability zone | `cn-north-4a` |
+| `{{instance_type}}` | ECS flavor | `c6.large.2` |
+| `{{scaling_group_id}}` | Auto scaling group ID | `01b52a47-e23f-403a-9be8-4a5d2e1c3f67` |
+| `{{vault_id}}` | CBR vault ID | `vault-12345` |
+| `{{vcpu}}` | vCPU count | `2` |
+| `{{memory}}` | Memory in GB | `4` |
+
+---
+
+*Prompts version 1.0.0 — for AIOps L4 compliance (Prompt Handbook P1-3)*
