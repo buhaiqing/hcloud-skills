@@ -152,3 +152,98 @@ Mandatory tags on every EIP:
 | 3 EIPs × 100 Mbps `bandwidth` = 300 Mbps ceiling | 1 WHOLE shared bandwidth 150 Mbps | ~50% on bandwidth cost |
 | 1 EIP `bandwidth` 100 Mbps, average 5 Mbps | Switch to `traffic` mode, no cap | ~70% on idle hours |
 | Idle EIPs (5×) × 5 Mbps `bandwidth` for 30 d | Release 4, tag 1 `warm-pool` | 80% of idle cost |
+
+## Worker Output Contract
+
+> Read-only assessment mode: `{{user.mode}}=well-architected-readonly` → return `{{output.product_assessment}}`.
+
+**Schema:** [worker-output-schema.md](../../huaweicloud-skill-generator/references/worker-output-schema.md)
+
+| Constant | Value |
+|----------|-------|
+| `skill_id` | `huaweicloud-eip-ops` |
+| `product` | `eip` |
+| Finding `id` | `eip-{rel\|sec\|cost\|eff}-NNN` |
+
+| `pillars` key | Source sections |
+|---------------|-----------------|
+| `reliability` | Stability / DR / capacity |
+| `security` | Security / network isolation / encryption |
+| `cost` | FinOps / idle detection / right-sizing |
+| `efficiency` | Automation / batch / CI/CD |
+
+### Example `{{output.product_assessment}}`
+
+```json
+{
+  "skill_id": "huaweicloud-eip-ops",
+  "product": "eip",
+  "region": "cn-north-4",
+  "scope": "account-wide",
+  "assessment_date": "2026-06-19T10:00:00+08:00",
+  "status": "PARTIAL",
+  "partial": false,
+  "resource_count": 18,
+  "pillars": {
+    "reliability": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "security": {
+      "score": 75,
+      "status": "assessed",
+      "findings": [
+        {
+          "id": "eip-sec-001",
+          "severity": "Medium",
+          "confidence": "HIGH",
+          "title": "EIP 198.51.100.20 bound to a production ECS with no security group egress control",
+          "evidence": "describe-eip returned 'bind_resource: ecs-0a1b2c3d', security_group allows 0.0.0.0/0 egress",
+          "recommendation": "Apply a scoped egress security group to the bound ECS",
+          "effort": "quick"
+        }
+      ]
+    },
+    "cost": {
+      "score": 60,
+      "status": "assessed",
+      "findings": [
+        {
+          "id": "eip-cost-001",
+          "severity": "Medium",
+          "confidence": "HIGH",
+          "title": "5 EIPs idle (unbound > 7 days, billing mode bandwidth)",
+          "evidence": "describe-eip returned 'status: DOWN' for 5 EIPs, last bind > 30d ago",
+          "recommendation": "Release idle EIPs or switch to traffic billing mode; keep 1 warm-pool EIP",
+          "effort": "quick"
+        }
+      ]
+    },
+    "efficiency": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    }
+  },
+  "recommendations": [
+    {
+      "pillar": "cost",
+      "text": "Release idle EIPs and switch low-traffic EIPs to traffic billing mode"
+    },
+    {
+      "pillar": "security",
+      "text": "Scope egress security groups on EIP-bound production ECS instances"
+    }
+  ],
+  "trace": {
+    "commands": [
+      "hcloud eip read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)"
+    ],
+    "request_ids": [
+      "0123456789abcdef0123456789abcdef"
+    ]
+  },
+  "errors": []
+}
+```

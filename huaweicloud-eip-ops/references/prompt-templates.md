@@ -38,10 +38,10 @@ operation: {{user.operation}}            # allocate-eip | bind-eip | unbind-eip 
                                           # release-eip | resize-bandwidth |
                                           # add-eip-to-shared | remove-eip-from-shared
 target_resource: {{user.target_resource}}  # {eip_id, bandwidth_id, port_id, ecs_id, ...}
-target_payload: {{user.target_payload}     # op-specific (type, size, charge_mode, ...)
+target_payload: {{user.target_payload}}     # op-specific (type, size, charge_mode, ...)
 preflight: {{user.preflight}}
 critic_feedback: {{output.critic_feedback}}
-rubric: {{output.rubric}}
+rubric: references/rubric.md (includes Safety Rules S1–S17 in §2)
 
 ## Hard rules
 
@@ -72,6 +72,32 @@ You are the Critic in a Generator-Critic-Loop (GCL) for huaweicloud-eip-ops.
 You are READ-ONLY. You MUST NOT call hcloud, the Go SDK, or mutate cloud state.
 You MUST NOT see the raw user request — only the sanitized operation_intent and trace.
 
+
+
+## Safety Rules (verbatim — from rubric.md §2)
+
+Any S-rule hit ⇒ safety = 0 ⇒ SAFETY_FAIL.
+
+| # | Rule | Rationale |
+|---|---|---|
+| S1 | `release-eip` while EIP is **bound** (`port_id != null`) | Release of bound EIP is rejected by API, but if forced leaves orphan bill |
+| S2 | `release-eip` for EIP in `WHOLE` shared-bandwidth with siblings | Leaves shared bandwidth empty (still billed) — admin role required |
+| S3 | `release-eip` matching `(?i)(prod|prd|production|online|pay)` | Production blast radius — two-step confirmation |
+| S4 | `unbind-eip` from a prod-named instance without two-step confirmation | Brief traffic interruption during unbind |
+| S5 | `allocate-eip` with `billing-mode=traffic` and `bandwidth-size > 100` | Hard cap on 按流量 is 100 Mbps; agent must catch and reject |
+| S6 | `allocate-eip` with `type=5_sbgp` and `bandwidth.charge_mode=95` | 95计费 requires `WHOLE` shared bandwidth; not PER |
+| S7 | `resize-bandwidth` during 95计费 cooldown window | Wasted retry; cooldown must be observed |
+| S8 | `bind-eip` across regions (EIP `region` ≠ target `port_id` `region`) | Region-scoped; cannot be cross-region |
+| S9 | `add-eip-to-shared` for an EIP already in a `WHOLE` pool | No-op at best; double-pool at worst |
+| S10 | Any op printing `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / `sk-…` / `password` value in trace | Credential leak |
+| S11 | `release-eip` without first confirming `port_id == null` | API may reject, but agent must not bypass |
+| S12 | `allocate-eip` retry without `list` + `public_ip_address` dedupe | Double-allocation = double bill |
+| S13 | `bind-eip` to a `port_id` of a non-running ECS / detached ENI | Bind will fail or bind a dead target |
+| S14 | `resize-bandwidth` to same size (silent no-op) without acknowledging | Trace pollution |
+| S15 | `add-eip-to-shared` with `bandwidth-id` from a different region | Region-scoped bandwidth |
+| S16 | `release-eip` while DNS A record still resolves to `{{output.public_ip}}` (if known) | Service unreachable post-release |
+| S17 | `allocate-eip` in a region without confirming quota (`ShowCountQuota` via SDK) | QuotaExceeded churn |
+
 ## Inputs
 
 rubric: {{output.rubric}}                 # references/rubric.md (5 dims, S1–S17)
@@ -81,14 +107,7 @@ trace: {{output.trace}}                   # masked; includes operation_intent
 
 ## Task
 
-Score the trace against the rubric dimensions:
-1) correctness, 2) safety, 3) idempotency, 4) traceability, 5) spec_compliance.
-
-If safety = 0, abort with SAFETY_FAIL; do not return partial scores.
-
-Verbatim safety rule set to apply:
-S1..S17 from references/rubric.md §2 (EIP-specific).
-Any S-rule hit ⇒ safety = 0 ⇒ SAFETY_FAIL.
+Score the trace against the rubric dimensions (see rubric §1 Correctness through §5 Spec Compliance above) using the Safety Rules table. Any S-rule hit ⇒ safety = 0 ⇒ SAFETY_FAIL.
 
 For each dimension, return:
 - score (0.0 .. 1.0)
@@ -154,7 +173,7 @@ def mask(trace: dict) -> dict:
 ## 6. EIP-Specific Pre-flight Overrides
 
 ```text
-- Always run `hcloud eip describe-quota` before allocate-eip.
+- Always call `ShowCountQuota` (SDK) or `hcloud eip describe-quota` (if verified) before allocate-eip.
 - Always run `hcloud eip describe` and check port_id == null before release-eip.
 - For bind-eip: verify target ECS / ENI state via huaweicloud-ecs-ops.
 - For resize-bandwidth: query `bandwidth describe` for `cooldown_at`.
@@ -168,3 +187,10 @@ def mask(trace: dict) -> dict:
 - `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` (shared prompt text)
 - `huaweicloud-skill-generator/references/worker-output-schema.md`
 - `docs/gcl-spec.md`
+
+### Changelog
+
+| Version | Date | Change |
+|---|---|---|
+| v1 | 2026-06-23 | Initial prompt templates matching rubric v1. |
+| v1.1 | 2026-06-23 | §2 Critic template: embed S1–S17 verbatim Safety Rules table from rubric.md §2. |

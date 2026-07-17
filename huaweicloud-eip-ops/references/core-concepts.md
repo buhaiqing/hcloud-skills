@@ -76,9 +76,15 @@ saving 30–60%.
 
 ## 7. Region Quotas (Dynamic — Always Query)
 
-```bash
-hcloud eip describe-quota --region {{env.HW_REGION_ID}}
+```go
+// via Go SDK (JIT) — canonical quota query
+// GET /v2.1/{project_id}/eip/count-quota
+req := &eip_model.ShowCountQuotaRequest{}
+resp, err := client.ShowCountQuota(req)
+// resp.QuotaInfos[].Used  — number currently in use
+// resp.QuotaInfos[].Quota — region limit
 ```
 
-> Per `AGENTS.md` TE-1, **never hardcode** quota numbers. Always read from
-> `hcloud eip describe-quota` at run time.
+> Per `AGENTS.md` TE-1, **never hardcode** quota numbers. Call `ShowCountQuota`
+> via Go SDK at run time. If `hcloud eip describe-quota` is confirmed available in
+> your CLI version, it is equivalent — fall back to SDK if the CLI subcommand is missing.

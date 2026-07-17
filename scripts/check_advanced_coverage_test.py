@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RepoValidationTests(unittest.TestCase):
     def test_tier_a_skills_have_advanced(self) -> None:
         report = cac.validate_all(ROOT)
-        self.assertEqual(report["skills_checked"], 20)
+        self.assertEqual(report["skills_checked"], 21)
         self.assertTrue(report["ok"], "\n".join(report["errors"]))
 
 

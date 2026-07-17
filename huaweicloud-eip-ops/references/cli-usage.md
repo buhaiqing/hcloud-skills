@@ -12,12 +12,14 @@
 | Unbind EIP | `hcloud eip unbind` | Detach |
 | Release EIP | `hcloud eip delete` | **Irreversible** — see safety gate |
 | Resize bandwidth | `hcloud eip update-bandwidth` | Mbps change |
-| Quota | `hcloud eip describe-quota` | Region-level EIP quota |
+| Quota | `ShowCountQuota` (SDK only*) | Region-level EIP quota |
 | List shared bandwidths | `hcloud bandwidth list` | All shared bandwidth pools |
 | Create shared bandwidth | `hcloud bandwidth create` | WHOLE type |
-| Add EIP to shared | `hcloud bandwidth add-eip` | Move EIP into pool |
-| Remove EIP from shared | `hcloud bandwidth remove-eip` | Move EIP back to PER |
+| Add EIP to shared | `hcloud bandwidth add-eip` [unverified] | Move EIP into pool |
+| Remove EIP from shared | `hcloud bandwidth remove-eip` [unverified] | Move EIP back to PER |
 | Resize shared bandwidth | `hcloud bandwidth update` | Pool-level Mbps |
+
+> * `ShowCountQuota` maps to SDK API `GET /v2.1/{project_id}/eip/count-quota`. CLI `describe-quota` subcommand is unverified — fall back to Go SDK if CLI returns unknown subcommand error.
 
 > **Verify before use:** `hcloud eip --help` and `hcloud bandwidth --help`. The exact
 > subcommand shape evolves between `hcloud` versions; if a subcommand is missing, fall
@@ -118,4 +120,5 @@ hcloud eip list --region {{env.HW_REGION_ID}} --output json \
 |---|---|
 | Move EIP into shared bandwidth programmatically | `eip.UpdatePublicip` with `bandwidth.id` |
 | 95计费 subscription change | `bandwidth.UpdateBandwidth` (charge_mode=95) |
+| Query EIP quota | `eip.ShowCountQuota` via Go SDK | If `hcloud eip describe-quota` returns unknown subcommand error |
 | Cross-region EIP (read-only snapshot) | `eip.ShowPublicip` with `?region=…` |

@@ -51,6 +51,7 @@ PRODUCT_BY_SKILL: dict[str, str] = {
     "huaweicloud-dcs-ops": "dcs",
     "huaweicloud-dms-ops": "dms",
     "huaweicloud-ecs-ops": "ecs",
+    "huaweicloud-eip-ops": "eip",
     "huaweicloud-elb-ops": "elb",
     "huaweicloud-functiongraph-ops": "functiongraph",
     "huaweicloud-gaussdb-ops": "gaussdb",

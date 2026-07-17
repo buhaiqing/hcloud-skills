@@ -32,6 +32,7 @@ GCL_SKILLS: frozenset[str] = frozenset(
         "huaweicloud-dcs-ops",
         "huaweicloud-dms-ops",
         "huaweicloud-ecs-ops",
+        "huaweicloud-eip-ops",
         "huaweicloud-elb-ops",
         "huaweicloud-functiongraph-ops",
         "huaweicloud-gaussdb-ops",

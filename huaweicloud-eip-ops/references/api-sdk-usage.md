@@ -86,12 +86,13 @@ resp, err := client.UpdatePublicip(req)
 
 ```go
 //go:build ignore
-// Allocate / describe a WHOLE bandwidth, then update the EIP with its bandwidth.id
-bandwidthID := "bw-xxxxxxxx"
+// 1) Create a WHOLE bandwidth via CreateBandwidth, capture its id
+// 2) Update the EIP's bandwidth association to the WHOLE pool
+bandwidthID := "bw-xxxxxxxx"  // replace with actual WHOLE bandwidth id
 req := &eip_model.UpdatePublicipRequest{
     PublicipId: eipID,
     Body: &eip_model.UpdatePublicipRequestBody{
-        BandwidthId: &bandwidthID, // move into pool
+        BandwidthId: &bandwidthID, // move EIP into WHOLE pool
     },
 }
 _, err := client.UpdatePublicip(req)
@@ -104,6 +105,24 @@ _, err := client.UpdatePublicip(req)
 req := &eip_model.DeletePublicipRequest{PublicipId: eipID}
 _, err := client.DeletePublicip(req)
 ```
+
+### Show EIP Quota
+
+```go
+// Show EIP quota — SDK: GET /v2.1/{project_id}/eip/count-quota
+//go:build ignore
+req := &eip_model.ShowCountQuotaRequest{}
+resp, err := client.ShowCountQuota(req)
+if err != nil {
+    fmt.Fprintln(os.Stderr, "ShowCountQuota failed:", err)
+    os.Exit(1)
+}
+// resp.QuotaInfos[].Used  — EIPs currently in use (verify against actual SDK schema)
+// resp.QuotaInfos[].Quota  — regional limit (verify against actual SDK schema)
+```
+> **TODO (verify):** `QuotaInfos[].Used` / `Quota` field names should be verified against
+> `huaweicloud-sdk-go-v3/services/eip/v2/model.ShowCountQuotaResponse` schema.
+> If schema differs, update this code block and all callers.
 
 ## Error Mapping (Top 10 — one per row, ≤3 cols)
 

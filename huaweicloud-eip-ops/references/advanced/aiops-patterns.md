@@ -50,7 +50,12 @@
 | Metric | per-EIP `outgoing_bandwidth` within a `WHOLE` shared bandwidth |
 | Window | 1h |
 | Threshold | one EIP > 80% of pool capacity while siblings < 20% |
-| Action | (a) Consider migrating the dominant EIP back to `PER` (独占) sized to its actual load. (b) Or accept and resize the pool. |
+| Action | (a) Query CES for per-EIP `outgoing_bandwidth` within the WHOLE pool:
+```bash
+hcloud ces metrics --namespace SYS_VPC --dimension name={{bandwidth_id}}
+# Or via SDK: ListMetrics for metric_name=~outgoing_bandwidth, dimension_name=publicip_id
+```
+(b) Identify the dominant EIP (highest 1h p95). (c) If one EIP dominates >80% of pool capacity while siblings <20%: migrate that EIP back to `PER` via Op 8 + Op 1, sized to its actual load. (d) Or resize the pool to the dominant EIP's p95. |
 | Cross-skill | `huaweicloud-billing-ops` (cost shape), `huaweicloud-ces-ops` (visualize) |
 
 ## Cross-Skill Delegation Matrix (AIOps)

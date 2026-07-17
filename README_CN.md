@@ -216,6 +216,22 @@ hcloud-skills/
 │   └── assets/
 │       ├── eval_queries.json             # 触发准确率评估查询
 │       └── example-config.yaml           # 配置示例
+├── huaweicloud-css-ops/                  # 云搜索服务 Skill
+│   ├── SKILL.md                          # 主文件：集群生命周期、快照管理、词典管理、配置管理
+│   ├── references/
+│   │   ├── core-concepts.md              # CSS 架构与核心概念
+│   │   ├── api-sdk-usage.md              # API 与 SDK 使用
+│   │   ├── cli-usage.md                  # CLI 命令映射
+│   │   ├── troubleshooting.md            # 故障排查指南
+│   │   ├── monitoring.md                 # CSS 监控模式
+│   │   ├── integration.md                # JIT SDK 集成与跨技能委托
+│   │   ├── knowledge-base.md             # 故障模式知识库
+│   │   ├── well-architected-assessment.md # 五支柱 + FinOps + SecOps + AIOps
+│   │   ├── user-experience-spec.md        # UX 规范
+│   │   └── references/advanced/           # AIOps/SecOps/FinOps 深度分析
+│   └── assets/
+│       ├── eval_queries.json             # 触发准确率评估查询
+│       └── example-config.yaml           # 配置示例
 ├── huaweicloud-dms-ops/                  # 分布式消息服务 Skill
 │   ├── SKILL.md                          # 主文件：Kafka/RabbitMQ实例生命周期、Topic/Queue管理、消费组、消息查询
 │   ├── references/
@@ -433,6 +449,7 @@ export HW_PROJECT_ID="your-project-id"
 | `huaweicloud-cce-ops` | 云容器引擎 (CCE) | 集群、节点、节点池、插件管理 | ✅ 已生成 |
 | `huaweicloud-dcs-ops` | 分布式缓存 (DCS) | 实例生命周期、备份/恢复、扩容、密码重置、白名单 | ✅ 已生成 |
 | `huaweicloud-cts-ops` | 云审计服务 (CTS) | 审计追踪、事件收集、追踪查询、诊断分析 | ✅ 已生成 |
+| `huaweicloud-css-ops` | 云搜索服务 (CSS) | Elasticsearch/OpenSearch 集群生命周期、快照管理、词典管理、配置管理 | ✅ 已生成 |
 | `huaweicloud-functiongraph-ops` | 函数工作流 (FunctionGraph) | 函数生命周期、触发器、版本管理、诊断 | ✅ 已生成 |
 | `huaweicloud-iam-ops` | 身份与访问管理 (IAM) | 用户、用户组、策略、委托、AK/SK、MFA | ✅ 已生成 |
 | `huaweicloud-obs-ops` | 对象存储 (OBS) | 桶/对象生命周期、ACL、版本控制、生命周期规则、CDN集成、静态网站 | ✅ 已生成 |
@@ -462,6 +479,7 @@ export HW_PROJECT_ID="your-project-id"
 | 身份与访问管理 | IAM | `services/iam/v3` | User, Group, Policy, Agency, Credential |
 | 分布式消息服务 | DMS | `services/dms/v2` | Instance, Topic, Queue, Consumer Group, Backup |
 | 云备份 | CBR | `services/cbr/v3` | Vault, Policy, Backup, Restore, Replication |
+| 云搜索服务 | CSS | `services/css/v2` | Cluster, Snapshot, Dictionary, Config |
 | 容器镜像服务 | SWR | `services/swr/v2` | Organization, Repository, Image, Tag, Retention |
 | GaussDB for openGauss | GaussDB | `services/gaussdb/v3` | Instance, Backup, Template, Database/User, Quota, RecycleBin |
 

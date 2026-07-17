@@ -164,3 +164,90 @@ Anomaly patterns supported:
 | `security` | IAM / network / encryption |
 | `cost` | FinOps / billing / idle |
 | `efficiency` | Automation / batch / CI/CD |
+
+### Example `{{output.product_assessment}}`
+
+```json
+{
+  "skill_id": "huaweicloud-ecs-ops",
+  "product": "ecs",
+  "region": "cn-north-4",
+  "scope": "account-wide",
+  "assessment_date": "2026-06-19T10:00:00+08:00",
+  "status": "PARTIAL",
+  "partial": false,
+  "resource_count": 42,
+  "pillars": {
+    "reliability": {
+      "score": 65,
+      "status": "assessed",
+      "findings": [
+        {
+          "id": "ecs-rel-001",
+          "severity": "High",
+          "confidence": "HIGH",
+          "title": "ECS instance i-0a1b2c3d has no backup or CBR policy",
+          "evidence": "describe-server returned 'backup_policy: none'",
+          "recommendation": "Create a CBR vault and attach a daily backup policy with 30-day retention",
+          "effort": "quick"
+        }
+      ]
+    },
+    "security": {
+      "score": 70,
+      "status": "assessed",
+      "findings": [
+        {
+          "id": "ecs-sec-001",
+          "severity": "Medium",
+          "confidence": "HIGH",
+          "title": "Security group sg-web allows 0.0.0.0/0 on port 22",
+          "evidence": "rule: ingress tcp/22 from 0.0.0.0/0",
+          "recommendation": "Restrict SSH ingress to the bastion or office CIDR",
+          "effort": "quick"
+        }
+      ]
+    },
+    "cost": {
+      "score": 55,
+      "status": "assessed",
+      "findings": [
+        {
+          "id": "ecs-cost-001",
+          "severity": "Medium",
+          "confidence": "MEDIUM",
+          "title": "3 ECS instances idle (CPU < 5% over 30 days)",
+          "evidence": "ces metric cpu_util avg 3.2% last 30d",
+          "recommendation": "Stop or downsize idle instances; consider scheduled shutdown",
+          "effort": "medium"
+        }
+      ]
+    },
+    "efficiency": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    }
+  },
+  "recommendations": [
+    {
+      "pillar": "reliability",
+      "text": "Attach CBR backup policy to all production ECS instances"
+    },
+    {
+      "pillar": "security",
+      "text": "Tighten SSH ingress security groups to known CIDRs"
+    }
+  ],
+  "trace": {
+    "commands": [
+      "hcloud ecs read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)",
+      "hcloud ces show-metric --metric cpu_util --resource i-0a1b2c3d (HW_SECRET_ACCESS_KEY=<masked>)"
+    ],
+    "request_ids": [
+      "0123456789abcdef0123456789abcdef"
+    ]
+  },
+  "errors": []
+}
+```

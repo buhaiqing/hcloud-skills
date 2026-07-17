@@ -17,7 +17,7 @@ compatibility: >-
   network access to Huawei Cloud endpoints.
 metadata:
   author: huaweicloud
-  version: "1.0.0"
+  version: "1.1.0"
   last_updated: "2026-06-23"
   runtime: Harness AI Agent, Claude Code, Cursor or compatible Agent runtimes
   go_version_minimum: "1.21"
@@ -32,12 +32,15 @@ metadata:
   gcl:
     enabled: true
     required: true
-    rubric_version: "v1"
+    rubric_version: "v1.3"
     max_iter: 2
     rubric_ref: "references/rubric.md"
     prompts_ref: "references/prompt-templates.md"
     trace_dir: "./audit-results/"
     changelog:
+      - version: "1.1.0"
+        date: "2026-06-23"
+        change: "Round 2 self-reflection fixes: Op 7/8 (add/remove from shared bandwidth); S-rule [S-N] suffixes; gap fixes (100Mbps cap, cross-region verify, share_type check, cooldown_at, ECS state check); EipInUse/EipHasBandwidth HALT; Pattern 5 CES metric step; CLI unverified markers."
       - version: "1.0.0"
         date: "2026-06-23"
         change: "Initial skill release: 6 operations (allocate / describe / bind / unbind / release / bandwidth adjust), FinOps billing-model matrix, SecOps IAM table, AIOps 4 anomaly patterns, GCL rubric + prompt templates."
@@ -79,7 +82,7 @@ primary agent execution path.**
 |---|---|
 | EIP allocate / describe / bind / unbind / release | VPC / subnet / route table → `huaweicloud-vpc-ops` |
 | Bandwidth create / resize / delete | NAT gateway / SNAT / DNAT → `huaweicloud-nat-ops` |
-| Shared bandwidth membership move | DDoS protection policy → `huaweicloud-ddos-ops` (when present) |
+| `add-eip-to-shared` / `remove-eip-from-shared` | DDoS protection policy → `huaweicloud-ddos-ops` (when present) |
 | Idle / unbound EIP detection | Security group / EIP exposure → `huaweicloud-vpc-ops` + `huaweicloud-hss-ops` |
 | 95th-percentile subscription | CDN / traffic scheduling → `huaweicloud-cdn-ops` (when present) |
 | EIP billing-model comparison | Account-level billing → `huaweicloud-billing-ops` |
@@ -203,6 +206,8 @@ hcloud eip list --region {{env.HW_REGION_ID}} \
 | Unbind EIP | Detach EIP from current resource | Medium | Medium |
 | Release EIP | Permanently delete EIP (irreversible) | Low | **High** — irreversible billing stops |
 | Resize Bandwidth | Increase / decrease Mbps on EIP or shared bandwidth | Medium | Medium |
+| Add EIP to Shared Bandwidth | Move a PER EIP into a WHOLE shared bandwidth pool | Medium | Medium |
+| Remove EIP from Shared Bandwidth | Move an EIP out of shared bandwidth back to PER | Medium | Medium |
 
 ## Execution Flows
 
@@ -215,8 +220,9 @@ hcloud eip list --region {{env.HW_REGION_ID}} \
 | CLI / deps | `hcloud --version` | Exit code 0 | Document CLI install |
 | Credentials | Construct credential from env | Non-empty AK/SK | HALT; user configures env |
 | Region | `hcloud eip list --region {{env.HW_REGION_ID}}` | 2xx response | Suggest valid region |
-| Quota | `hcloud eip describe-quota` (or `eip show-quota`) | Sufficient quota | HALT; user raises quota |
+| Quota | `ShowCountQuota` SDK (or `hcloud eip describe-quota` if verified) | Sufficient quota | HALT; user raises quota |
 | Billing mode | Ask user with FinOps matrix | User picks `bandwidth` / `traffic` / `shared` | Default to `bandwidth` only with explicit consent |
+| Bandwidth-size cap | If `billing-mode=traffic`: reject if `bandwidth-size > 100` [S5] | ≤ 100 Mbps | HALT; suggest `bandwidth` mode or split across EIPs |
 
 #### Execution — CLI (Primary Path)
 
@@ -231,12 +237,13 @@ hcloud eip create \
   --charge-type "postpaid"
 
 # 按流量计费 (spiky traffic, pay-by-byte)
+# WARNING: 按流量 bandwidth-size hard cap = 100 Mbps [S5] — pre-flight enforces this.
 hcloud eip create \
   --region "{{user.region}}" \
   --name "{{user.eip_name}}" \
   --type "5_bgp" \
   --billing-mode "traffic" \
-  --bandwidth-size "{{user.bandwidth_size}}"
+  --bandwidth-size "{{user.bandwidth_size}}"  # max 100 Mbps
 ```
 
 #### Execution — JIT Go SDK (Fallback Path)
@@ -344,9 +351,12 @@ hcloud eip describe --region {{env.HW_REGION_ID}} --eip-id "{{user.eip_id}}"
 
 #### Pre-flight (Safety Gate)
 
-- Target resource must be in the **same region** as the EIP. Cross-region bind is impossible.
-- EIP must be in `DOWN` (unbound) state.
-- For ECS: target ECS must be `RUNNING`; for ENI: target ENI must be `ATTACHED` to a running ECS.
+- Target resource must be in the **same region** as the EIP [S8].
+  → Verify: query `hcloud eip describe --eip-id {{user.eip_id}}` for EIP region, then query target resource (ECS / ENI) for its region — both must match.
+- EIP must be in `DOWN` (unbound) state [S13].
+- For ECS: target ECS must be `RUNNING` [S13].
+  → Verify: `hcloud ecs describe --server-id {{user.ecs_id}} --region {{user.region}}` — `status` must be `RUNNING`. If not, HALT; do not bind to a stopped instance.
+- For ENI: target ENI must be `ATTACHED` to a running ECS.
 
 #### Execution
 
@@ -366,8 +376,8 @@ Poll `describe` until `status` = `ACTIVE` and `port_id` matches target. Common S
 #### Pre-flight (Safety Gate)
 
 - **MUST** obtain explicit confirmation if the resource name matches
-  `(?i)(prod|prd|production|online|pay)` — production blast radius.
-- Recommend: unbind during low-traffic window; expect 1–3 connection drops during cutover.
+  `(?i)(prod|prd|production|online|pay)` — production blast radius [S4].
+- Recommend: unbind during low-traffic window; expect 1–3 connection drops during cutover [S4].
 
 #### Execution
 
@@ -382,10 +392,11 @@ Poll `describe` until `status` = `DOWN` and `port_id` = null.
 
 #### Pre-flight (Safety Gate — IRREVERSIBLE)
 
-- **MUST** require explicit confirmation: `release-eip` of `{{user.eip_id}}` (`{{user.public_ip}}`) is permanent.
-- **MUST** verify EIP is **unbound** (`port_id` = null) before proceeding; release of a bound EIP orphans the bill.
-- **MUST** warn: any DNS A record pointing at this public IP will become unreachable.
-- **MUST** warn: any shared-bandwidth membership on this EIP is lost (move EIP out of shared bandwidth first if needed).
+- **MUST** require explicit confirmation: `release-eip` of `{{user.eip_id}}` (`{{user.public_ip}}`) is permanent [S3].
+- **MUST** verify EIP is **unbound** (`port_id` = null) before proceeding; release of a bound EIP orphans the bill [S11].
+- **MUST** warn: any DNS A record pointing at this public IP will become unreachable [S16].
+- **MUST** verify `bandwidth.share_type`: if EIP is `PER` proceed; if `WHOLE` (in a shared bandwidth pool), first call `huaweicloud-eip-ops` Op 8 to remove from pool [S1/S2].
+  → Query `hcloud eip describe --eip-id {{user.eip_id}}`; if `bandwidth.share_type == "WHOLE"`, abort release and delegate to Op 8.
 
 #### Execution
 
@@ -401,7 +412,8 @@ Poll `describe` until 404 / `ResourceNotFound` within max wait (default 30s).
 #### Pre-flight
 
 - EIP / shared bandwidth must be `RUNNING`.
-- New size must be within quota (default EIP cap: see `hcloud eip describe-quota`).
+- New size must be within quota (see `ShowCountQuota` via Go SDK).
+- If the bandwidth uses **95th-percentile billing**: query `hcloud bandwidth describe --bandwidth-id {{user.bandwidth_id}}` for `cooldown_at`. If `cooldown_at` is in the future, **do not retry** inside the cooldown window [S7] — wait until cooldown expires or schedule the resize after it.
 
 #### Execution
 
@@ -417,12 +429,86 @@ hcloud eip update-bandwidth \
 Poll `describe` until `bandwidth.size` matches target. Note: 95th-percentile subscriptions
 have a **cooldown window** after each change; see `references/well-architected-assessment.md` §3.
 
+### Operation 7: Add EIP to Shared Bandwidth
+
+#### Pre-flight (Safety Gate)
+- EIP must currently be `PER` (not already in a WHOLE pool) — verify `bandwidth.share_type == "PER"`.
+- Target WHOLE bandwidth pool must exist in the same region.
+- EIP must be `DOWN` (unbound) before moving into a shared pool [S9].
+
+#### Execution — CLI
+```bash
+# CLI subcommand [unverified] — fall back to Go SDK if unknown-subcommand error
+hcloud bandwidth add-eip \
+  --region "{{user.region}}" \
+  --bandwidth-id "{{user.bandwidth_id}}" \
+  --eip-id "{{user.eip_id}}"
+```
+If CLI returns unknown subcommand error, fall back to Go SDK:
+```go
+// Move EIP into WHOLE bandwidth pool
+req := &model.UpdatePublicipRequest{
+    PublicipId: eipID,
+    Body: &model.UpdatePublicipRequestBody{
+        BandwidthId: &bandwidthID,
+    },
+}
+_, err := client.UpdatePublicip(req)
+```
+
+#### Post-execution Validation
+Poll `hcloud bandwidth describe --bandwidth-id {{user.bandwidth_id}}` until EIP id appears in `publicip_id` list.
+
+#### Failure Recovery
+| Error | Agent Action |
+|---|---|
+| `EipInSharedBandwidth` | EIP already in a WHOLE pool — move it out first |
+| `BandwidthTypeError` | Target bandwidth is PER, not WHOLE |
+
+### Operation 8: Remove EIP from Shared Bandwidth
+
+#### Pre-flight (Safety Gate)
+- EIP must currently be in a WHOLE shared bandwidth pool [S9].
+- EIP must be `DOWN` (unbound) before removal.
+
+#### Execution — CLI
+```bash
+# CLI subcommand [unverified] — fall back to Go SDK if unknown-subcommand error
+hcloud bandwidth remove-eip \
+  --region "{{user.region}}" \
+  --bandwidth-id "{{user.bandwidth_id}}" \
+  --eip-id "{{user.eip_id}}"
+```
+If CLI returns unknown subcommand error, fall back to Go SDK:
+```go
+// Move EIP back to PER (detach from WHOLE bandwidth)
+// NOTE: Setting BandwidthId to nil may leave the EIP with no bandwidth attached.
+// After this call, the EIP's billing reverts to PER — ensure a default bandwidth
+// size is set or the EIP will be unusable.
+// TODO (verify): Confirm nil behavior against UpdatePublicip API docs.
+req := &model.UpdatePublicipRequest{
+    PublicipId: eipID,
+    Body: &model.UpdatePublicipRequestBody{
+        BandwidthId: nil,
+    },
+}
+_, err := client.UpdatePublicip(req)
+```
+
+#### Post-execution Validation
+Poll `hcloud bandwidth describe --bandwidth-id {{user.bandwidth_id}}` — EIP id must no longer appear in `publicip_id` list.
+
+#### Failure Recovery
+| Error | Agent Action |
+|---|---|
+| `EipNotInBandwidth` | EIP not in this pool — verify pool id |
+
 ## FinOps at a Glance (Details in §3 of well-architected-assessment)
 
 | Billing Mode | Best For | Cost Shape | Risk |
 |---|---|---|---|
 | `bandwidth` (按带宽) | Stable traffic, predictable cost | Linear: `Mbps × hours × unit_price` | Over-pays during idle hours |
-| `traffic` (按流量) | Spiky traffic, mostly idle | `bytes × unit_price` | Surprise bill on burst |
+| `traffic` (按流量) | Spiky traffic, mostly idle | `bytes × unit_price` | Surprise bill on burst; **hard cap 100 Mbps** — see Op 1 pre-flight [S5] |
 | `shared` (共享带宽) | ≥2 EIPs with complementary patterns | Priced by sum-of-peaks, not sum-of-Mbps | Move-in/out complexity |
 | `95` (95th percentile) | Large egress, agreed baseline | Monthly 5-min samples, top 5% discarded | Cooldown after change |
 
@@ -460,7 +546,7 @@ Generated skills MUST ship the following artifacts:
 
 - `references/rubric.md` — 8 numbered sections: scope, thresholds, evidence, product safety rules, scoring guide, examples, escalation, changelog.
 - `references/prompt-templates.md` — 7 numbered sections: Generator, Critic, Orchestrator, product pre-flight overrides, product-only anti-patterns, changelog, see also.
-- `SKILL.md` metadata `gcl` block — `required: true`, `default_max_iter: 2`, `rubric_version: "v1"`, `trace_path: "audit-results/gcl-trace-YYYYMMDD-HHMMSS.json"`.
+- `SKILL.md` metadata `gcl` block — `required: true`, `default_max_iter: 2`, `rubric_version: "v1"`, `trace_path: "./audit-results/gcl-trace-{{timestamp}}.json"`.
 
 ### Runtime Roles
 
@@ -482,7 +568,7 @@ Generated skills MUST ship the following artifacts:
 
 ### Trace Requirements
 
-1. Persist `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` for PASS, MAX_ITER, and SAFETY_FAIL.
+1. Persist `audit-results/gcl-trace-{{timestamp}}.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
 2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK values, tokens, passwords, and authorization headers.
 3. Include sanitized `operation_intent` so the Critic can assess expected state without seeing raw user wording.
 4. Use root scripts: `scripts/gcl_runner.py`, `scripts/gcl_trace_aggregate.py`, `scripts/check_gcl_conformance.py`.

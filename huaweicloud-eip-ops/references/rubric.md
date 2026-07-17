@@ -40,7 +40,7 @@
 | S14 | `resize-bandwidth` to same size (silent no-op) without acknowledging | Trace pollution |
 | S15 | `add-eip-to-shared` with `bandwidth-id` from a different region | Region-scoped bandwidth |
 | S16 | `release-eip` while DNS A record still resolves to `{{output.public_ip}}` (if known) | Service unreachable post-release |
-| S17 | `allocate-eip` in a region without confirming quota (`describe-quota`) | QuotaExceeded churn |
+| S17 | `allocate-eip` in a region without confirming quota (`ShowCountQuota` via SDK, or CLI `describe-quota` if verified) | QuotaExceeded churn |
 
 The Critic prompt MUST include the full S1–S17 list verbatim (see `prompt-templates.md`).
 
@@ -90,8 +90,17 @@ penalized via the `idempotency` dimension (must be 1.0 to pass).
 | safety = 1, any dim < threshold, iter < max_iter | `RETRY` |
 | safety = 1, iter == max_iter, dim still < threshold | `MAX_ITER` (return last best) |
 
-`composite` for non-safety decisions is the **weighted geometric mean** of dims 1, 3, 4, 5
-(weight: 0.4 / 0.2 / 0.2 / 0.2).
+`composite` is the **weighted geometric mean** of dims 1, 3, 4, 5
+(weight: 0.4 / 0.2 / 0.2 / 0.2). **dim 2 (Safety) is binary and does not participate in
+the composite** — safety=0 (any S-rule hit) always produces SAFETY_FAIL regardless of
+other dimension scores.
+
+| Condition | Result |
+|---|---|
+| safety = 0 (any S-rule hit) | `SAFETY_FAIL` — abort immediately, never best-effort |
+| safety = 1, all dims ≥ threshold | `PASS` |
+| safety = 1, any dim < threshold, iter < max_iter | `RETRY` |
+| safety = 1, iter == max_iter, dim still < threshold | `MAX_ITER` (best-so-far with `uncertain: true`) |
 
 ## 7. Examples
 
@@ -121,9 +130,15 @@ penalized via the `idempotency` dimension (must be 1.0 to pass).
 1. `SAFETY_FAIL` → abort, return error code, do not retry.
 2. `MAX_ITER` → return best-so-far with explicit `uncertain` flag; user decides.
 3. Quota / balance / DDoS / SG concerns → HALT and hand off to user / cross-skill.
+4. IAM `Eip.0001` (permission denied) → HALT; delegate to `huaweicloud-iam-ops` to add `vpc:eip:*` permission.
+5. `EipInUse` (release of a bound EIP) → HALT; unbind first via Op 4.
+6. `EipHasBandwidth` (release of an EIP with bandwidth attached) → HALT; remove from shared bandwidth first (Op 8) or resize to 0 if PER.
 
 ### 8.2 Changelog
 
 | Version | Date | Change |
 |---|---|---|
 | v1 | 2026-06-23 | Initial rubric: 17 EIP-specific safety rules, 5 dimensions, 3 examples. |
+| v1.1 | 2026-06-23 | Fix §6 Scoring Guide: clarify dim 2 is binary and does not participate in composite; add explicit score matrix table. |
+| v1.2 | 2026-06-23 | §8 Escalation: add IAM `Eip.0001` → `huaweicloud-iam-ops` delegation. |
+| v1.3 | 2026-06-23 | §8 Escalation: add `EipInUse` / `EipHasBandwidth` HALT entries. |

@@ -29,6 +29,7 @@ class SkillListTests(unittest.TestCase):
             "huaweicloud-dcs-ops",
             "huaweicloud-dms-ops",
             "huaweicloud-ecs-ops",
+            "huaweicloud-eip-ops",
             "huaweicloud-elb-ops",
             "huaweicloud-functiongraph-ops",
             "huaweicloud-gaussdb-ops",
@@ -42,7 +43,7 @@ class SkillListTests(unittest.TestCase):
             "huaweicloud-waf-ops",
         }
         self.assertEqual(gclc.GCL_SKILLS, expected)
-        self.assertEqual(len(gclc.GCL_SKILLS), 20)
+        self.assertEqual(len(gclc.GCL_SKILLS), 21)
 
 
 class CounterTests(unittest.TestCase):
@@ -111,7 +112,7 @@ class CheckSkillTests(unittest.TestCase):
 class CheckAllTests(unittest.TestCase):
     def test_check_all_20_sorted(self) -> None:
         result = gclc.check_all(ROOT)
-        self.assertEqual(len(result), 20)
+        self.assertEqual(len(result), 21)
         skills = [report["skill"] for report in result]
         self.assertEqual(skills, sorted(skills))
 
@@ -120,7 +121,7 @@ class ConformanceTests(unittest.TestCase):
     def test_all_20_pass(self) -> None:
         result = gclc.check_all(ROOT)
         failing = [report["skill"] for report in result if not report["ok"]]
-        self.assertEqual(failing, [], f"Expected all 20 skills to conform; failing: {failing}")
+        self.assertEqual(failing, [], f"Expected all 21 skills to conform; failing: {failing}")
 
     def test_rubric_section_count(self) -> None:
         for report in gclc.check_all(ROOT):

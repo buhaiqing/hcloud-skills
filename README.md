@@ -72,7 +72,8 @@ hcloud-skills/
 ├── huaweicloud-gaussdb-ops/              # GaussDB
 ├── huaweicloud-hss-ops/                  # HSS (host security)
 ├── huaweicloud-waf-ops/                  # WAF
-├── huaweicloud-lts-ops/                  # LTS (logging)
+├── huaweicloud-lts-ops/                   # LTS (logging)
+├── huaweicloud-css-ops/                   # CSS (Cloud Search Service)
 └── huaweicloud-functiongraph-ops/        # FunctionGraph (serverless)
 ```
 
@@ -211,6 +212,7 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | `huaweicloud-cce-ops` | CCE | Clusters, nodes, node pools, add-ons | ✅ Ready |
 | `huaweicloud-dcs-ops` | DCS | Redis lifecycle, backup, resize, whitelist | ✅ Ready |
 | `huaweicloud-cts-ops` | CTS | Audit trails, trace query, diagnostics | ✅ Ready |
+| `huaweicloud-css-ops` | CSS (Cloud Search Service) | Elasticsearch/OpenSearch clusters, snapshots, dictionaries, config | ✅ Ready |
 | `huaweicloud-functiongraph-ops` | FunctionGraph | Functions, triggers, versions, diagnostics | ✅ Ready |
 | `huaweicloud-iam-ops` | IAM | Users, groups, policies, agencies, AK/SK, MFA | ✅ Ready |
 | `huaweicloud-obs-ops` | OBS | Buckets, objects, ACL, lifecycle, CDN, static site | ✅ Ready |
@@ -240,6 +242,7 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 | Identity and Access Management | IAM | `services/iam/v3` | User, Group, Policy, Agency |
 | Distributed Message Service | DMS | `services/dms/v2` | Instance, Topic, Queue, Consumer Group |
 | Cloud Backup and Recovery | CBR | `services/cbr/v3` | Vault, Policy, Backup, Restore |
+| Cloud Search Service | CSS | `services/css/v1` | Cluster, Snapshot, Dictionary, Config |
 | Software Repository for Containers | SWR | `services/swr/v2` | Organization, Repository, Image |
 | GaussDB | GaussDB | `services/gaussdb/v3` | Instance, Backup, Template, Database/User |
 
