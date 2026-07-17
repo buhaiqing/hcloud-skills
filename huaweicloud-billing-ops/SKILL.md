@@ -610,6 +610,11 @@ This skill is **GCL-optional** (per `AGENTS.md` §8). Most BSS operations are re
 
 ### Five-Dimension Rubric (summary)
 
+> The five-dimension rubric (Correctness / Safety / Idempotency / Traceability / Spec Compliance),
+> default thresholds, termination contract (PASS / MAX_ITER / SAFETY_FAIL), and trace-persistence
+> rules are defined in [`docs/gcl-spec.md`](../../docs/gcl-spec.md) and the repo root
+> [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8. This skill overrides only the items below.
+
 | # | Dimension | Threshold | Notes |
 |---|-----------|-----------|-------|
 | 1 | Correctness | ≥ 0.5 | Bill data matches query params / budget state matches request |
@@ -627,18 +632,6 @@ This skill is **GCL-optional** (per `AGENTS.md` §8). Most BSS operations are re
 - **S5** — `create-budget` with threshold = 0% (trigger-immediately, alarm storm)
 - **S6** — any trace contains `HW_SECRET_ACCESS_KEY` / `SecretAccessKey` / password plaintext
 - **S7** — any operation that silently fails due to billing account quota/status without user-visible error
-
-### Termination Contract (per `AGENTS.md` §5)
-
-| Condition | Status | Returned |
-|-----------|--------|----------|
-| All dimensions pass | **PASS** | Generator result + scores + trace path |
-| `iter == max_iter` (5) and any dim < threshold | **MAX_ITER** | best-so-far + unresolved rubric items |
-| `Safety == 0` | **SAFETY_FAIL** | violated S-rule id; **never** return partial |
-
-### Trace Persistence (mandatory)
-
-Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write. The path `./audit-results/` is in root `.gitignore`.
 
 ### See also
 
