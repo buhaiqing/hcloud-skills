@@ -20,6 +20,17 @@ go get github.com/huaweicloud/huaweicloud-sdk-go-v3/core
 | Metric anomaly | `huaweicloud-swr-ops` | `huaweicloud-ces-ops` | Alarm or metric analysis |
 | Audit trail | `huaweicloud-swr-ops` | `huaweicloud-cts-ops` | Image delete/push tracking |
 
+## AIOps Cross-Skill Delegation Matrix
+
+| Anomaly Pattern | Lead Skill | Delegates To | Trigger Condition |
+|----------------|-----------|-------------|-------------------|
+| Storage quota near (>80%) | `huaweicloud-swr-ops` | `huaweicloud-ces-ops` | SWR storage metric alert |
+| Pull throttling | `huaweicloud-swr-ops` | `huaweicloud-vpc-ops` | Rate limit exceeded |
+| Webhook failure spike | `huaweicloud-swr-ops` | `huaweicloud-vpc-ops` | Webhook delivery failure |
+| Build failure spike | `huaweicloud-swr-ops` | `huaweicloud-codearts-ops` | Build trigger failed |
+| Security vulnerability | `huaweicloud-swr-ops` | `huaweicloud-hss-ops` | Image scan critical finding |
+| Multi-resource alarm storm | `huaweicloud-swr-ops` | `huaweicloud-ces-ops` | ≥3 resources affected |
+
 ## Environment Variables
 
 ```bash
@@ -92,3 +103,16 @@ func main() {
     }
 }
 ```
+
+## Anomaly Correlation Rules
+
+| Pattern A | Pattern B | Correlation | Action |
+|-----------|-----------|-------------|--------|
+| storage_quota_near | pull_throttling | High | Emergency cleanup优先 |
+| webhook_failure_high | build_failure_spike | High | 检查SCM webhook |
+| image_count_growth | pull_count_drop | Medium | 清理无用镜像 |
+| pull_latency_spike | storage_pull_correlation | High | 检查存储性能 |
+
+## Fault Knowledge Base Reference
+
+See `knowledge-base.md` for 6 common fault patterns with resolution procedures.
