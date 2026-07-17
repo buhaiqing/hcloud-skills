@@ -2,6 +2,36 @@
 
 > Product-specific depth: see `huaweicloud-skill-generator/references/well-architected-assessment.md`.
 
+### SLO/SLI Definition — GaussDB
+
+#### SLI (Service Level Indicator) Metrics
+
+| SLI Name | Formula | Data Source | Collection Frequency |
+|----------|---------|-------------|---------------------|
+| Availability | Successful requests / Total requests × 100% | CES + ELB | 1min |
+| Latency P99 | 99th percentile response time (ms) | AOM Trace | 1min |
+| Error Rate | 5xx responses / Total requests × 100% | ELB + AOM | 1min |
+| Saturation | CPU utilization / Connection utilization / Disk utilization | CES | 5min |
+
+#### SLO Targets
+
+| SLI | SLO Target | Error Budget (Monthly) | Alert Threshold |
+|-----|------------|-----------------------|-----------------|
+| Availability | ≥ 99.9% | 43.2 min/month | < 99.95% triggers Warning |
+| Latency P99 | ≤ 200ms | — | > 300ms triggers Warning |
+| Error Rate | ≤ 0.1% | — | > 0.5% triggers Critical |
+| Saturation | ≤ 80% | — | > 85% triggers Warning |
+
+#### Error Budget Burn Rate Alerts
+
+| Burn Rate | Consumption Speed | Alert Level | Meaning |
+|-----------|------------------|-------------|---------|
+| 1× | Normal consumption (43.2 min/month) | — | Normal |
+| 2× | 21.6 min exhausted | Info | Attention needed |
+| 5× | 8.6 min exhausted | Warning | Intervention needed |
+| 14.4× | 3h exhausted | Critical | Immediate action required |
+
+
 ---
 
 ## Worker Output Contract (Read-Only Assessment Mode)
