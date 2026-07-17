@@ -1,6 +1,7 @@
 # Plan: AIOps L4 成熟度提升
 
-> Status: ✅ **COMPLETE** — all batches merged to main
+> Status: 🚧 **IN PROGRESS** — L2/L3 gap filling (Phase 0)
+> Updated: 2026-07-18
 > Created: 2026-07-18
 > Target: AIOps L4 (80% L4 criteria, ~70% overall)
 > Parent: `docs/superpowers/plans/gcl-token-efficiency-p0.md`
@@ -49,6 +50,97 @@
 | P1-7 | Capacity Forecasting | 仅 ECS/CSS 有 | P0-10 已覆盖 |
 | P1-8 | **Chaos Engineering** | **无** | **L4 核心要求** |
 | P1-9 | **Resilience Score** | **无** | **L4 核心要求** |
+
+---
+
+## Phase 0: L2/L3 缺口补齐 (Gap Filling)
+
+> 基于 `aiops-optimization.md` 完成后的审计，发现 9 个文件缺口分布在 5 个技能。补齐后 L2/L3 可达 100% 完整度。
+
+### 缺口清单
+
+| 缺口 | Level | Skill | 文件 | 状态 |
+|------|-------|-------|------|------|
+| G-1 | L2 | RDS | `huaweicloud-rds-ops/references/knowledge-base.md` | ❌ 缺失 |
+| G-2 | L2 | RDS | `huaweicloud-rds-ops/references/prompts.md` | ❌ 缺失 |
+| G-3 | L2 | ELB | `huaweicloud-elb-ops/references/knowledge-base.md` | ❌ 缺失 |
+| G-4 | L2 | ELB | `huaweicloud-elb-ops/references/prompts.md` | ❌ 缺失 |
+| G-5 | L3 | CCE | `huaweicloud-cce-ops/references/advanced/observability-trinity.md` | ❌ 缺失 |
+| G-6 | L3 | CES | `huaweicloud-ces-ops/references/advanced/change-correlation.md` | ❌ 缺失 |
+| G-7 | L3 | CES | `huaweicloud-ces-ops/references/advanced/capacity-forecasting.md` | ❌ 缺失 |
+| G-8 | L3 | ELB | `huaweicloud-elb-ops/references/advanced/change-correlation.md` | ❌ 缺失 |
+| G-9 | L3 | ELB | `huaweicloud-elb-ops/references/advanced/capacity-forecasting.md` | ❌ 缺失 |
+
+### Batch G-1: RDS L2 补齐
+
+**文件**:
+- `huaweicloud-rds-ops/references/knowledge-base.md` (新建)
+- `huaweicloud-rds-ops/references/prompts.md` (新建)
+
+**knowledge-base.md 内容** (参考 ECS knowledge-base.md 格式):
+- ≥3 fault patterns (RDS-001/002/003...)
+- 每条 pattern: 症状 → 根因 → 证据 → 恢复步骤
+- 华为云 RDS 特定故障模式 (主备切换、连接池耗尽、慢查询、存储满)
+
+**prompts.md 内容** (参考 prompts.md 模板格式):
+- ≥20 prompts across 5 categories: 诊断类、根因分析类、容量类、可用性类、巡检类
+- RDS 特定的 metric namespace 和告警场景
+
+### Batch G-2: ELB L2 补齐
+
+**文件**:
+- `huaweicloud-elb-ops/references/knowledge-base.md` (新建)
+- `huaweicloud-elb-ops/references/prompts.md` (新建)
+
+**knowledge-base.md 内容**:
+- ≥3 fault patterns (ELB-001/002/003...)
+- 华为云 ELB 特定故障模式 (后端实例不健康、证书过期、连接超时、带宽瓶颈)
+
+**prompts.md 内容**:
+- ≥20 prompts across 5 categories
+- ELB 特定的监听器、后端服务器、SSL证书相关 prompts
+
+### Batch G-3: CCE L3 补齐
+
+**文件**:
+- `huaweicloud-cce-ops/references/advanced/observability-trinity.md` (新建)
+
+**内容** (参考 ECS observability-trinity.md 格式):
+- CCE Metrics → Logs → Traces 联动规则
+- CES 指标 → LTS 日志 → APM 链路追踪映射
+- Pod 级别可观测性关联分析工作流
+
+### Batch G-4: CES L3 补齐
+
+**文件**:
+- `huaweicloud-ces-ops/references/advanced/change-correlation.md` (新建)
+- `huaweicloud-ces-ops/references/advanced/capacity-forecasting.md` (新建)
+
+**change-correlation.md 内容** (参考 RDS change-correlation.md 格式):
+- CTS 事件类型 → CES 告警映射 (≥5 条)
+- 告警规则变更 → 监控异常关联
+- 采样周期变更 → 指标抖动关联
+
+**capacity-forecasting.md 内容** (参考 ECS capacity-forecasting.md 格式):
+- CES 指标容量预测 (监控指标数量、告警规则数量)
+- 线性外推模型
+- 容量阈值告警规则
+
+### Batch G-5: ELB L3 补齐
+
+**文件**:
+- `huaweicloud-elb-ops/references/advanced/change-correlation.md` (新建)
+- `huaweicloud-elb-ops/references/advanced/capacity-forecasting.md` (新建)
+
+**change-correlation.md 内容**:
+- CTS 事件类型 → ELB 告警映射 (≥5 条)
+- 后端服务器变更 → 流量异常关联
+- SSL证书变更 → 连接失败关联
+
+**capacity-forecasting.md 内容**:
+- ELB 带宽/连接数预测
+- 峰值带宽预测模型
+- 容量规划工作流
 
 ---
 
@@ -285,6 +377,13 @@
 
 | Batch | 分支 | 任务 | 文件数 |
 |-------|------|------|--------|
+| **Phase 0: Gap Filling** |
+| G-1 | `feature/aiops-gap-rds` | RDS L2 补齐 (kb + prompts) | 2 |
+| G-2 | `feature/aiops-gap-elb` | ELB L2 补齐 (kb + prompts) | 2 |
+| G-3 | `feature/aiops-gap-cce` | CCE L3 补齐 (observability-trinity) | 1 |
+| G-4 | `feature/aiops-gap-ces` | CES L3 补齐 (change-corr + capacity) | 2 |
+| G-5 | `feature/aiops-gap-elb-l3` | ELB L3 补齐 (change-corr + capacity) | 2 |
+| **Phase 1: Completed (2026-07-18)** |
 | A | `feature/aiops-p0a-matrix` | P0-3 委托矩阵模板 | 1 |
 | B | `feature/aiops-p0b-slo` | P0-8 SLO (10 skill) | 10 |
 | C | `feature/aiops-p0c-change` | P0-9 变更关联 (3 skill) | 3 |
@@ -295,7 +394,8 @@
 | F.3 | `feature/aiops-p0f-cbr` | CBR AIOps 增强 | 4 |
 | F.4 | `feature/aiops-p0f-swr` | SWR AIOps 增强 | 4 |
 | F.5 | `feature/aiops-p0f-cts` | CTS AIOps 增强 | 3 |
-| G | `feature/aiops-p1g-chaos` | P1-8 混沌工程 (5 skill) | 6 |
+| **Phase 2: Completed (2026-07-18)** |
+| G-A | `feature/aiops-p1g-chaos` | P1-8 混沌工程 (5 skill) | 6 |
 | H | `feature/aiops-p1h-resilience` | P1-9 韧性评分 (5 skill) | 6 |
 | I | `feature/aiops-p1i-observability` | P1-2 Observability Trinity (3 skill) | 4 |
 | J | `feature/aiops-p1j-prompts` | P1-3 Prompt Handbook (3 skill) | 4 |
@@ -307,6 +407,26 @@
 ## 验收检查
 
 ```bash
+# Phase 0: L2/L3 Gap Filling 检查
+# G-1: RDS knowledge-base + prompts
+ls huaweicloud-rds-ops/references/knowledge-base.md && echo "  RDS kb: ✅" || echo "  RDS kb: ❌"
+ls huaweicloud-rds-ops/references/prompts.md && echo "  RDS prompts: ✅" || echo "  RDS prompts: ❌"
+
+# G-2: ELB knowledge-base + prompts
+ls huaweicloud-elb-ops/references/knowledge-base.md && echo "  ELB kb: ✅" || echo "  ELB kb: ❌"
+ls huaweicloud-elb-ops/references/prompts.md && echo "  ELB prompts: ✅" || echo "  ELB prompts: ❌"
+
+# G-3: CCE observability-trinity
+ls huaweicloud-cce-ops/references/advanced/observability-trinity.md && echo "  CCE observability-trinity: ✅" || echo "  CCE observability-trinity: ❌"
+
+# G-4: CES change-correlation + capacity-forecasting
+ls huaweicloud-ces-ops/references/advanced/change-correlation.md && echo "  CES change-corr: ✅" || echo "  CES change-corr: ❌"
+ls huaweicloud-ces-ops/references/advanced/capacity-forecasting.md && echo "  CES capacity: ✅" || echo "  CES capacity: ❌"
+
+# G-5: ELB change-correlation + capacity-forecasting
+ls huaweicloud-elb-ops/references/advanced/change-correlation.md && echo "  ELB change-corr: ✅" || echo "  ELB change-corr: ❌"
+ls huaweicloud-elb-ops/references/advanced/capacity-forecasting.md && echo "  ELB capacity: ✅" || echo "  ELB capacity: ❌"
+
 # P0 检查
 # A: 模板存在
 ls huaweicloud-skill-generator/references/cross-skill-delegation-matrix-template.md
@@ -359,29 +479,34 @@ bash scripts/pre_commit_check.sh
 
 ## DoD
 
-- [ ] Batch A~F 全部完成 (P0 items)
-- [ ] Batch G~L 全部完成 (P1 items)
+- [ ] Phase 0: Batch G-1~G-5 全部完成 (9 个缺口文件)
+- [ ] Phase 1: Batch A~F 全部完成 (P0 items)
+- [ ] Phase 2: Batch G-A~L 全部完成 (P1 items)
+- [ ] L2 完整度: 100% (所有 skill 的 delegation matrix + knowledge-base + prompts)
+- [ ] L3 完整度: 100% (所有核心 skill 的 SLO + change-correlation + capacity-forecasting)
 - [ ] P0 合规检查: 10/10 通过
-- [ ] P1 合规检查: 8/9 通过 (混沌+韧性已覆盖核心 skill)
-- [ ] L1 skill (OBS/LTS/CBR/SWR/CTS) 全部升级到 L2+
+- [ ] P1 合规检查: 9/9 通过
 - [ ] 所有新增文件通过 linter
 - [ ] `python3 scripts/validate_local.py` 通过
 - [ ] worktree 合并后删除
 
 ## 预期结果
 
-| 指标 | 当前 | 目标 |
-|------|------|------|
-| AIOps 成熟度 | ~45% | 70%+ |
-| P0 合规率 | ~40% | 100% |
-| P1 合规率 | ~20% | 80%+ |
-| L1→L2+ 升级 | 0 | 5 |
-| 新增/修改文件 | — | ~70 个 |
+| 指标 | Phase 0 前 | Phase 0 后 | 目标 |
+|------|-----------|-----------|------|
+| AIOps 成熟度 | ~70% | ~80% | 80%+ |
+| L2 完整度 | ~85% | 100% | 100% |
+| L3 完整度 | ~75% | 100% | 100% |
+| P0 合规率 | 10/10 | 10/10 | 100% |
+| P1 合规率 | 9/9 | 9/9 | 100% |
+| L1→L2+ 升级 | 5 | 5 | 5 |
+| Phase 0 新增文件 | — | 9 个 | 9 个 |
 
 ## 风险
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| 任务量巨大 (16 batch) | 管理复杂度高 | 可按优先级分阶段执行 |
+| 任务量巨大 (16 batch + 5 gap) | 管理复杂度高 | 可按优先级分阶段执行 |
 | 部分 skill 难以定义 SLO | 进度延迟 | 先从 ECS/RDS 核心 skill 验证模板 |
 | 混沌工程需要实际测试环境 | P1 降级 | 仅做文档化，测试留作后续 |
+| Phase 0 发现更多缺口 | 范围蔓延 | 仅补齐已确认的 9 个缺口，不扩展范围 |
