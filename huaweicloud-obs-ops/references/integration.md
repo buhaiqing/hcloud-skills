@@ -49,6 +49,8 @@ func main() {
 
 ## Cross-Skill Delegation Matrix
 
+### Core Delegation (P0)
+
 | Trigger Condition | Delegate To | Required Input | Expected Output |
 |------------------|-------------|----------------|----------------|
 | Configure CDN with OBS origin | CDN skill | bucket_name, CDN domain | `{cdn_domain, CNAME_record}` |
@@ -57,6 +59,27 @@ func main() {
 | Create VPC Endpoint for OBS | `huaweicloud-vpc-ops` | VPC, subnet, service | `{endpoint_id}` |
 | Configure OBS access logging→LTS | `huaweicloud-lts-ops` | Log group/stream, bucket | `{log_group_id}` |
 | Set up OBS event notifications | `huaweicloud-smn-ops` (when present) | Topic, event type | `{topic_arn}` |
+
+### Extended Delegation (P1)
+
+| Trigger Condition | Delegate To | Required Input | Expected Output |
+|------------------|-------------|----------------|----------------|
+| Storage quota alarm triggers | `huaweicloud-ces-ops` | bucket, threshold, alarm_action | `{alarm_id}` |
+| Cross-region replication lag detected | `huaweicloud-ces-ops` | bucket, lag_threshold | `{alarm_id}` |
+| Request throttling detected | `huaweicloud-ces-ops` | bucket, throttle_rate | `{alarm_id}` |
+| IAM permission issue affecting OBS | `huaweicloud-iam-ops` | user/ak, permission_check | `{permission_status}` |
+| Network route issue affecting OBS | `huaweicloud-vpc-ops` | vpc, endpoint_status | `{endpoint_id, route_status}` |
+| Cost anomaly for OBS storage | `huaweicloud-billing-ops` | bucket, cost_threshold | `{cost_report}` |
+| OBS bucket delete protection | `huaweicloud-ces-ops` | bucket, protection_enabled | `{protection_status}` |
+
+### AIOps Delegation
+
+| Trigger Condition | Delegate To | Required Input | Expected Output |
+|------------------|-------------|----------------|----------------|
+| Alarm storm detected for OBS | `huaweicloud-ces-ops` | aggregation_rule | `{suppressed_count, summary}` |
+| Multi-metric correlation anomaly | `huaweicloud-ces-ops` | metric_pairs, correlation_id | `{correlation_result}` |
+| Latency spike + bandwidth high | `huaweicloud-vpc-ops` | vpc, bandwidth_stats | `{bottleneck_analysis}` |
+| Storage growth acceleration | `huaweicloud-ces-ops` | bucket, growth_rate | `{trend_analysis}` |
 
 ## Dependency Order
 

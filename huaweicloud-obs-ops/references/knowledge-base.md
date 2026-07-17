@@ -103,3 +103,46 @@
 | **Diagnosis** | 1. VPC Endpoint status → check if endpoint still ACTIVE<br>2. Route table check → OBS prefix route exists?<br>3. DNS resolution for endpoint → resolves to correct IP? |
 | **Resolution** | 1. Restore OBS route in VPC route table<br>2. If endpoint was deleted: recreate VPC Endpoint for OBS<br>3. Verify ECS can reach OBS endpoint via VPC |
 | **Prevention** | CTS monitoring for route table changes, infrastructure-as-code for network configuration |
+
+## Additional OBS-Specific Fault Patterns
+
+### FP-007: Storage Quota Exhaustion
+
+| Field | Value |
+|-------|-------|
+| **Pattern ID** | FP-007 |
+| **Symptom** | Upload fails with 403 or "quota exceeded", bucket appears full |
+| **Trigger Conditions** | Bucket size approaching or exceeding bucket quota limit |
+| **Root Cause** | Bucket quota not set appropriately for data growth, or unexpected data accumulation |
+| **Diagnosis Flow** | 1. `obsutil stat obs://bucket` → check current bucket size and quota<br>2. Compare with historical growth rate<br>3. List large objects: `obsutil ls obs://bucket -s -t` |
+| **Resolution Steps** | 1. Increase bucket quota in OBS console or via API<br>2. Clean up unnecessary objects or move to another bucket<br>3. Implement lifecycle rules to archive or delete old data |
+| **Prevention** | Set quota with 20% buffer above current usage, monitor growth trend, configure CES alarm at 80% |
+| **CES Metrics** | bucket_size_bytes, bucket_object_count |
+
+### FP-008: Request Throttling Active
+
+| Field | Value |
+|-------|-------|
+| **Pattern ID** | FP-008 |
+| **Symptom** | HTTP 503 errors, slow request latency, request timeouts |
+| **Trigger Conditions** | Request rate exceeds bucket or account limits, bandwidth saturation |
+| **Root Cause** | Traffic spike, poorly designed application (excessive requests), account throttling limits |
+| **Diagnosis Flow** | 1. Check CES metrics for 503 response rate<br>2. `obsutil stat obs://bucket` → check bandwidth<br>3. Review request patterns for anomalies |
+| **Resolution Steps** | 1. Implement request retry with exponential backoff<br>2. Reduce request rate from client side<br>3. Contact support to increase throttling limits if necessary |
+| **Prevention** | Implement client-side rate limiting, use CDN for static content, design for expected traffic |
+| **CES Metrics** | request_5xx_count, request_count, bandwidth |
+| **AIOps Correlation** | See `advanced/aiops-patterns.md` for throttling detection pattern |
+
+### FP-009: Cross-Region Replication Lag
+
+| Field | Value |
+|-------|-------|
+| **Pattern ID** | FP-009 |
+| **Symptom** | Destination bucket lags behind source, objects not replicated in expected time |
+| **Trigger Conditions** | CRR status shows lag > 1 hour, replication task stuck or failed |
+| **Root Cause** | Network issues between regions, destination bucket issues, CRR configuration changed |
+| **Diagnosis Flow** | 1. `obsutil get-replication obs://bucket` → check CRR status<br>2. Check bandwidth between regions<br>3. Verify destination bucket versioning is still enabled |
+| **Resolution Steps** | 1. Fix network connectivity<br>2. Re-enable versioning on destination if disabled<br>3. Manually sync missing objects: `obsutil sync` |
+| **Prevention** | Monitor CRR lag via CES, alert at 30 minute lag threshold |
+| **CES Metrics** | replicate_byte_lag, replicate_object_lag |
+| **AIOps Correlation** | See `advanced/aiops-patterns.md` for latency spike pattern |
