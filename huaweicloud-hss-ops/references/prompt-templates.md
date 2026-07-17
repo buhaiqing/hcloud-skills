@@ -12,11 +12,11 @@
 
 | §  | Role             | Purpose                                                  | Inputs (placeholders)                                                            |
 |----|------------------|----------------------------------------------------------|----------------------------------------------------------------------------------|
-| 1  | **Generator (G)** | Execute HSS op, capture trace, return structured result  | `{{user.request}}` `{{user.operation}}` `{{user.target_resource}}` `{{user.target_payload}}` `{{user.preflight}}` `{{output.critic_feedback}}` `{{output.rubric}}` |
-| 2  | **Critic (C)**    | Score trace against rubric; emit suggestions             | `{{output.rubric}}` `{{output.generator_output}}` `{{output.trace}}` (no `{{user.request}}`) |
-| 3  | **Orchestrator (O)** | Loop control: continue / return / abort               | `{{user.request}}` `{{user.max_iter}}` `{{output.rubric}}`                     |
-| 4  | Sanitization     | Mask secrets / PII before persisting trace               | (helper)                                                                            |
-| 5  | Failure Recovery | Sub-agent timeout / non-JSON / write-fail handling      | (helper)                                                                            |
+| 1  | **Generator (G)** | see `gcl-prompt-backbone.md` §1 (product overrides below) | `{{user.request}}` `{{user.operation}}` `{{user.target_resource}}` `{{user.target_payload}}` `{{user.preflight}}` `{{output.critic_feedback}}` `{{output.rubric}}` |
+| 2  | **Critic (C)**    | see `gcl-prompt-backbone.md` §2 (product overrides below) | `{{output.rubric}}` `{{output.generator_output}}` `{{output.trace}}` (no `{{user.request}}`) |
+| 3  | **Orchestrator (O)** | see `gcl-prompt-backbone.md` §3 (product overrides below) | `{{user.request}}` `{{user.max_iter}}` `{{output.rubric}}`                     |
+| 4  | Sanitization     | see `gcl-prompt-backbone.md` §4 (product overrides below) | (helper)                                                                            |
+| 5  | Failure Recovery | see `gcl-prompt-backbone.md` §4 (product overrides below) | (helper)                                                                            |
 | 6  | See also         | Cross-references                                         | —                                                                                  |
 
 ---
@@ -282,27 +282,16 @@ loop:
 
 ## 4. Sanitization (mandatory before persisting trace)
 
-Before writing `gcl-trace-*.json` to `audit-results/`:
-
-1. Replace every `password` / `PASSWORD` / `SecretAccessKey` / `access_key` /
-   `sk-[A-Za-z0-9]{20,}` value with `<masked>` (regex replace).
-2. For `recover-isolated-file` / `delete-isolated-file` traces: replace `file_hash` value
-   with `<hash-redacted>` (still keep last 8 chars for forensic trace) — the full hash may
-   correlate with a malware sample.
-3. Replace user phone / email / ID-card with `<pii-masked>`.
-4. Truncate any single `stdout` field to 4 KB; persist full log as separate
-   `audit-results/gcl-trace-YYYYMMDD-HHMMSS.stdout.txt` if needed.
-5. If sanitization itself fails, write a sibling `gcl-trace-*.sanitize-error.json` with
-   `{ "error": "sanitize_failed", "redacted_fields": [...] }` and continue.
+> Shared sanitization rules + anti-patterns (secret masking, PII redaction, trace
+> persistence): see `gcl-prompt-backbone.md` §4. Product-specific note: for
+> `recover-isolated-file` / `delete-isolated-file` traces, redact `file_hash`
+> to `<hash-redacted>` (keep last 8 chars for forensic trace).
 
 ## 5. Failure Recovery (Orchestrator-level)
 
-| Orchestrator error | Action |
-|--------------------|--------|
-| Generator sub-agent timeout (> 120s) | Record as `iter_failed`, retry once with shorter scope (skip validation step); if still fails, return MAX_ITER with `unresolved=["correctness", "traceability"]` |
-| Critic sub-agent timeout | Treated as `blocking=true` → enter MAX_ITER path with `unresolved=["all"]` |
-| Sub-agent returns non-JSON | Re-prompt once with "Return the JSON object only — no prose wrapper"; if still bad, return MAX_ITER |
-| Trace file write fails | Retry once; if still fails, surface a warning but DO NOT silently continue |
+> Shared failure-recovery + anti-patterns (sub-agent timeout, non-JSON, trace write
+> fail): see `gcl-prompt-backbone.md` §4. Product-specific note: Generator
+> timeout threshold is 120s; Critic timeout is treated as `blocking=true`.
 
 ## 6. Changelog
 
@@ -312,6 +301,7 @@ Before writing `gcl-trace-*.json` to `audit-results/`:
 
 ## 7. See also
 
+- `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` (shared Generator/Critic/Orchestrator skeleton + §4 anti-patterns)
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S17 rules
 - `references/api-navigation.md` — HSS version / event severity / handle type anchors
