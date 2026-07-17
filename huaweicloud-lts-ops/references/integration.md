@@ -103,3 +103,30 @@ All sensitive values MUST be masked in output:
 | In transit (ingestion) | TLS 1.2+ | HTTPS endpoints |
 | In transit (transfer) | TLS 1.2+ | To OBS/DMS |
 | At rest (OBS target) | SSE-OBS or SSE-KMS | Configure in OBS bucket |
+
+## AIOps Integration
+
+### Alarm Storm Delegation
+
+| Scenario | Trigger | Delegate To | Expected Outcome |
+|----------|---------|-------------|------------------|
+| High frequency LTS alarms | > 10 alarms in 5 min | `huaweicloud-ces-ops` | Configure aggregated alarm rule |
+| Storage quota alarm storm | Multiple groups near quota | `huaweicloud-ces-ops` | Set up storage quota monitoring |
+| Ingestion spike alarm | Rate > 3x baseline | `huaweicloud-ces-ops` | Set up ingestion rate baseline alert |
+
+### Multi-Metric Correlation
+
+| Metric Pair | Correlation | Delegate To | Interpretation |
+|------------|-------------|-------------|----------------|
+| Ingestion Rate + Storage | Positive | `huaweicloud-ces-ops` | Normal growth, monitor trend |
+| Query Latency + Queue Depth | Positive | `huaweicloud-ces-ops` | Backpressure detected |
+| Error Rate + Ingestion | Negative | `huaweicloud-ces-ops` | Data quality issue |
+
+### Anomaly Pattern Routing
+
+| Pattern | Detection | Delegate To | Expected Action |
+|---------|-----------|-------------|-----------------|
+| `log_ingestion_quota_near` | Ingestion > 80% quota | `huaweicloud-ces-ops` | Set quota usage alarm |
+| `storage_quota_near` | Storage > 80% quota | `huaweicloud-ces-ops` | Set storage usage alarm |
+| `shard_capacity_near` | Shard > 85% | `huaweicloud-ces-ops` | Set shard usage alarm |
+| `error_rate_spike` | Errors > 1% | `huaweicloud-ces-ops` | Set error rate alarm |
