@@ -86,26 +86,8 @@ rubric: {{output.rubric}}
 
 ## Output (strict JSON)
 
-{
-  "operation": "<op>",
-  "deployment": "mysql|postgresql|dws",
-  "trace": [
-    { "step": "preflight", "ok": true|false, "details": "..." },
-    { "step": "execute",   "command": "...", "args": {...}, "exit_code": 0, "stdout": "...", "stderr": "...", "job_id": "..." },
-    { "step": "validate",  "ok": true|false, "post_state": { ... }, "secret_redacted": true }
-  ],
-  "result": { "status": "success|failure|aborted",
-              "resource_id": "...",
-              "post_state": { ... } },
-  "safety_block": null | "missing_confirmation" | "invalid_state"
-                 | "prepaid_refund_window" | "no_backup_before_delete"
-                 | "credential_leak" | "system_db_delete" | "privilege_escalation"
-                 | "durability_regression" | "read_replicas_attached"
-                 | "wal_level_change" | "shard_rebalance_unconfirmed",
-  "iter": <int>
-}
+> Shared Generator skeleton + JSON output schema: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §1.
 
-Return the JSON object only — no prose wrapper.
 ```
 
 ---
@@ -169,28 +151,8 @@ S17 DeleteInstance while read-replica count > 0                             → 
 
 ## Output (strict JSON)
 
-{
-  "scores": {
-    "correctness":      0 | 0.5 | 1,
-    "safety":           0 | 1,
-    "idempotency":      0 | 0.5 | 1,
-    "traceability":     0 | 0.5 | 1,
-    "spec_compliance":  0 | 0.5 | 1
-  },
-  "evidence": {
-    "correctness":      "<which post_state field matched/missed per §3>",
-    "safety":           "<S-rule hit (note if flavor-gated), or 'no S-rule hit'>",
-    "idempotency":      "<which §4 pattern was/wasn't used>",
-    "traceability":     "<checklist items present/missing per §5>",
-    "spec_compliance":  "<which §6 anchor passed/failed>"
-  },
-  "suggestions": ["≤ 3 concrete, executable improvements"],
-  "blocking": true | false
-}
+> Shared Critic skeleton + JSON output schema: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §2.
 
-`blocking = true` when Safety = 0, OR any required dimension for the operation
-(see rubric.md §7 threshold table) is unmet.
-Return the JSON object only — no prose wrapper.
 ```
 
 ---
@@ -213,90 +175,19 @@ audit_dir: ./audit-results/
 
 ## Loop
 
-iter = 1
-loop:
-  generator_output = invoke_subagent(Generator, isolated=True,
-                                     inputs={user_request, critic_feedback, rubric})
-  persist_trace(audit_dir, "gcl-trace-YYYYMMDD-HHMMSS.json", iter, generator_output)
+> Shared Orchestrator skeleton + decision logic: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §3.
 
-  critic_output   = invoke_subagent(Critic, isolated=True,
-                                    inputs={generator_output, trace, rubric})
-  persist_trace(audit_dir, ..., iter, critic_output)
-
-  if critic_output.blocking == true and critic_output.scores.safety == 0:
-      return { "status": "ABORT", "reason": "SAFETY_FAIL",
-               "violated_rule": <S-rule id>, "iter": iter }
-
-  if all_dimensions_pass(critic_output.scores, rubric, generator_output.operation):
-      return { "status": "PASS", "iter": iter, "result": generator_output.result,
-               "scores": critic_output.scores }
-
-  if iter >= max_iter:
-      return { "status": "MAX_ITER",
-               "iter": iter,
-               "best_result": generator_output.result,
-               "unresolved": dimensions_below_threshold(critic_output.scores, rubric),
-               "scores": critic_output.scores }
-
-  iter += 1
-  critic_feedback = critic_output.suggestions
-
-## Termination contract (matches AGENTS.md §5)
-
-| Condition           | Status      | Returned payload                            |
-|---------------------|-------------|---------------------------------------------|
-| All dims pass       | PASS        | result + scores + trace path                |
-| iter == max_iter    | MAX_ITER    | best-so-far + unresolved rubric items       |
-| Safety == 0         | SAFETY_FAIL | violated S-rule id; NEVER return partial     |
-
-## Trace file schema (matches AGENTS.md §6)
-
-{
-  "skill": "huaweicloud-gaussdb-ops",
-  "request": "<sanitized user request>",
-  "rubric_version": "v1",
-  "iterations": [
-    {
-      "iter": 1,
-      "generator": { "command": "...", "args": {...}, "exit_code": 0, "result_excerpt": "..." },
-      "critic": {
-        "scores": { "correctness": 1, "safety": 1, "idempotency": 0.5,
-                    "traceability": 1, "spec_compliance": 1 },
-        "suggestions": ["..."],
-        "blocking": false
-      },
-      "decision": "RETRY | PASS | ABORT"
-    }
-  ],
-  "final": { "status": "PASS | MAX_ITER | SAFETY_FAIL",
-             "iter": 2, "output": "...", "scores": {...} }
-}
 ```
 
 ---
 
 ## 4. Sanitization (mandatory before persisting trace)
 
-Before writing `gcl-trace-*.json` to `audit-results/`:
-
-1. Replace every `password` / `PASSWORD` / `SecretAccessKey` / `access_key` /
-   `sk-[A-Za-z0-9]{20,}` value with `<masked>` (regex replace).
-2. For `ResetPwd` / `CreateAccount` request body, regex-replace the password field value
-   to `<masked>` BEFORE handing the JSON to the trace writer.
-3. Replace user phone / email / ID-card with `<pii-masked>`.
-4. Truncate any single `stdout` field to 4 KB; persist full log as separate
-   `audit-results/gcl-trace-YYYYMMDD-HHMMSS.stdout.txt` if needed.
-5. If sanitization itself fails, write a sibling `gcl-trace-*.sanitize-error.json` with
-   `{ "error": "sanitize_failed", "redacted_fields": [...] }` and continue.
+> Shared sanitization + failure-recovery anti-patterns: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §4.
 
 ## 5. Failure Recovery (Orchestrator-level)
 
-| Orchestrator error | Action |
-|--------------------|--------|
-| Generator sub-agent timeout (> 120s) | Record as `iter_failed`, retry once with shorter scope (skip validation step); if still fails, return MAX_ITER with `unresolved=["correctness", "traceability"]` |
-| Critic sub-agent timeout | Treated as `blocking=true` → enter MAX_ITER path with `unresolved=["all"]` |
-| Sub-agent returns non-JSON | Re-prompt once with "Return the JSON object only — no prose wrapper"; if still bad, return MAX_ITER |
-| Trace file write fails | Retry once; if still fails, surface a warning but DO NOT silently continue |
+> Shared failure-recovery anti-patterns: see `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` §4.
 
 ## 6. Changelog
 
@@ -306,6 +197,7 @@ Before writing `gcl-trace-*.json` to `audit-results/`:
 
 ## 7. See also
 
+- `huaweicloud-skill-generator/references/gcl-prompt-backbone.md` (shared Generator/Critic/Orchestrator skeleton)
 - `AGENTS.md` §3, §5, §7, §8 — repo-wide GCL spec
 - `references/rubric.md` — rubric instance and S1–S17 rules (with flavor-gated S12/S13)
 - `references/api-navigation.md` — Engine / region / flavor anchors
