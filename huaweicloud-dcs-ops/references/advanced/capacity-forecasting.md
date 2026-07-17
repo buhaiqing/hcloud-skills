@@ -1,339 +1,253 @@
 # Capacity Forecasting — Huawei Cloud DCS
 
-> **Purpose**: Predict resource exhaustion and growth trends for proactive capacity management.
-> **Extends**: `huaweicloud-skill-generator/references/aiops-best-practices.md` §14
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
+> Predictive capacity planning for Distributed Cache Service (Redis-compatible):
+> memory exhaustion, connection saturation, hit rate degradation, and
+> cluster shard rebalancing forecasts.
+> **Version:** 1.0.0
 
----
+## Forecast Types
 
-## 1. Prediction Models
+| Forecast Type | Method | Prediction Window | Input Data | Accuracy Target |
+|---------------|--------|-------------------|------------|-----------------|
+| Memory exhaustion | Linear regression on memory usage | 24–72h before 90% | 7d memory_used / maxmemory | ±10% |
+| Connection saturation | Trend on connected_clients / maxclients | 12h before 90% | 7d connection ratio | ±15% |
+| Hit rate degradation | Moving average on hit_rate | 1–4h before < 80% | 1h hit_rate | ±20% |
+| Cluster slot rebalancing | Shard key distribution analysis | Before 70/30 skew | Real-time key sampling | — |
 
-### 1.1 Linear Regression (Stable Growth)
+## Data Acquisition
 
-```
-y = mx + b
-
-Where:
-- y = predicted metric value
-- m = slope (growth rate per day)
-- b = current value
-
-Exhaustion_Date = (Quota_Limit - Current_Value) / m
-```
-
-**Use case**: Stable, linear growth patterns (memory usage, key count)
-**Accuracy**: Medium
-**Complexity**: Low
-
-### 1.2 Seasonal Decomposition (Periodic)
-
-```
-y(t) = Trend(t) + Seasonal(t) + Residual(t)
-
-Where:
-- Trend = long-term growth direction
-- Seasonal = periodic pattern (weekly/monthly)
-- Residual = noise/anomalies
-```
-
-**Use case**: Load patterns with clear seasonality (flash sales, campaign events)
-**Accuracy**: High
-**Complexity**: Medium
-
-### 1.3 Exponential Smoothing
-
-```
-Forecast = α × Last_Value + (1-α) × Previous_Forecast
-
-Where α = smoothing factor (0.1 ~ 0.3)
-```
-
-**Use case**: Short-term prediction, trending data
-**Accuracy**: High
-**Complexity**: Low
-
----
-
-## 2. DCS-Specific Metrics
-
-| Metric | Namespace | Unit | Quota Reference |
-|--------|-----------|------|-----------------|
-| `memory_used_ratio` | SYS.DCS | % | DCS instance memory quota |
-| `used_memory` | SYS.DCS | MB | DCS instance memory used |
-| `keys_count` | SYS.DCS | count | Instance key count |
-| `connected_clients` | SYS.DCS | count | Current connections |
-| `cmd_qps` | SYS.DCS | count/s | Commands per second |
-| `hit_ratio` | SYS.DCS | % | Cache hit ratio |
-| `expired_keys` | SYS.DCS | count | Expired keys per second |
-| `evicted_keys` | SYS.DCS | count | Evicted keys per second |
-| `network_traffic` | SYS.DCS | B/s | Network I/O bytes |
-
----
-
-## 3. Capacity Planning Workflow
-
-### Step 1: Collect Historical Data
+### DCS Instance Metrics
 
 ```bash
-# Query historical metrics from CES
-REGION="{{env.HW_REGION_ID}}"
-INSTANCE_ID="[instance_id]"
-
-# Memory usage ratio
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.DCS" \
-  --metric-name "memory_used_ratio" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
+# Memory usage ratio (used_memory / maxmemory)
+hcloud ces list-metric-data \
+  --namespace SYS.DCS \
+  --metric_name memory_usage_ratio \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '7 days ago' +%s)000" \
+  --to "$(date +%s)000" \
   --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# Used memory in MB
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.DCS" \
-  --metric-name "used_memory" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# Key count
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.DCS" \
-  --metric-name "keys_count" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+  -o json
 
 # Connected clients
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.DCS" \
-  --metric-name "connected_clients" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+hcloud ces list-metric-data \
+  --namespace SYS.DCS \
+  --metric_name connected_clients \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '7 days ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 300 \
+  -o json
+
+# Hit rate
+hcloud ces list-metric-data \
+  --namespace SYS.DCS \
+  --metric_name keyspace_hitrate \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '1 hour ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 60 \
+  -o json
 ```
 
-### Step 2: Calculate Growth Rate
+### DCS Instance Info
+
+```bash
+# Instance specs and current memory
+hcloud dcs list-instances -o json | jq '
+  .instances[] | {
+    id, name, capacity: .spec.capacity,
+    max_memory: .spec.capacity * 1024 * 1024,
+    max_clients: .spec.max_clients,
+    version: .engine_version
+  }
+'
+```
+
+## Forecast Algorithms
+
+### Memory Exhaustion
 
 ```python
-import numpy as np
+def forecast_memory_exhaustion(instance_id, days_ahead=3):
+    """
+    Linear regression on memory usage ratio to predict exhaustion.
+    """
+    history = query_ces(
+        namespace="SYS.DCS",
+        metric="memory_usage_ratio",
+        dimensions={"instance_id": instance_id},
+        window="7d",
+        period=3600,
+    )
 
-def calculate_growth_rate(values):
-    """Calculate daily growth rate using linear regression."""
-    x = np.arange(len(values))
-    coefficients = np.polyfit(x, values, 1)
-    slope = coefficients[0]
+    values = [p["value"] * 100 for p in history]  # convert to percent
+    n = len(values)
+    x = list(range(n))
+    x_mean, y_mean = sum(x) / n, sum(values) / n
 
-    y_pred = np.polyval(coefficients, x)
-    ss_res = np.sum((values - y_pred) ** 2)
-    ss_tot = np.sum((values - np.mean(values)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, values)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+    intercept = y_mean - slope * x_mean
 
-    return slope, r_squared
+    # Daily growth rate
+    hourly_slope = slope
+    daily_growth = hourly_slope * 24
+    current = values[-1]
+    days_to_90 = (90 - current) / daily_growth if daily_growth > 0 else float("inf")
 
-def predict_memory_exhaustion(current_mb, max_memory_mb, daily_growth_rate_mb):
-    """Predict days until memory exhaustion."""
-    available_mb = max_memory_mb - current_mb
-    if daily_growth_rate_mb <= 0:
-        return None
-
-    days_to_exhaustion = available_mb / daily_growth_rate_mb
-    return days_to_exhaustion
-
-def predict_key_exhaustion(current_keys, max_keys, daily_growth_rate):
-    """Predict days until key count limit."""
-    available = max_keys - current_keys
-    if daily_growth_rate <= 0:
-        return None
-
-    days_to_exhaustion = available / daily_growth_rate
-    return days_to_exhaustion
+    return {
+        "current_usage_pct": current,
+        "daily_growth_rate_pct": daily_growth,
+        "projected_in_3d": intercept + slope * (n - 1 + 3 * 24),
+        "days_to_90": days_to_90,
+        "recommendation": "expand_capacity" if days_to_90 <= 3 else "monitor",
+    }
 ```
 
-### Step 3: Cache Efficiency Analysis
+### Connection Saturation
 
 ```python
-def analyze_cache_efficiency(hit_ratio_series, evicted_series):
+def forecast_connection_saturation(instance_id, hours_ahead=12):
     """
-    Analyze cache efficiency and predict eviction issues.
-    Returns efficiency score and recommendations.
+    Trend analysis on connected_clients / maxclients ratio.
     """
-    avg_hit_ratio = np.mean(hit_ratio_series)
-    total_evicted = np.sum(evicted_series)
-    eviction_rate = np.mean(evicted_series)
+    history = query_ces(
+        namespace="SYS.DCS",
+        metric="connected_clients",
+        dimensions={"instance_id": instance_id},
+        window="7d",
+        period=300,
+    )
 
-    # Low hit ratio + high eviction = memory pressure
-    if avg_hit_ratio < 0.5 and eviction_rate > 100:
-        return {
-            'efficiency': 'low',
-            'recommendation': 'scale_up_memory',
-            'risk': 'high'
-        }
-    elif avg_hit_ratio > 0.9 and eviction_rate < 10:
-        return {
-            'efficiency': 'high',
-            'recommendation': 'current_sizing_adequate',
-            'risk': 'low'
-        }
-    else:
-        return {
-            'efficiency': 'medium',
-            'recommendation': 'monitor_trends',
-            'risk': 'medium'
-        }
+    # Get max_clients from instance spec
+    instance_info = query_dcs_instance(instance_id)
+    max_clients = instance_info["spec"]["max_clients"]
+
+    ratios = [p["value"] / max_clients * 100 for p in history]
+    n = len(ratios)
+
+    last_288 = ratios[-288:] if n >= 288 else ratios  # 24h at 5-min
+    x = list(range(len(last_288)))
+    x_mean = sum(x) / len(x)
+    y_mean = sum(last_288) / len(last_288)
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, last_288)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+
+    projected = ratios[-1] + slope * hours_ahead * 12
+    projected = min(100, max(0, projected))
+
+    return {
+        "current_ratio_pct": ratios[-1],
+        "slope_per_5min": slope,
+        "projected_in_12h": projected,
+        "saturates_by_12h": projected > 90,
+        "recommendation": "increase_max_clients" if projected > 80 else "monitor",
+    }
 ```
 
-### Step 4: Generate Capacity Report
+### Hit Rate Degradation
 
-```yaml
-capacity_report:
-  resource_id: "[DCS instance_id]"
-  product: "DCS"
-  generated_at: "[timestamp]"
+```python
+def forecast_hit_rate_degradation(instance_id, hours_ahead=4):
+    """
+    Moving average + trend on keyspace hit rate.
+    """
+    history = query_ces(
+        namespace="SYS.DCS",
+        metric="keyspace_hitrate",
+        dimensions={"instance_id": instance_id},
+        window="1h",
+        period=60,
+    )
 
-  cache_info:
-    engine: "[Redis|Memcached]"
-    version: "[version]"
-    instance_type: "[type]"
-    max_memory_mb: [value]
-    max_connections: [value]
+    values = [p["value"] * 100 for p in history]  # percent
+    if not values:
+        return {"error": "no data"}
 
-  current_usage:
-    memory_used_ratio: [value]
-    used_memory_mb: [value]
-    keys_count: [value]
-    connected_clients: [value]
-    cmd_qps: [value]
-    hit_ratio: [value]
-    collected_at: "[timestamp]"
+    # 5-min moving average
+    ma = sum(values[-12:]) / 12 if len(values) >= 12 else sum(values) / len(values)
+    trend = values[-1] - values[0] if len(values) >= 2 else 0
 
-  growth_analysis:
-    model: "[linear|seasonal|exponential]"
-    daily_growth_rate:
-      memory_mb: [rate]
-      keys: [rate]
-      connections: [rate]
-    r_squared: [confidence]
-    trend_direction: "[increasing|decreasing|stable]"
-    seasonal_pattern: "[daily|weekly|campaign|none]"
+    projected = ma + trend * hours_ahead * 12
+    projected = min(100, max(0, projected))
 
-  cache_efficiency:
-    hit_ratio_avg: [value]
-    eviction_rate_avg: [value]
-    efficiency_score: "[high|medium|low]"
-    risk_level: "[critical|high|medium|low]"
-
-  predictions:
-    - metric: "memory_used_ratio"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "keys_count"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-
-  exhaustion_analysis:
-    memory:
-      quota_limit_mb: [max_memory]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    keys:
-      quota_limit: [max_keys]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    connections:
-      quota_limit: [max_connections]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-
-  recommendations:
-    - action: "[scale_up|optimize_ttl|cleanup_keys|cluster_scale]"
-      target: "[memory|keys|connections]"
-      estimated_cost: "[cost_impact]"
-      priority: "[P0|P1|P2]"
+    return {
+        "current_hit_rate_pct": values[-1],
+        "moving_avg_5min_pct": ma,
+        "trend_per_min": trend / len(values) if values else 0,
+        "projected_in_4h": projected,
+        "degrades_below_80pct": projected < 80,
+        "recommendation": "investigate_keys" if projected < 80 else "monitor",
+    }
 ```
 
----
+## Capacity Planning Tables
 
-## 4. Capacity Alert Rules
+### DCS Instance Right-Sizing
 
-| Metric | Warning Threshold | Critical Threshold | Recommended Action |
-|--------|-----------------|-------------------|-------------------|
-| Memory usage trend | 30 days to >80% | 14 days to >95% | Scale up instance / optimize key sizes |
-| Key count trend | 30 days to >80% limit | 14 days to >95% limit | Cleanup expired keys / scale |
-| Connection trend | 30 days to >80% quota | 14 days to >95% quota | Scale connections / check connection leaks |
-| Eviction rate trend | 30 days to >100/s | 14 days to >1000/s | Memory pressure / scale up |
-| Hit ratio decline | 30 days to <70% | 14 days to <50% | Data access pattern issue |
-| QPS trend | 30 days to >80% quota | 14 days to >95% quota | Scale bandwidth / optimize commands |
+| Avg Memory (7d) | Avg Connections (7d) | Recommendation | Expected Savings |
+|-----------------|----------------------|----------------|------------------|
+| < 30% | < 30% | Downgrade flavor | 30–60% |
+| < 30% | > 70% | Switch to connection-optimized | 10–20% |
+| > 80% | Any | Upgrade or shard | — |
+| Spiky (> 3× avg) | — | Burst plan + replication | 20–50% |
 
----
+### Memory Expansion Tiers
 
-## 5. Model Selection Guide
+| Current Capacity | Expansion Options | Notes |
+|------------------|-------------------|-------|
+| 128 MB – 2 GB | +1 GB increments | Entry tier |
+| 2 – 16 GB | +4 GB increments | Standard tier |
+| 16 – 128 GB | +16 GB increments | Large tier |
+| Any (single-slot) | Switch to cluster mode | Horizontal scaling |
 
-| Scenario | Recommended Model | Why |
-|----------|-----------------|-----|
-| Stable memory growth | Linear Regression | Simple, reliable for steady trends |
-| Campaign/flash sales | Seasonal Decomposition | Captures campaign cycles |
-| Rapid memory growth | Exponential Smoothing | Reacts quickly to changes |
-| Mixed workload | Ensemble (weighted average) | Combines multiple patterns |
-| New instance (< 7 days) | Rule-based | Insufficient data for ML |
+## Predictive Alert Rules
 
----
+```bash
+# Memory exhaustion forecast
+hcloud ces create-alarm-rule \
+  --name "DCS-Memory-Exhaust-Forecast" \
+  --metric memory_usage_ratio \
+  --namespace SYS.DCS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "forecast_linear(72h) > 90%" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
 
-## 6. DCS-Specific Considerations
+# Connection saturation forecast
+hcloud ces create-alarm-rule \
+  --name "DCS-Connection-Saturation-Forecast" \
+  --metric connected_clients \
+  --namespace SYS.DCS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "forecast_linear(12h) > max_clients * 0.9" \
+  --alarm-level critical \
+  --notifications "topic_arn:{{output.topic_arn}}"
 
-### 6.1 Instance Limits
+# Hit rate degradation
+hcloud ces create-alarm-rule \
+  --name "DCS-HitRate-Degradation" \
+  --metric keyspace_hitrate \
+  --namespace SYS.DCS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "ma(5min) < 0.8" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
+```
 
-| Instance Type | Max Memory (MB) | Max Connections | Max QPS |
-|---------------|-----------------|-----------------|---------|
-| 128MB | 128 | 10000 | 5000 |
-| 512MB | 512 | 20000 | 20000 |
-| 1GB | 1024 | 40000 | 50000 |
-| 4GB | 4096 | 100000 | 100000 |
-| 16GB | 16384 | 200000 | 200000 |
-| 32GB | 32768 | 400000 | 400000 |
+## Cross-Skill Delegation
 
-> Query current quotas: `hcloud dcs list-quotas --region {{env.HW_REGION_ID}}`
+| Capacity Issue | Delegate To | Purpose |
+|----------------|-------------|---------|
+| Memory expansion | DCS skill (resize) | Expand capacity |
+| Cluster rebalancing | DCS skill (shard) | Redistribute slots |
+| Connection limit increase | DCS skill (parameter) | Update maxclients |
+| Cost from over-provisioning | Billing skill | Right-sizing |
+| Application-level cache miss | ECS skill (app server) | Investigate cache usage |
 
-### 6.2 Scaling Operations
+## Knowledge Base Anchors
 
-| Operation | Command | Cooldown |
-|-----------|---------|----------|
-| Scale up instance | `hcloud dcs resize-instance --instance-id X --capacity Y` | 5 min |
-| Enable auto-scaling | `hcloud dcs enable-auto-scaling --instance-id X --threshold 80` | 1 min |
-| Modify max connections | `hcloud dcs update-instance --instance-id X --max-clients Y` | 1 min |
-
-### 6.3 DCS Redis-Specific Notes
-
-- **Eviction policies**: `volatile-lru`, `allkeys-lru`, `volatile-ttl`, `noeviction`
-- **Memory fragmentation**: Monitor `mem_fragmentation_ratio` > 1.5
-- **AOF vs RDB**: AOF uses additional memory during rewrite
-
----
-
-## 7. Compliance Checklist
-
-- [ ] All 3 prediction models documented
-- [ ] Capacity planning workflow implemented
-- [ ] Alert rules defined for all key DCS metrics
-- [ ] Model selection guide provided
-- [ ] Minimum data requirements specified
-- [ ] Confidence thresholds defined
-- [ ] DCS-specific instance limits documented
-- [ ] Cache efficiency analysis included
+- DCS ↔ ECS: [`references/integration.md`](../../huaweicloud-dcs-ops/references/integration.md) — application caching patterns
+- DCS FinOps: [`references/advanced/cost-optimization.md`](./cost-optimization.md) — idle detection, right-sizing
+- Cache troubleshooting: [`references/troubleshooting.md`](../../huaweicloud-dcs-ops/references/troubleshooting.md)

@@ -1,340 +1,217 @@
 # Capacity Forecasting — Huawei Cloud RDS
 
-> **Purpose**: Predict resource exhaustion and growth trends for proactive capacity management.
-> **Extends**: `huaweicloud-skill-generator/references/aiops-best-practices.md` §14
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
+> Predictive capacity planning for RDS for MySQL/PostgreSQL/SQL Server:
+> storage exhaustion, connection saturation, replica lag growth, and
+> backup capacity forecasting.
+> **Version:** 1.0.0
 
----
+## Forecast Types
 
-## 1. Prediction Models
+| Forecast Type | Method | Prediction Window | Input Data | Accuracy Target |
+|---------------|--------|-------------------|------------|-----------------|
+| Storage exhaustion | Linear regression on disk_usage | 7d before 90% | 30d disk_usage | ±10% |
+| Connection saturation | Trend on used_connections / max_connections | 24h before 90% | 7d connection ratio | ±15% |
+| Replica lag growth | Linear extrapolation on replica_lag | 1–4h before lag > 60s | 2h replica_lag | ±20% |
+| Backup volume growth | Linear regression on backup size | 30d before storage 90% | 90d backup size | ±20% |
 
-### 1.1 Linear Regression (Stable Growth)
+## Data Acquisition
 
-```
-y = mx + b
-
-Where:
-- y = predicted metric value
-- m = slope (growth rate per day)
-- b = current value
-
-Exhaustion_Date = (Quota_Limit - Current_Value) / m
-```
-
-**Use case**: Stable, linear growth patterns (storage usage, connection count)
-**Accuracy**: Medium
-**Complexity**: Low
-
-### 1.2 Seasonal Decomposition (Periodic)
-
-```
-y(t) = Trend(t) + Seasonal(t) + Residual(t)
-
-Where:
-- Trend = long-term growth direction
-- Seasonal = periodic pattern (weekly/monthly)
-- Residual = noise/anomalies
-```
-
-**Use case**: Load patterns with clear seasonality (business hours, month-end)
-**Accuracy**: High
-**Complexity**: Medium
-
-### 1.3 Exponential Smoothing
-
-```
-Forecast = α × Last_Value + (1-α) × Previous_Forecast
-
-Where α = smoothing factor (0.1 ~ 0.3)
-```
-
-**Use case**: Short-term prediction, trending data
-**Accuracy**: High
-**Complexity**: Low
-
----
-
-## 2. RDS-Specific Metrics
-
-| Metric | Namespace | Unit | Quota Reference |
-|--------|-----------|------|-----------------|
-| `cpu_util` | SYS.RDS | % | RDS instance CPU quota |
-| `memory_used_percent` | SYS.RDS | % | RDS instance memory quota |
-| `disk_util` | SYS.RDS | % | RDS storage quota |
-| `connection_count` | SYS.RDS | count | Max connections quota |
-| `qps` | SYS.RDS | count/s | RDS QPS quota |
-| `slow_queries` | SYS.RDS | count | Slow query threshold |
-| `transaction_logs_storage` | SYS.RDS | MB | Transaction log storage |
-| `binlog_storage` | SYS.RDS | MB | Binary log storage |
-| `tps` | SYS.RDS | count/s | Transaction per second |
-
----
-
-## 3. Capacity Planning Workflow
-
-### Step 1: Collect Historical Data
+### RDS Instance Metrics
 
 ```bash
-# Query historical metrics from CES
-REGION="{{env.HW_REGION_ID}}"
-INSTANCE_ID="[instance_id]"
-
-# CPU utilization
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.RDS" \
-  --metric-name "cpu_util" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
+# Disk usage time-series (30d)
+hcloud ces list-metric-data \
+  --namespace SYS.RDS \
+  --metric_name rds039_disk_usage \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '30 days ago' +%s)000" \
+  --to "$(date +%s)000" \
   --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+  -o json
 
-# Storage usage
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.RDS" \
-  --metric-name "disk_util" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+# Connection usage
+hcloud ces list-metric-data \
+  --namespace SYS.RDS \
+  --metric_name rds053_connections_usage \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '7 days ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 300 \
+  -o json
 
-# Connection count
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.RDS" \
-  --metric-name "connection_count" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# QPS trend
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.RDS" \
-  --metric-name "qps" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+# Replica lag
+hcloud ces list-metric-data \
+  --namespace SYS.RDS \
+  --metric_name rds048_replica_lag \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '2 hours ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 60 \
+  -o json
 ```
 
-### Step 2: Calculate Growth Rate
+### Instance Information
 
-```python
-import numpy as np
-
-def calculate_growth_rate(values):
-    """Calculate daily growth rate using linear regression."""
-    x = np.arange(len(values))
-    coefficients = np.polyfit(x, values, 1)
-    slope = coefficients[0]
-
-    y_pred = np.polyval(coefficients, x)
-    ss_res = np.sum((values - y_pred) ** 2)
-    ss_tot = np.sum((values - np.mean(values)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
-
-    return slope, r_squared
-
-def predict_exhaustion(current_value, quota_limit, daily_growth_rate):
-    """Predict days until resource exhaustion."""
-    if daily_growth_rate <= 0:
-        return None
-
-    days_to_exhaustion = (quota_limit - current_value) / daily_growth_rate
-    return days_to_exhaustion
-
-def analyze_storage_growth(values, binlog_values):
-    """
-    Analyze combined storage growth including data and logs.
-    Returns total days to exhaustion.
-    """
-    data_slope, _ = calculate_growth_rate(values)
-    binlog_slope, _ = calculate_growth_rate(binlog_values)
-
-    total_slope = data_slope + binlog_slope
-    return total_slope
-```
-
-### Step 3: Database-Specific Analysis
-
-```python
-def predict_connection_exhaustion(current_connections, max_connections, daily_growth_rate):
-    """
-    Predict connection pool exhaustion.
-    RDS MySQL: max_connections = max_connections parameter
-    RDS PostgreSQL: max_connections = max_connections setting
-    """
-    if daily_growth_rate <= 0:
-        return None
-
-    available = max_connections - current_connections
-    days_to_exhaustion = available / daily_growth_rate
-    return days_to_exhaustion
-
-def detect_seasonality(values, period=24):
-    """
-    Detect hourly seasonality (daily pattern).
-    period=24 for hourly data showing daily cycle.
-    """
-    if len(values) < period * 2:
-        return None
-
-    fft = np.fft.fft(values)
-    frequencies = np.fft.fftfreq(len(values))
-
-    half = len(fft) // 2
-    dominant_idx = np.argmax(np.abs(fft[1:half])) + 1
-    dominant_freq = frequencies[dominant_idx]
-
-    period_detected = int(round(1 / dominant_freq)) if dominant_freq != 0 else None
-    return period_detected
-```
-
-### Step 4: Generate Capacity Report
-
-```yaml
-capacity_report:
-  resource_id: "[RDS instance_id]"
-  product: "RDS"
-  generated_at: "[timestamp]"
-
-  database_info:
-    engine: "[MySQL|PostgreSQL|SQL Server]"
-    version: "[version]"
-    instance_type: "[type]"
-
-  current_usage:
-    cpu_util: [value]
-    memory_used_percent: [value]
-    disk_util: [value]
-    connection_count: [value]
-    qps: [value]
-    collected_at: "[timestamp]"
-
-  growth_analysis:
-    model: "[linear|seasonal|exponential]"
-    daily_growth_rate:
-      cpu: [rate]
-      memory: [rate]
-      disk: [rate]
-      connections: [rate]
-    r_squared: [confidence]
-    trend_direction: "[increasing|decreasing|stable]"
-    seasonal_pattern: "[daily|weekly|monthly|none]"
-
-  predictions:
-    - metric: "disk_util"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "connection_count"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "qps"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-
-  exhaustion_analysis:
-    disk:
-      quota_limit: [storage_gb]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    connections:
-      quota_limit: [max_connections]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    cpu:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-
-  recommendations:
-    - action: "[expand_storage|scale_instance|optimize_queries|tune_connections]"
-      target: "[disk|cpu|memory|connections]"
-      estimated_cost: "[cost_impact]"
-      priority: "[P0|P1|P2]"
-```
-
----
-
-## 4. Capacity Alert Rules
-
-| Metric | Warning Threshold | Critical Threshold | Recommended Action |
-|--------|-----------------|-------------------|-------------------|
-| CPU utilization trend | 30 days to >75% | 14 days to >90% | Scale up instance type / optimize queries |
-| Memory utilization trend | 30 days to >80% | 14 days to >95% | Optimize buffer pool / scale up |
-| Disk usage growth | 60 days to >80% | 30 days to >95% | Expand storage / cleanup logs |
-| Connection count trend | 30 days to >80% quota | 14 days to >95% quota | Tune max_connections / scale up |
-| QPS trend | 30 days to >80% quota | 14 days to >95% quota | Scale up / optimize slow queries |
-| Slow query trend | 30 days to >100/hour | 14 days to >500/hour | Optimize indexes / rewrite queries |
-
----
-
-## 5. Model Selection Guide
-
-| Scenario | Recommended Model | Why |
-|----------|-----------------|-----|
-| Stable storage growth | Linear Regression | Simple, reliable for steady trends |
-| Business hour patterns | Seasonal Decomposition | Captures daily/weekly cycles |
-| Rapid connection growth | Exponential Smoothing | Reacts quickly to changes |
-| Mixed workload (OLTP/OLAP) | Ensemble (weighted average) | Combines multiple patterns |
-| New instance (< 7 days) | Rule-based | Insufficient data for ML |
-
----
-
-## 6. RDS-Specific Considerations
-
-### 6.1 Instance Limits
-
-| Instance Type | Max Storage (GB) | Max Connections | Max QPS |
-|---------------|------------------|-----------------|---------|
-|通用型 | 1000 | 4000 | 15000 |
-|独享型 | 4000 | 16000 | 100000 |
-|哈勃型 | 6000 | 32000 | 200000 |
-
-> Query current quotas: `hcloud rds list-quotas --region {{env.HW_REGION_ID}}`
-
-### 6.2 Scaling Operations
-
-| Operation | Command | Cooldown |
-|-----------|---------|----------|
-| Expand storage | `hcloud rds resize-instance --instance-id X --volume-size Y` | 5 min |
-| Change instance type | `hcloud rds resize-instance --instance-id X --flavor-id Y` | 15 min |
-| Modify max_connections | `hcloud rds set-parameter --instance-id X --param max_connections=Z` | 1 min |
-
-### 6.3 Storage Auto-Scaling
-
-RDS supports automatic storage expansion:
 ```bash
-# Enable auto-scaling
-hcloud rds enable-storage-auto-expand --instance-id X --threshold 80
-
-# Check auto-scaling policy
-hcloud rds list-storage-auto-expand --instance-id X
+# Instance specs and storage
+hcloud rds list-instances -o json | jq '
+  .instances[] | {
+    id, name,
+    status: .status,
+    vcpus: .vcpus,
+    ram: .ram,
+    disk: .volume.size,
+    max_connections: .volume.max_connections
+  }
+'
 ```
 
----
+## Forecast Algorithms
 
-## 7. Compliance Checklist
+### Storage Exhaustion
 
-- [ ] All 3 prediction models documented
-- [ ] Capacity planning workflow implemented
-- [ ] Alert rules defined for all key RDS metrics
-- [ ] Model selection guide provided
-- [ ] Minimum data requirements specified
-- [ ] Confidence thresholds defined
-- [ ] RDS-specific instance limits documented
-- [ ] Storage auto-scaling documented
+```python
+def forecast_storage_exhaustion(instance_id, days_ahead=7):
+    """
+    Linear regression on disk_usage to predict exhaustion date.
+    """
+    history = query_ces(
+        namespace="SYS.RDS",
+        metric="rds039_disk_usage",
+        dimensions={"instance_id": instance_id},
+        window="30d",
+        period=3600,
+    )
+
+    values = [p["value"] for p in history]
+    n = len(values)
+    x = list(range(n))
+    x_mean, y_mean = sum(x) / n, sum(values) / n
+
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, values)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+    intercept = y_mean - slope * x_mean
+
+    # days_to_90 = (90 - current) / (slope * 24)
+    current = values[-1]
+    daily_growth = slope * 24
+    days_to_90 = (90 - current) / daily_growth if daily_growth > 0 else float("inf")
+
+    return {
+        "current_usage_pct": current,
+        "daily_growth_rate_pct": daily_growth,
+        "projected_in_7d": slope * (n - 1 + 7 * 24) + intercept,
+        "days_to_90": days_to_90,
+        "exhaustion_date": days_to_90 if days_to_90 < float("inf") else None,
+        "recommendation": "expand_storage" if days_to_90 <= 7 else "monitor",
+    }
+```
+
+### Connection Saturation
+
+```python
+def forecast_connection_saturation(instance_id, hours_ahead=24):
+    """
+    Trend analysis on connection usage ratio.
+    """
+    history = query_ces(
+        namespace="SYS.RDS",
+        metric="rds053_connections_usage",
+        dimensions={"instance_id": instance_id},
+        window="7d",
+        period=300,
+    )
+
+    values = [p["value"] for p in history]
+    n = len(values)
+
+    # Compute slope over last 24h
+    last_288 = values[-288:] if len(values) >= 288 else values  # 288 * 5min = 24h
+    x = list(range(len(last_288)))
+    x_mean = sum(x) / len(x)
+    y_mean = sum(last_288) / len(last_288)
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, last_288)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+
+    projected = values[-1] + slope * hours_ahead * 12  # 12 periods per hour
+    projected = min(100, max(0, projected))
+
+    return {
+        "current_ratio": values[-1],
+        "trend_per_5min": slope,
+        "projected_in_24h": projected,
+        "saturates_by_24h": projected > 90,
+        "recommendation": "scale_connections" if projected > 80 else "monitor",
+    }
+```
+
+## Capacity Planning Tables
+
+### RDS Instance Right-Sizing
+
+| Resource | Warning Threshold | Critical Threshold | Action |
+|----------|-------------------|--------------------|--------|
+| Disk usage | > 75% | > 85% | Expand storage |
+| Connection ratio | > 70% | > 85% | Increase max_connections or scale up |
+| CPU | > 80% | > 90% | Scale up vCPU |
+| Memory | > 85% | > 95% | Scale up RAM |
+| Replica lag | > 30s | > 60s | Investigate primary load |
+
+### Storage Expansion Tiers
+
+| Current Storage | Expansion Options | Use Case |
+|-----------------|-------------------|----------|
+| ≤ 40 GB | +40 GB increments | Small dev/staging |
+| 40–500 GB | +100 GB increments | Standard production |
+| > 500 GB | +200 GB increments | Large production |
+| Any (SSD) | Switch to ESSD | High IOPS requirement |
+
+## Predictive Alert Rules
+
+```bash
+# Storage exhaustion forecast
+hcloud ces create-alarm-rule \
+  --name "RDS-Storage-Exhaust-Forecast" \
+  --metric rds039_disk_usage \
+  --namespace SYS.RDS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "forecast_linear(168h) > 90%" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
+
+# Connection saturation forecast
+hcloud ces create-alarm-rule \
+  --name "RDS-Connection-Saturation-Forecast" \
+  --metric rds053_connections_usage \
+  --namespace SYS.RDS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "forecast_linear(24h) > 85%" \
+  --alarm-level critical \
+  --notifications "topic_arn:{{output.topic_arn}}"
+
+# Replica lag warning
+hcloud ces create-alarm-rule \
+  --name "RDS-Replica-Lag-Growth" \
+  --metric rds048_replica_lag \
+  --namespace SYS.RDS \
+  --dimension "instance_id={{user.instance_id}}" \
+  --condition "slope(1h) > 10" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
+```
+
+## Cross-Skill Delegation
+
+| Capacity Issue | Delegate To | Purpose |
+|----------------|-------------|---------|
+| Storage expansion | RDS skill (resize) | Expand disk |
+| Connection limit increase | RDS skill (parameter group) | Update max_connections |
+| Read replica promotion | RDS skill (failover) | Handle replica lag |
+| Backup failure | CBR skill | Vault and backup policy |
+| Cost from over-sized instance | Billing skill | Right-sizing recommendation |
+
+## Knowledge Base Anchors
+
+- RDS ↔ ECS: [`references/integration.md`](../../huaweicloud-rds-ops/references/integration.md) — application connection patterns
+- Slow query analysis: [`references/troubleshooting.md`](../../huaweicloud-rds-ops/references/troubleshooting.md)
+- Cost anomaly: [`references/well-architected-assessment.md`](../../huaweicloud-rds-ops/references/well-architected-assessment.md) — FinOps

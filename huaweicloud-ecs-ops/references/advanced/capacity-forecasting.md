@@ -1,292 +1,213 @@
 # Capacity Forecasting — Huawei Cloud ECS
 
-> **Purpose**: Predict resource exhaustion and growth trends for proactive capacity management.
-> **Extends**: `huaweicloud-skill-generator/references/aiops-best-practices.md` §14
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
+> Predictive capacity planning for ECS instances: disk, memory, CPU, and cost
+> exhaustion forecasts with linear/ARIMA methods and automated alert wiring.
+> **Version:** 1.0.0
 
----
+## Forecast Types
 
-## 1. Prediction Models
+| Forecast Type | Method | Prediction Window | Input Data | Accuracy Target |
+|---------------|--------|-------------------|------------|-----------------|
+| Disk capacity exhaustion | Linear regression on diskUsage | 24–72h before 90% | 7d diskUsage time-series | ±10% |
+| Memory exhaustion | ARIMA forecast | 48h before OOM | 30d mem_usedPercent | ±15% |
+| CPU saturation | Holt-Winters exponential smoothing | 7d before 100% | 30d cpu_util | ±20% |
+| Cost spike | Billing trend analysis | Next billing cycle | BSS daily_cost | ±25% |
 
-### 1.1 Linear Regression (Stable Growth)
+## Data Acquisition
 
-```
-y = mx + b
-
-Where:
-- y = predicted metric value
-- m = slope (growth rate per day)
-- b = current value
-
-Exhaustion_Date = (Quota_Limit - Current_Value) / m
-```
-
-**Use case**: Stable, linear growth patterns (disk usage, connection count)
-**Accuracy**: Medium
-**Complexity**: Low
-
-### 1.2 Seasonal Decomposition (Periodic)
-
-```
-y(t) = Trend(t) + Seasonal(t) + Residual(t)
-
-Where:
-- Trend = long-term growth direction
-- Seasonal = periodic pattern (weekly/monthly)
-- Residual = noise/anomalies
-```
-
-**Use case**: Load patterns with clear seasonality
-**Accuracy**: High
-**Complexity**: Medium
-
-### 1.3 Exponential Smoothing
-
-```
-Forecast = α × Last_Value + (1-α) × Previous_Forecast
-
-Where α = smoothing factor (0.1 ~ 0.3)
-```
-
-**Use case**: Short-term prediction, trending data
-**Accuracy**: High
-**Complexity**: Low
-
----
-
-## 2. ECS-Specific Metrics
-
-| Metric | Namespace | Unit | Quota Reference |
-|--------|-----------|------|-----------------|
-| `cpu_util` | SYS.ECS | % | ECS CPU utilization quota |
-| `mem_usedPercent` | SYS.ECS | % | ECS memory quota |
-| `diskUsage_percent` | AGT.ECS | % | EVS disk quota |
-| `net_bits_in` | SYS.ECS | bit/s | VPC bandwidth quota |
-| `net_bits_out` | SYS.ECS | bit/s | VPC bandwidth quota |
-| `load1` | AGT.ECS | - | OS load average |
-| `read_iops` | SYS.ECS | count/s | EVS IOPS quota |
-| `write_iops` | SYS.ECS | count/s | EVS IOPS quota |
-
----
-
-## 3. Capacity Planning Workflow
-
-### Step 1: Collect Historical Data
+### CES Metrics Query
 
 ```bash
-# Query historical metrics from CES
-REGION="{{env.HW_REGION_ID}}"
-INSTANCE_ID="[resource_id]"
-PERIOD="30d"
+# Disk usage time-series (7d, 5-min granularity)
+hcloud ces list-metric-data \
+  --namespace SYS.ECS \
+  --metric_name diskUsage_percent \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '7 days ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 300 \
+  -o json | jq '.datapoints[] | {timestamp, value}'
 
-# CPU utilization
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.ECS" \
-  --metric-name "cpu_util" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
+# Memory usage time-series (30d)
+hcloud ces list-metric-data \
+  --namespace AGT.ECS \
+  --metric_name mem_usedPercent \
+  --dimension "instance_id={{user.instance_id}}" \
+  --from "$(date -d '30 days ago' +%s)000" \
+  --to "$(date +%s)000" \
   --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# Memory usage
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.ECS" \
-  --metric-name "mem_usedPercent" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# Disk usage
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "AGT.ECS" \
-  --metric-name "diskUsage_percent" \
-  --dim.0 "instance_id=$INSTANCE_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+  -o json
 ```
 
-### Step 2: Calculate Growth Rate
+### BSS Cost Query
+
+```bash
+# Daily cost trend
+hcloud bss list-daily-costs \
+  --start_date "$(date -d '30 days ago' +%Y-%m-%d)" \
+  --end_date "$(date +%Y-%m-%d)" \
+  --product_code "hws.product.ecs" \
+  -o json | jq '.costs[] | {date, amount, currency}'
+```
+
+## Forecast Algorithms
+
+### Linear Regression (Disk / Storage)
 
 ```python
-import numpy as np
+from datetime import datetime, timedelta
 
-def calculate_growth_rate(values, dates):
+def linear_forecast(data_points, days_ahead=30):
     """
-    Calculate daily growth rate using linear regression.
-    Returns slope (growth per day) and R² (confidence).
+    Simple linear regression on disk usage.
+    data_points: list of {"timestamp": ms, "value": percent}
     """
-    x = np.arange(len(values))
-    coefficients = np.polyfit(x, values, 1)
-    slope = coefficients[0]
+    n = len(data_points)
+    x = [(p["timestamp"] - data_points[0]["timestamp"]) / 86400000 for p in data_points]  # days
+    y = [p["value"] for p in data_points]
 
-    # Calculate R² for confidence
-    y_pred = np.polyval(coefficients, x)
-    ss_res = np.sum((values - y_pred) ** 2)
-    ss_tot = np.sum((values - np.mean(values)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+    x_mean = sum(x) / n
+    y_mean = sum(y) / n
 
-    return slope, r_squared
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, y)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+    intercept = y_mean - slope * x_mean
 
-def predict_exhaustion(current_value, quota_limit, daily_growth_rate):
-    """Predict days until resource exhaustion."""
-    if daily_growth_rate <= 0:
-        return None  # No exhaustion risk
+    projected = slope * (x[-1] + days_ahead) + intercept
+    days_to_90 = (90 - data_points[-1]["value"]) / slope if slope > 0 else float("inf")
 
-    days_to_exhaustion = (quota_limit - current_value) / daily_growth_rate
-    return days_to_exhaustion
+    return {
+        "current": data_points[-1]["value"],
+        "slope_per_day": slope,
+        "projected_in_30d": projected,
+        "days_to_90pct": days_to_90,
+        "exhaustion_date": datetime.now() + timedelta(days=days_to_90) if days_to_90 < float("inf") else None,
+    }
 ```
 
-### Step 3: Detect Seasonality
+### ARIMA (Memory)
 
 ```python
-import numpy as np
+import subprocess, json
 
-def detect_seasonality(values, period=7):
+def arima_forecast(mem_series, forecast_hours=48):
     """
-    Detect weekly seasonality using FFT.
-    Returns seasonal amplitude and phase.
+    Wrapper around statsmodels ARIMA.
+    mem_series: list of floats (0–100 percent)
     """
-    if len(values) < period * 2:
-        return None  # Insufficient data
+    import numpy as np
+    try:
+        from statsmodels.tsa.arima.model import ARIMA
+    except ImportError:
+        return {"error": "statsmodels not available, falling back to linear"}
 
-    fft = np.fft.fft(values)
-    frequencies = np.fft.fftfreq(len(values))
+    model = ARIMA(mem_series, order=(2, 1, 2))
+    fitted = model.fit()
+    forecast = fitted.forecast(steps=forecast_hours)
 
-    # Find dominant frequency (exclude DC component)
-    half = len(fft) // 2
-    dominant_idx = np.argmax(np.abs(fft[1:half])) + 1
-    dominant_freq = frequencies[dominant_idx]
-
-    period_detected = int(round(1 / dominant_freq)) if dominant_freq != 0 else None
-    return period_detected
+    return {
+        "current": mem_series[-1],
+        "forecast_48h": float(forecast[-1]),
+        "will_oom_by_48h": forecast[-1] > 95,
+        "trend": "rising" if forecast[-1] > mem_series[-1] else "stable",
+    }
 ```
 
-### Step 4: Generate Capacity Report
+### Holt-Winters (CPU)
 
-```yaml
-capacity_report:
-  resource_id: "[ECS instance_id]"
-  product: "ECS"
-  generated_at: "[timestamp]"
+```python
+def holt_winters_forecast(cpu_series, periods=30):
+    """
+    Triple exponential smoothing for CPU saturation forecast.
+    cpu_series: list of CPU util percentages (0–100)
+    """
+    try:
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    except ImportError:
+        return {"error": "statsmodels not available"}
 
-  current_usage:
-    cpu_util: [current_value]
-    mem_usedPercent: [current_value]
-    diskUsage_percent: [current_value]
-    collected_at: "[timestamp]"
+    model = ExponentialSmoothing(
+        cpu_series,
+        trend="add",
+        seasonal="add",
+        seasonal_periods=288,  # 5-min data, 24h cycle
+    )
+    fitted = model.fit()
+    forecast = fitted.forecast(periods)
 
-  growth_analysis:
-    model: "[linear|seasonal|exponential]"
-    daily_growth_rate:
-      cpu: [rate]
-      memory: [rate]
-      disk: [rate]
-    r_squared: [confidence]
-    trend_direction: "[increasing|decreasing|stable]"
-
-  predictions:
-    - metric: "cpu_util"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "mem_usedPercent"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "diskUsage_percent"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-
-  exhaustion_analysis:
-    cpu:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    memory:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    disk:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-
-  recommendations:
-    - action: "[scale_up|optimize|cleanup|request_quota]"
-      target: "[cpu|memory|disk]"
-      estimated_cost: "[cost_impact]"
-      priority: "[P0|P1|P2]"
+    return {
+        "current": cpu_series[-1],
+        "forecast_30d_max": float(max(forecast)),
+        "forecast_30d_avg": float(sum(forecast) / len(forecast)),
+        "saturates_by_7d": max(forecast[:2016]) > 95,  # 7d at 5-min = 2016 points
+    }
 ```
 
----
+## Predictive Alert Rules
 
-## 4. Capacity Alert Rules
+### CES Alarm Rules
 
-| Metric | Warning Threshold | Critical Threshold | Recommended Action |
-|--------|-----------------|-------------------|-------------------|
-| CPU utilization trend | 30 days to >80% | 14 days to >90% | Scale up instance type / optimize workload |
-| Memory utilization trend | 30 days to >85% | 14 days to >95% | Optimize memory usage / scale up |
-| Disk usage growth | 60 days to >85% | 30 days to >95% | Expand disk / cleanup logs |
-| Load average trend | 30 days to >load_15 threshold | 14 days to >2x threshold | Scale horizontally / investigate processes |
-| EVS IOPS trend | 60 days to >80% quota | 30 days to >95% quota | Choose higher IOPS disk type |
+```bash
+# Disk fill forecast (linear extrapolation)
+hcloud ces create-alarm-rule \
+  --name "ECS-Disk-Fill-Forecast" \
+  --metric diskUsage_percent \
+  --namespace SYS.ECS \
+  --condition "forecast_linear(24h) > 90%" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
 
----
+# Memory exhaustion forecast
+hcloud ces create-alarm-rule \
+  --name "ECS-Memory-Exhaust-Forecast" \
+  --metric mem_usedPercent \
+  --namespace AGT.ECS \
+  --condition "forecast_arima(48h) > 95%" \
+  --alarm-level critical \
+  --notifications "topic_arn:{{output.topic_arn}}"
 
-## 5. Model Selection Guide
+# CPU saturation forecast
+hcloud ces create-alarm-rule \
+  --name "ECS-CPU-Saturation-Forecast" \
+  --metric cpu_util \
+  --namespace SYS.ECS \
+  --condition "forecast_holt(168h) > 95%" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
+```
 
-| Scenario | Recommended Model | Why |
-|----------|-----------------|-----|
-| Stable, linear growth (disk fill) | Linear Regression | Simple, reliable for steady trends |
-| Periodic workload (batch processing) | Seasonal Decomposition | Captures weekly/monthly cycles |
-| Bursty traffic (web servers) | Exponential Smoothing | Reacts quickly to changes |
-| Complex multi-pattern | Ensemble (weighted average) | Combines multiple models |
-| New instance (< 7 days data) | Rule-based | Insufficient data for ML |
+## Capacity Planning Tables
 
----
+### ECS Instance Right-Sizing by Forecast
 
-## 6. ECS-Specific Considerations
+| Forecast Result | Action | Command |
+|-----------------|--------|---------|
+| Disk: days_to_90 < 7 | Expand disk immediately | `hcloud ecs resize-disk --size +100` |
+| Memory: forecast_48h > 95% | Upgrade instance type | `hcloud ecs change-instance-type` |
+| CPU: saturates_by_7d | Enable auto-scaling or upgrade | `hcloud as create-scaling-policy` |
+| Cost: next_cycle > avg * 1.5 | Create cost alert, audit resource | BSS cost alert |
 
-### 6.1 Instance Type Limits
+### Instance Type Selection Guide
 
-| Instance Type | Max CPU Cores | Max Memory (GB) | Max Data Disks |
-|---------------|---------------|-----------------|----------------|
-| s6 | 8 | 32 | 16 |
-| c6 | 64 | 128 | 16 |
-| m6 | 64 | 256 | 16 |
-| hwc6 | 64 | 192 | 16 |
-| hwm6 | 64 | 384 | 16 |
+| Resource Pressure | Current Flavor | Recommended Action |
+|-------------------|----------------|-------------------|
+| CPU forecast > 80% for 7d |通用型 | 切换至计算优化型 (c3) |
+| Memory forecast > 85% for 7d |通用型 | 切换至内存优化型 (m3) |
+| Both CPU+Memory > 80% |— | 切换至大型实例或弹性伸缩 |
+| GPU-bound workload |— | 使用GPU加速型 (p2) |
 
-> Query current quotas: `hcloud ecs list-quotas --region {{env.HW_REGION_ID}}`
+## Cross-Skill Delegation
 
-### 6.2 Scaling Operations
+| Capacity Issue | Delegate To | Purpose |
+|----------------|-------------|---------|
+| Disk expansion requires new DataDisk | ECS skill (resize) | Expand disk |
+| Storage > 90% on Windows | ECS skill (cleanup) | Disk cleanup |
+| Instance type change | ECS skill (resize) | Flavor upgrade |
+| Auto-scaling needed | AS skill | Scale-out policy |
+| Cost spike from reserved instance | Billing skill | Cost anomaly analysis |
 
-| Operation | Command | Cooldown |
-|-----------|---------|----------|
-| Vertical scale | `hcloud ecs resize-instance --instance-id X --flavor-id Y` | 5 min |
-| Horizontal scale | `hcloud as scaling-group --scaling-group-id X --action ADD` | 3 min |
-| Disk expand | `hcloud evs resize-disk --disk-id X --size Y` | 1 min |
+## Knowledge Base Anchors
 
----
-
-## 7. Compliance Checklist
-
-- [ ] All 3 prediction models documented
-- [ ] Capacity planning workflow implemented
-- [ ] Alert rules defined for all key ECS metrics
-- [ ] Model selection guide provided
-- [ ] Minimum data requirements specified
-- [ ] Confidence thresholds defined
-- [ ] ECS-specific instance type limits documented
+- ECS ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
+- ECS ↔ AS: [`references/integration.md`](../../huaweicloud-ecs-ops/references/integration.md) — auto-scaling configuration
+- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../huaweicloud-ecs-ops/references/cli-usage.md)

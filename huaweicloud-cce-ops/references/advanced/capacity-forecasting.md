@@ -1,300 +1,203 @@
 # Capacity Forecasting — Huawei Cloud CCE
 
-> **Purpose**: Predict resource exhaustion and growth trends for proactive capacity management.
-> **Extends**: `huaweicloud-skill-generator/references/aiops-best-practices.md` §14
-> **Version**: 1.0.0
-> **Last Updated**: 2026-07-18
+> Predictive capacity planning for CCE clusters: node pool exhaustion,
+> pod scheduling failure prediction, storage growth, and cost forecasting.
+> **Version:** 1.0.0
 
----
+## Forecast Types
 
-## 1. Prediction Models
+| Forecast Type | Method | Prediction Window | Input Data | Accuracy Target |
+|---------------|--------|-------------------|------------|-----------------|
+| Node pool exhaustion | Linear regression on node allocatable | 24–72h before 95% | 7d node allocatable ratio | ±10% |
+| Pod scheduling failure | Logistic regression on pending pods | 1–4h before spike | 1h pending pod rate | ±20% |
+| Storage (PVC) growth | Linear regression on persistent volume usage | 7d before 90% | 14d PVC usage | ±15% |
+| Namespace quota breach | Trend on resource requests vs limits | 48h before 90% | 7d quota utilization | ±10% |
 
-### 1.1 Linear Regression (Stable Growth)
+## Data Acquisition
 
-```
-y = mx + b
-
-Where:
-- y = predicted metric value
-- m = slope (growth rate per day)
-- b = current value
-
-Exhaustion_Date = (Quota_Limit - Current_Value) / m
-```
-
-**Use case**: Stable, linear growth patterns (storage usage, connection count)
-**Accuracy**: Medium
-**Complexity**: Low
-
-### 1.2 Seasonal Decomposition (Periodic)
-
-```
-y(t) = Trend(t) + Seasonal(t) + Residual(t)
-
-Where:
-- Trend = long-term growth direction
-- Seasonal = periodic pattern (weekly/monthly)
-- Residual = noise/anomalies
-```
-
-**Use case**: Load patterns with clear seasonality (batch workloads, cron jobs)
-**Accuracy**: High
-**Complexity**: Medium
-
-### 1.3 Exponential Smoothing
-
-```
-Forecast = α × Last_Value + (1-α) × Previous_Forecast
-
-Where α = smoothing factor (0.1 ~ 0.3)
-```
-
-**Use case**: Short-term prediction, trending data
-**Accuracy**: High
-**Complexity**: Low
-
----
-
-## 2. CCE-Specific Metrics
-
-| Metric | Namespace | Unit | Quota Reference |
-|--------|-----------|------|-----------------|
-| `cpu_usage` | SYS.CCE | % | CCE node CPU quota |
-| `mem_usage` | SYS.CCE | % | CCE node memory quota |
-| `disk_usage` | SYS.CCE | % | Node disk usage |
-| `cpu_usage_by_node` | SYS.CCE | % | Per-node CPU |
-| `mem_usage_by_node` | SYS.CCE | % | Per-node memory |
-| `pod_count` | SYS.CCE | count | Pods per node (max 256) |
-| `service_count` | SYS.CCE | count | Cluster service count |
-| `deployment_replicas` | SYS.CCE | count | Desired vs actual replicas |
-
----
-
-## 3. Capacity Planning Workflow
-
-### Step 1: Collect Historical Data
+### Node Pool Metrics
 
 ```bash
-# Query historical metrics from CES
-REGION="{{env.HW_REGION_ID}}"
-CLUSTER_ID="[cluster_id]"
-
-# Node CPU usage
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.CCE" \
-  --metric-name "cpu_usage" \
-  --dim.0 "cluster_id=$CLUSTER_ID" \
+# Node allocatable ratio (per node pool)
+hcloud ces list-metric-data \
+  --namespace SYS.CCE \
+  --metric_name node_allocatable_cpu \
+  --dimension "cluster_id={{user.cluster_id}},node_pool={{user.node_pool}}" \
+  --from "$(date -d '7 days ago' +%s)000" \
+  --to "$(date +%s)000" \
   --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+  -o json
 
-# Node memory usage
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.CCE" \
-  --metric-name "mem_usage" \
-  --dim.0 "cluster_id=$CLUSTER_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
-
-# Pod count trend
-hcloud ces query-metric-data \
-  --region "$REGION" \
-  --namespace "SYS.CCE" \
-  --metric-name "pod_count" \
-  --dim.0 "cluster_id=$CLUSTER_ID" \
-  --period 3600 \
-  --from "$(( $(date +%s) - 86400 * 30 ))" \
-  --to "$(date +%s)" \
-  --output json
+# Node count in Ready state
+hcloud cce list-nodes \
+  --cluster_id "{{user.cluster_id}}" \
+  --output json | jq '[.items[] | select(.status == "Ready")] | length'
 ```
 
-### Step 2: Calculate Growth Rate
+### Pod Scheduling Metrics
+
+```bash
+# Pending pods (via kubectl + CES custom metric)
+kubectl get pods --all-namespaces \
+  --field-selector status.phase=Pending \
+  -o json | jq '[.items[]] | length'
+
+# Custom metric via CES (push viaICAgent)
+hcloud ces list-metric-data \
+  --namespace SYS.CCE \
+  --metric_name pod_scheduling_pending \
+  --dimension "cluster_id={{user.cluster_id}},namespace=default" \
+  --from "$(date -d '1 hour ago' +%s)000" \
+  --to "$(date +%s)000" \
+  --period 60
+```
+
+### PVC Usage
+
+```bash
+# PVC usage per persistent volume claim
+kubectl get pvc --all-namespaces -o json | jq '
+  .items[] | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    capacity: .status.capacity.storage,
+    used: .status.used,
+    percent: (.status.used / .status.capacity.storage * 100)
+  }
+'
+```
+
+## Forecast Algorithms
+
+### Node Pool Exhaustion
 
 ```python
-import numpy as np
+def forecast_node_pool(cluster_id, node_pool, days_ahead=7):
+    """
+    Linear regression on node allocatable CPU/memory to predict
+    when the node pool will reach 95% utilization.
+    """
+    history = query_ces(
+        namespace="SYS.CCE",
+        metric="node_allocatable_cpu_ratio",
+        dimensions={"cluster_id": cluster_id, "node_pool": node_pool},
+        window="7d",
+        period=3600,
+    )
 
-def calculate_growth_rate(values):
-    """Calculate daily growth rate using linear regression."""
-    x = np.arange(len(values))
-    coefficients = np.polyfit(x, values, 1)
-    slope = coefficients[0]
+    values = [p["value"] for p in history]
+    n = len(values)
+    x = list(range(n))
+    x_mean, y_mean = sum(x) / n, sum(values) / n
 
-    y_pred = np.polyval(coefficients, x)
-    ss_res = np.sum((values - y_pred) ** 2)
-    ss_tot = np.sum((values - np.mean(values)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+    slope = sum((xi - x_mean) * (yi - y_mean) for xi, yi in zip(x, values)) / \
+            sum((xi - x_mean) ** 2 for xi in x)
+    intercept = y_mean - slope * x_mean
 
-    return slope, r_squared
+    projected = slope * (n - 1 + days_ahead) + intercept
+    days_to_95 = (95 - values[-1]) / slope if slope > 0 else float("inf")
 
-def predict_exhaustion(current_value, quota_limit, daily_growth_rate):
-    """Predict days until resource exhaustion."""
-    if daily_growth_rate <= 0:
-        return None
-
-    days_to_exhaustion = (quota_limit - current_value) / daily_growth_rate
-    return days_to_exhaustion
+    return {
+        "current_utilization": values[-1],
+        "slope_per_hour": slope,
+        "projected_in_7d": projected,
+        "days_to_95pct": days_to_95,
+        "recommendation": "scale_node_pool" if days_to_95 <= 7 else "monitor",
+    }
 ```
 
-### Step 3: Node-Level Analysis
+### Pod Scheduling Failure Prediction
 
 ```python
-def analyze_node_capacity(cluster_id, node_metrics):
+def forecast_scheduling_failure(cluster_id, namespace, hours_ahead=4):
     """
-    Analyze per-node capacity and identify bottlenecks.
-    Returns list of nodes sorted by exhaustion risk.
+    Logistic regression on pending pod rate.
+    Returns probability of scheduling failure within hours_ahead.
     """
-    node_analysis = []
+    history = query_ces(
+        namespace="SYS.CCE",
+        metric="pod_scheduling_pending_rate",
+        dimensions={"cluster_id": cluster_id, "namespace": namespace},
+        window="1h",
+        period=60,
+    )
 
-    for node in node_metrics:
-        cpu_slope, cpu_r2 = calculate_growth_rate(node['cpu_history'])
-        mem_slope, mem_r2 = calculate_growth_rate(node['mem_history'])
+    values = [p["value"] for p in history]
+    if not values:
+        return {"error": "no data"}
 
-        node_analysis.append({
-            'node_id': node['node_id'],
-            'cpu_days_to_exhaust': predict_exhaustion(
-                node['current_cpu'], 100, cpu_slope
-            ),
-            'mem_days_to_exhaust': predict_exhaustion(
-                node['current_mem'], 100, mem_slope
-            ),
-            'cpu_confidence': cpu_r2,
-            'mem_confidence': mem_r2,
-            'risk_level': min(
-                node['cpu_days_to_exhaust'] or 999,
-                node['mem_days_to_exhaust'] or 999
-            )
-        })
+    # Simple threshold-based heuristic (replace with trained model in production)
+    current_rate = values[-1]
+    avg_rate = sum(values) / len(values)
+    trend = values[-1] - values[0]
 
-    return sorted(node_analysis, key=lambda x: x['risk_level'])
+    # Probability estimate
+    prob_failure = min(1.0, max(0.0, (current_rate + trend * 2) / (avg_rate * 3)))
+
+    return {
+        "current_pending_rate": current_rate,
+        "average_pending_rate": avg_rate,
+        "trend": trend,
+        "probability_failure_within_4h": prob_failure,
+        "recommendation": "pre_scale" if prob_failure > 0.7 else "monitor",
+    }
 ```
 
-### Step 4: Generate Capacity Report
+## Capacity Planning Tables
 
-```yaml
-capacity_report:
-  resource_id: "[CCE cluster_id]"
-  product: "CCE"
-  generated_at: "[timestamp]"
+### Node Pool Scaling Recommendations
 
-  cluster_overview:
-    total_nodes: [count]
-    total_pods: [count]
-    namespace_count: [count]
+| Forecast Result | Action | Command |
+|-----------------|--------|---------|
+| days_to_95 < 3 | Immediate scale-up | `hcloud cce resize-node-pool --node_pool {{user.node_pool}} --count +3` |
+| days_to_95 3–7 | Plan scale-up | Create scaling task for next maintenance window |
+| PVC usage > 85% | Expand PVC | `kubectl patch pvc {{user.pvc_name}} -p '{"spec":{"resources":{"requests":{"storage":"50Gi"}}}}'` |
+| Quota utilization > 90% | Request quota increase | `hcloud cce update-cluster-quota` |
 
-  current_usage:
-    cluster_cpu_util: [value]
-    cluster_mem_util: [value]
-    cluster_disk_util: [value]
-    collected_at: "[timestamp]"
+### Namespace Quota Management
 
-  growth_analysis:
-    model: "[linear|seasonal|exponential]"
-    daily_growth_rate:
-      cpu: [rate]
-      memory: [rate]
-      pods: [rate]
-    r_squared: [confidence]
-    trend_direction: "[increasing|decreasing|stable]"
+| Quota Type | Warning Threshold | Critical Threshold | Auto-Action |
+|------------|-------------------|--------------------|--------------|
+| CPU requests | 80% | 90% | Block new pods via LimitRange |
+| Memory requests | 80% | 90% | Block new pods via LimitRange |
+| Pod count | 85% | 95% | GC completed pods |
 
-  node_analysis:
-    - node_id: "[node_id]"
-      days_to_cpu_exhaust: [days]
-      days_to_mem_exhaust: [days]
-      risk_level: "[critical|high|medium|low]"
+## Predictive Alert Rules
 
-  predictions:
-    - metric: "cpu_usage"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
-    - metric: "pod_count"
-      predicted_value_at: "[future_date]"
-      predicted_value: [value]
-      confidence: [0-1]
+```bash
+# Node pool exhaustion forecast
+hcloud ces create-alarm-rule \
+  --name "CCE-NodePool-Exhaust-Forecast" \
+  --metric node_allocatable_cpu_ratio \
+  --namespace SYS.CCE \
+  --dimension "cluster_id={{user.cluster_id}},node_pool={{user.node_pool}}" \
+  --condition "forecast_linear(72h) > 95%" \
+  --alarm-level warning \
+  --notifications "topic_arn:{{output.topic_arn}}"
 
-  exhaustion_analysis:
-    cluster_cpu:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    cluster_memory:
-      quota_limit: 100
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-    pod_count:
-      quota_limit: [max_pods_per_node * node_count]
-      days_to_exhaustion: [days]
-      exhaustion_date: "[date]"
-      risk_level: "[critical|high|medium|low]"
-
-  recommendations:
-    - action: "[add_node|scale_up|optimize_pods|cluster_upgrade]"
-      target: "[cpu|memory|pods]"
-      estimated_cost: "[cost_impact]"
-      priority: "[P0|P1|P2]"
+# Pod scheduling failure预警
+hcloud ces create-alarm-rule \
+  --name "CCE-Pod-Schedule-Failure-Forecast" \
+  --metric pod_scheduling_pending_rate \
+  --namespace SYS.CCE \
+  --dimension "cluster_id={{user.cluster_id}},namespace=default" \
+  --condition "forecast_logistic(4h) > 0.7" \
+  --alarm-level critical \
+  --notifications "topic_arn:{{output.topic_arn}}"
 ```
 
----
+## Cross-Skill Delegation
 
-## 4. Capacity Alert Rules
+| Capacity Issue | Delegate To | Purpose |
+|----------------|-------------|---------|
+| Node pool scale-up | CCE skill (resize-node-pool) | Add nodes |
+| PVC expansion | CCE skill (resize-pvc) | Expand storage |
+| Namespace quota increase | IAM + CCE | Update quota |
+| Cluster-level HPA | CCE skill (hpa) | Horizontal pod autoscaling |
+| Cost from over-provisioning | Billing skill | Cost anomaly analysis |
 
-| Metric | Warning Threshold | Critical Threshold | Recommended Action |
-|--------|-----------------|-------------------|-------------------|
-| Node CPU utilization trend | 30 days to >80% | 14 days to >90% | Add node to pool / optimize workloads |
-| Node memory utilization trend | 30 days to >85% | 14 days to >95% | Optimize pod memory / add node |
-| Pod count per node trend | 30 days to >180 pods | 14 days to >230 pods | Scale cluster / optimize pod density |
-| Cluster disk usage trend | 60 days to >85% | 30 days to >95% | Add node disk / cleanup |
-| Deployment replicas mismatch | 30 days to >10% drift | 14 days to >20% drift | Investigate scheduling issues |
+## Knowledge Base Anchors
 
----
-
-## 5. Model Selection Guide
-
-| Scenario | Recommended Model | Why |
-|----------|-----------------|-----|
-| Stable, linear growth (storage) | Linear Regression | Simple, reliable for steady trends |
-| Periodic workload (batch/CI) | Seasonal Decomposition | Captures weekly/monthly cycles |
-| Rapid scaling events | Exponential Smoothing | Reacts quickly to changes |
-| Multi-node cluster | Ensemble (per-node + cluster) | Combines node and cluster patterns |
-| New cluster (< 7 days data) | Rule-based | Insufficient data for ML |
-
----
-
-## 6. CCE-Specific Considerations
-
-### 6.1 Cluster Limits
-
-| Cluster Version | Max Nodes | Max Pods/Node | Max Services |
-|-----------------|-----------|---------------|--------------|
-| v1.21+ | 500 | 256 | 10000 |
-| v1.25+ | 1000 | 256 | 20000 |
-
-> Query current quotas: `hcloud cce list-clusters --region {{env.HW_REGION_ID}}`
-
-### 6.2 Scaling Operations
-
-| Operation | Command | Cooldown |
-|-----------|---------|----------|
-| Add node to pool | `hcloud cce resize-node-pool --cluster-id X --node-pool-id Y --count Z` | 5 min |
-| Scale cluster | `hcloud cce resize-cluster --cluster-id X --node-count Y` | 10 min |
-| Update node template | `hcloud cce update-node-pool --node-pool-id X --template Y` | 3 min |
-
----
-
-## 7. Compliance Checklist
-
-- [ ] All 3 prediction models documented
-- [ ] Capacity planning workflow implemented
-- [ ] Alert rules defined for all key CCE metrics
-- [ ] Model selection guide provided
-- [ ] Minimum data requirements specified
-- [ ] Confidence thresholds defined
-- [ ] CCE-specific cluster limits documented
-- [ ] Node-level capacity analysis included
+- CCE ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — custom metric emission
+- CCE node pool management: [`references/observability.md`](./observability.md) — LTS log linkage
+- Pod scheduling: [`references/troubleshooting.md`](../../huaweicloud-cce-ops/references/troubleshooting.md)
