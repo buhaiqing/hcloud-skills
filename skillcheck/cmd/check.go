@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/coverage"
 	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/yaml"
 )
 
@@ -23,6 +24,8 @@ func runCheck(args []string) error {
 		return runCheckMarkdownLinks(args[1:])
 	case "references-links":
 		return runCheckReferencesLinks(args[1:])
+	case "advanced-coverage":
+		return runCheckAdvancedCoverage(args[1:])
 	case "-h", "--help", "help":
 		fmt.Fprintln(os.Stdout, "skillcheck check <example-config|markdown-links|references-links> --root <dir>")
 		return nil
@@ -480,6 +483,82 @@ func mdTargetExists(root, source, target string) bool {
 
 var refLinkRe = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
 var refHeadingRe = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*#*\s*$`)
+
+// runCheckAdvancedCoverage validates TE-7 advanced/ stratification and
+// Security-Sensitive markers across every huaweicloud-*-ops skill. It
+// discovers skills dynamically from --root (no hardcoded skill list), so the
+// binary stays reusable on external repositories. Mirrors
+// scripts/check_advanced_coverage.py.
+func runCheckAdvancedCoverage(args []string) error {
+	fs := newFlagSet("skillcheck check advanced-coverage")
+	root := fs.String("root", ".", "skill repository root")
+	jsonOut := fs.Bool("json", false, "emit JSON report")
+	warnOnly := fs.Bool("warn-only", false, "demote missing advanced/ to warnings (gradual rollout)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	rootDir, err := filepath.Abs(*root)
+	if err != nil {
+		return err
+	}
+
+	report, err := coverage.ValidateAll(rootDir, *warnOnly)
+	if err != nil {
+		return err
+	}
+
+	if *jsonOut {
+		printAdvancedJSON(rootDir, report)
+	} else {
+		for _, item := range report.Reports {
+			status := "OK"
+			if !item.OK {
+				status = "FAIL"
+			}
+			adv := len(item.AdvancedFiles)
+			topics := strings.Join(item.AdvancedTopics, ",")
+			if topics == "" {
+				topics = "-"
+			}
+			fmt.Printf("%s: %-35s  advanced=%d  topics=%-20s  sec_markers=%d\n",
+				status, item.Skill, adv, topics, item.SecurityMarkers)
+			for _, e := range item.Errors {
+				fmt.Printf("  - %s\n", e)
+			}
+			for _, w := range item.Warnings {
+				fmt.Printf("  ~ %s\n", w)
+			}
+		}
+		fmt.Printf("\nChecked %d skills; with_advanced=%d; errors=%d; warnings=%d\n",
+			report.SkillsChecked, report.SkillsWithAdvanced, len(report.Errors), len(report.Warnings))
+	}
+
+	if !report.OK {
+		return fmt.Errorf("advanced-coverage check failed: %d error(s)", len(report.Errors))
+	}
+	return nil
+}
+
+func printAdvancedJSON(root string, report coverage.Report) {
+	fmt.Println("{")
+	fmt.Printf("  \"ok\": %v,\n", report.OK)
+	fmt.Printf("  \"skills_checked\": %d,\n", report.SkillsChecked)
+	fmt.Printf("  \"skills_with_advanced\": %d,\n", report.SkillsWithAdvanced)
+	fmt.Printf("  \"errors\": %d,\n", len(report.Errors))
+	fmt.Printf("  \"warnings\": %d,\n", len(report.Warnings))
+	fmt.Println("  \"reports\": [")
+	for i, item := range report.Reports {
+		fmt.Printf("    {\"skill\": %q, \"advanced_files\": %d, \"security_marker_count\": %d, \"ok\": %v}",
+			item.Skill, len(item.AdvancedFiles), item.SecurityMarkers, item.OK)
+		if i < len(report.Reports)-1 {
+			fmt.Println(",")
+		} else {
+			fmt.Println()
+		}
+	}
+	fmt.Println("  ]")
+	fmt.Println("}")
+}
 
 // runCheckReferencesLinks validates deep-link (anchor) health of every
 // huaweicloud-*-ops/references/*.md file. Mirrors scripts/check_references_link_health.py.

@@ -7,9 +7,9 @@ import "testing"
 // compile time.
 func TestEmbedSchemas(t *testing.T) {
 	files := map[string][]byte{
-		"trace.schema.json":       TraceSchema,
-		"summary.schema.json":     SummarySchema,
-		"alarm-plan.schema.json":  AlarmPlanSchema,
+		"trace.schema.json":        TraceSchema,
+		"summary.schema.json":      SummarySchema,
+		"alarm-plan.schema.json":   AlarmPlanSchema,
 		"eval-queries.schema.json": EvalQueriesSchema,
 	}
 	for name, data := range files {
