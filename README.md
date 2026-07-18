@@ -476,25 +476,30 @@ Tier-A skills also ship Generator-Critic-Loop artifacts: `references/rubric.md`,
 
 ### Local validation
 
-Before pushing changes (Python scripts or skills):
+Before pushing changes:
 
 ```bash
-python3 scripts/install_git_hook.py   # optional: install pre-commit hook
-bash scripts/pre_commit_check.sh      # ruff + py310 + B-class tests
-python3 scripts/validate_local.py     # full local CI mirror (B-class + skillcheck smoke)
+skillcheck validate
+skillcheck check audit-results --root .
+skillcheck check skill-generator-drift
 ```
 
 **Note**: A-class validation scripts have been migrated to the `skillcheck` Go binary.
-The binary is built and tested automatically by `scripts/validate_local.py` and
-`make self-check` in the `skillcheck/` directory. See [skillcheck](#skillcheck--skill-repository-validator) above.
+Run `cd skillcheck && go test ./...` for the full test suite.
 
 ### Build & release (skillcheck)
 
 ```bash
 cd skillcheck
-make all              # fmt + vet + test + build
-make self-check       # test against embedded fixtures
-make release VERSION=0.2.0  # build + tag + push → CI Release
+go build ./...
+go vet ./...
+go test ./...
+# Cross-compile releases
+GOOS=linux GOARCH=amd64 go build -o skillcheck-linux-amd64 .
+GOOS=linux GOARCH=arm64 go build -o skillcheck-linux-arm64 .
+GOOS=darwin GOARCH=arm64 go build -o skillcheck-darwin-arm64 .
+GOOS=darwin GOARCH=amd64 go build -o skillcheck-darwin-amd64 .
+GOOS=windows GOARCH=amd64 go build -o skillcheck-windows-amd64.exe .
 ```
 
 ## References
