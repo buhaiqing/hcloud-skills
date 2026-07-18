@@ -1,73 +1,52 @@
-# EIP AIOps Patterns
+# AIOps Patterns — EIP
 
-> Tier-2 advanced content per **TE-7**: AIOps depth lives here, not in SKILL.md.
-> All patterns below emit CES metric + SMN topic + cross-skill delegation.
+> **Purpose**: EIP 弹性公网 IP 的 AIOps 异常检测模式，基于真实 CES 指标与 CTS 事件。
+> **Version**: 1.0.0
+> **Last Updated**: 2026-07-18
 
-## Pattern 1: Bandwidth Saturation (Pressure)
+---
 
-| Field | Value |
-|---|---|
-| Metric | `outgoing_bandwidth / bandwidth.size` |
-| Window | 5 min |
-| Threshold | warn ≥ 0.8, critical ≥ 0.95 |
-| Action | (a) Resize via `huaweicloud-eip-ops` (Operation 6). (b) If traffic is bursty, consider switching to `traffic` mode. |
-| Cross-skill | `huaweicloud-ces-ops` (alarm wiring), `huaweicloud-billing-ops` (overage cost) |
+## 1. Anomaly Patterns
 
-## Pattern 2: Burst / DDoS Shape (Spike + Correlation)
+### 1.1 Resource Pressure Patterns
 
-| Field | Value |
-|---|---|
-| Metric | `incoming_bandwidth` p99 vs p50 |
-| Window | 10 min |
-| Threshold | p99 > 10× p50 |
-| Action | (a) Pull `incoming_bandwidth` and `eip_status` series. (b) Delegate to `huaweicloud-ddos-ops` (when present) or `huaweicloud-hss-ops` for mitigation. (c) If EIP is on a 95计费 subscription, check sample distribution. |
-| Cross-skill | `huaweicloud-ddos-ops`, `huaweicloud-hss-ops`, `huaweicloud-billing-ops` |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `bandwidth_saturation_warn` | `outgoing_bandwidth / bandwidth_size` ≥ 0.8 | Warning | 观察流量趋势，准备升配 |
+| `bandwidth_saturation_crit` | `outgoing_bandwidth / bandwidth_size` ≥ 0.95 | Critical | 立即扩容带宽（`hcloud eip update` 升配） |
 
-## Pattern 3: Idle EIP (Trend)
+### 1.2 Trend Anomaly Patterns
 
-| Field | Value |
-|---|---|
-| Metric | `port_id == null` for ≥7 d AND `bandwidth.size > 0` |
-| Window | daily |
-| Threshold | 7 days |
-| Action | (a) Tag with `purpose: warm-pool` if intentional. (b) Otherwise: candidate for `release-eip` after user confirmation. (c) Cross-skill: cost attribution via `huaweicloud-billing-ops`. |
-| Cross-skill | `huaweicloud-billing-ops` |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `billing_shock` | 日 `outgoing_bytes` > 3 × 7 天中位数 | Major | 联动 billing-ops 核查费用，确认突发 |
 
-## Pattern 4: Billing Shock (Trend Anomaly)
+### 1.3 Sudden Change Patterns
 
-| Field | Value |
-|---|---|
-| Metric | daily EIP cost |
-| Window | 7-day rolling median |
-| Threshold | 24h cost > 3× 7-day median |
-| Action | (a) Cross-check CES `outgoing_bytes` series for that day. (b) If 按流量: confirm burst. (c) If 95计费: check 5-min sample distribution. (d) Delegate to `huaweicloud-billing-ops` for invoice audit. |
-| Cross-skill | `huaweicloud-billing-ops`, `huaweicloud-ces-ops` |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `status_abnormal_5m` | `eip_status` ≠ ACTIVE 持续 5 min | Warning | 查绑定状态与配额，尝试恢复 |
+| `status_abnormal_15m` | `eip_status` ≠ ACTIVE 持续 15 min | Major | 检查底层资源，必要时重绑 |
+| `association_flip` | `eip_association_status` 翻转（绑定↔解绑） | Warning | 确认是否预期变更 |
 
-## Pattern 5: Bandwidth Pool Imbalance (Cross-EIP Correlation)
+### 1.4 Correlation Anomaly Patterns
 
-| Field | Value |
-|---|---|
-| Metric | per-EIP `outgoing_bandwidth` within a `WHOLE` shared bandwidth |
-| Window | 1h |
-| Threshold | one EIP > 80% of pool capacity while siblings < 20% |
-| Action | (a) Query CES for per-EIP `outgoing_bandwidth` within the WHOLE pool:
-```bash
-hcloud ces metrics --namespace SYS_VPC --dimension name={{bandwidth_id}}
-# Or via SDK: ListMetrics for metric_name=~outgoing_bandwidth, dimension_name=publicip_id
-```
-(b) Identify the dominant EIP (highest 1h p95). (c) If one EIP dominates >80% of pool capacity while siblings <20%: migrate that EIP back to `PER` via Op 8 + Op 1, sized to its actual load. (d) Or resize the pool to the dominant EIP's p95. |
-| Cross-skill | `huaweicloud-billing-ops` (cost shape), `huaweicloud-ces-ops` (visualize) |
+| Pattern | Detection Logic | Severity | Expected Action |
+|---------|---------------|----------|----------------|
+| `same_source_flap` | 同一 EIP `eip_status` 异常 + `eip_association_status` 翻转同源 | Major | 定位根因（实例/网卡），修复后稳定 |
+| `region_traffic_peak` | 多 EIP 同时带宽打满 | Major | 判定区域流量高峰，整体上浮配额 |
 
-## Cross-Skill Delegation Matrix (AIOps)
+---
 
-| Pattern | EIP | CES | Billing | DDoS | HSS | VPC | NAT | ECS |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| 1 Saturation | ✅ | ✅ | ✅ | | | | | |
-| 2 Burst/DDoS | ✅ | ✅ | | ✅ | ✅ | | | |
-| 3 Idle EIP | ✅ | | ✅ | | | | | |
-| 4 Billing shock | ✅ | ✅ | ✅ | | | | | |
-| 5 Pool imbalance | ✅ | ✅ | ✅ | | | | | |
+## 2. Alarm Storm Handling
 
-## Knowledge Base Cross-Reference
+仅交叉引用，避免重复（TE-6）：详见 `references/advanced/alarm-storm-handling.md`。
 
-See `references/knowledge-base.md` (K1–K8) for full root-cause chains and resolutions.
+---
+
+## 3. Root Cause Analysis
+
+1. **带宽打满** → 查 CES `outgoing_bandwidth` 时序 → 区分突发与持续 → 升配或切流量计费。
+2. **状态异常** → 查 CTS association 事件 → 确认实例/网卡是否异常。
+3. **费用突增** → 关联 `outgoing_bytes` 与 `bandwidth_size` → 核查流量计费样本分布。
+4. **区域高峰** → 多 EIP 聚合分析 → 判定业务高峰，统一扩容。
