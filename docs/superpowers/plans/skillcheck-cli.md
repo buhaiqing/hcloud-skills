@@ -1,7 +1,7 @@
 # Plan: skillcheck — 跨平台单二进制 Skill 校验 CLI
 
-> Status: 📝 READY (依赖 docs/superpowers/specs/skillcheck-cli.md ✅ FINAL_SPEC)
-> Last updated: 2026-07-18
+> Status: ✅ **B1 已合并 main** (B1 merged — 2026-07-18)
+> Last updated: 2026-07-18 (B1 merged, fixtures fixed)
 > Execution model: **subagent-driven-development** (per user request + AGENTS.md orchestrator rule)
 
 ## Execution Approach
