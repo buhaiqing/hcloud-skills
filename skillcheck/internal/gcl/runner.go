@@ -151,10 +151,15 @@ type RunResult struct {
 //
 // Exit codes:
 //   - 0: PASS
-//   - 1: MAX_ITER
+//   - 1: MAX_ITER: loop exhausted without PASS
 //   - 2: usage / internal error (e.g. invalid operation_intent)
-//   - 3: SAFETY_FAIL
-//   - 124: command timeout
+//   - 3: SAFETY_FAIL: credential leak or safety violation detected
+//
+// Note: cfg.Root must be set to the skillcheck module root directory
+// (where audit-results/ will be created). Tests should pass t.TempDir().
+//
+// If Root is empty, PersistTrace writes to process cwd — which is
+// correct for tests but incorrect in production.
 func Run(cfg RunConfig) RunResult {
 	// Determine max iterations.
 	maxIter := cfg.MaxIter

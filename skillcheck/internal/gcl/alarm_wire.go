@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -378,7 +377,3 @@ func ParseAlarmPlanFromJSON(path string) (*AlarmPlanReport, error) {
 	}
 	return &r, nil
 }
-
-// ValidateThresholdsContract checks that hard-coded constants in alarm_wire.go
-// match the values declared in example-config.yaml and docs/gcl-spec.md.
-var _thresholdDocRe = regexp.MustCompile(`(?i)(?:pass_rate_warn|pass_rate_critical|max_iter_warn_count|safety_fail_alert)\s*[:=]\s*(\d+\.?\d*)`)

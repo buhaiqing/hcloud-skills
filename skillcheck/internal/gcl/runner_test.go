@@ -161,12 +161,12 @@ func TestRun_SafetyFail(t *testing.T) {
 }
 
 func TestRun_MaxIter(t *testing.T) {
-	// A command that exits 1 (structural critic: correctness=0, safety=1.0 → RETRY).
+	// exit 1 → structural critic: correctness=0, safety=1.0 → RETRY.
 	// With MaxIter=1, loop exhausts → MAX_ITER → exit 1.
 	cfg := RunConfig{
 		Skill:   "huaweicloud-ecs-ops",
 		Request: "list servers",
-		Command: "echo '{\"error\":1}' && exit 1", // stderr JSON → but exit 1 is enough
+		Command: "echo 'an error occurred' && exit 1",
 		MaxIter: 1,
 		Timeout: 10,
 	}
