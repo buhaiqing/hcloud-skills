@@ -1,46 +1,43 @@
-# Makefile for the `skillcheck` Go CLI.
-#
-# Local development companion to .github/workflows/build-skillcheck.yml.
-# Run `make` to see available targets; `make help` for details.
+# hcloud-skills — top-level Makefile.
+# Delegates Go commands into skillcheck/ so you can build/release from root.
+# Run `make help` to see available targets.
 
 GO ?= go
-BINARY ?= skillcheck
-PKGS := ./...
+MODULE_DIR := skillcheck
 
 .PHONY: all build test vet fmt lint self-check clean tidy release help
 
 all: fmt vet test build ## fmt + vet + test + build
 
-build: ## Build ./bin/skillcheck
-	$(GO) build -trimpath -o bin/$(BINARY) .
+build: ## Build skillcheck/bin/skillcheck
+	$(GO) build -C $(MODULE_DIR) -trimpath -o bin/skillcheck .
 
 test: ## Run the full test suite
-	$(GO) test $(PKGS) -count=1
+	$(GO) test -C $(MODULE_DIR) ./... -count=1
 
 vet: ## Run go vet
-	$(GO) vet $(PKGS)
+	$(GO) vet -C $(MODULE_DIR) ./...
 
 fmt: ## Check formatting (gofmt -l); non-zero if unformatted files exist
-	@out=$$(gofmt -l .); \
+	@out=$$($(GO) fmt -C $(MODULE_DIR) ./...); \
 	if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 lint: ## Run the bundled `lint go` subcommand (gofmt + go vet)
-	$(GO) run . lint go --root .
+	$(GO) run -C $(MODULE_DIR) . lint go --root $(MODULE_DIR)
 
 self-check: build ## Exercise the binary against its embedded healthy fixtures
-	./bin/$(BINARY) scan secret trace --self-check
-	./bin/$(BINARY) scan secret summary --self-check
-	./bin/$(BINARY) scan secret alarm-plan --self-check
-	./bin/$(BINARY) aggregate trace --self-check
+	./$(MODULE_DIR)/bin/skillcheck scan secret trace --self-check
+	./$(MODULE_DIR)/bin/skillcheck scan secret summary --self-check
+	./$(MODULE_DIR)/bin/skillcheck scan secret alarm-plan --self-check
+	./$(MODULE_DIR)/bin/skillcheck aggregate trace --self-check
 
 tidy: ## Tidy go.mod / go.sum
-	$(GO) mod tidy
+	$(GO) mod -C $(MODULE_DIR) tidy
 
 clean: ## Remove build artifacts
-	rm -rf bin
+	rm -rf $(MODULE_DIR)/bin
 
 VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
-# Normalize: prepend "v" if VERSION doesn't start with "v"
 RELEASE_TAG = $(if $(filter v%,$(VERSION)),$(VERSION),v$(VERSION))
 release: all ## Build, tag, and push to trigger GitHub Release (VERSION=X.Y.Z or vX.Y.Z)
 	git tag $(RELEASE_TAG)
