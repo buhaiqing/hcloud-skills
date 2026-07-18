@@ -386,12 +386,25 @@ Tier-A skills also ship Generator-Critic-Loop artifacts: `references/rubric.md`,
 
 ### Local validation
 
-Before pushing Python or skill changes:
+Before pushing changes (Python scripts or skills):
 
 ```bash
 python3 scripts/install_git_hook.py   # optional: install pre-commit hook
-bash scripts/pre_commit_check.sh      # ruff + py310 + unit tests
-python3 scripts/validate_local.py     # full local CI mirror
+bash scripts/pre_commit_check.sh      # ruff + py310 + B-class tests
+python3 scripts/validate_local.py     # full local CI mirror (B-class + skillcheck smoke)
+```
+
+**Note**: A-class validation scripts have been migrated to the `skillcheck` Go binary.
+The binary is built and tested automatically by `scripts/validate_local.py` and
+`make self-check` in the `skillcheck/` directory. See [skillcheck](#skillcheck--skill-repository-validator) above.
+
+### Build & release (skillcheck)
+
+```bash
+cd skillcheck
+make all              # fmt + vet + test + build
+make self-check       # test against embedded fixtures
+make release VERSION=0.2.0  # build + tag + push → CI Release
 ```
 
 ## References

@@ -6,9 +6,8 @@
 
 ## 1. 背景与目标 (Why)
 
-当前 hcloud-skills 仓库的 29 个质量校验脚本均为 Python（纯 stdlib，约 5000 行 + 测试 3650 行）。
-它们只在 **CI 工作流**与**仓库贡献者本地**运行，面向"开发期质量门禁"，不作为对外工具分发。
-用户（外部独立团队）希望有一个**从 Git 下载即用的单文件二进制**，无需 Python 解释器 / 构建环境，
+当前 hcloud-skills 仓库的质量校验体系已从 Python 迁移至 Go。原 Python 脚本（约 5000 行 + 测试 3650 行）已全部删除，由 `skillcheck` Go 二进制替代。
+它面向外部用户：**从 Git 下载即用的单文件二进制**，无需 Python 解释器 / 构建环境，
 即可校验自己的 hcloud-skill 仓库。
 
 **目标产品**：`skillcheck` —— 一个用 Go 编写、GitHub Action 编译多平台制品、对外分发的单二进制 CLI。
@@ -27,35 +26,42 @@
 ### 2.1 IN — A 类：通用校验（对外分发核心，约 18 个脚本）
 这些脚本接受 `--root` 参数、逻辑与"被校验仓库路径"解耦，外部用户仓库可直接复用：
 
-| 子命令 | 对应 Python 脚本 | 功能 |
-|---|---|---|
-| `validate schema trace` | `validate_gcl_trace_schema.py` | 校验 GCL trace JSON schema |
-| `validate schema summary` | `validate_gcl_summary_schema.py` | 校验 GCL quality summary schema |
-| `validate schema alarm-plan` | `validate_gcl_alarm_plan_schema.py` | 校验 CES alarm plan schema |
-| `validate eval-queries` | `validate_eval_queries_schema.py` | 校验 assets/eval_queries.json |
-| `validate frontmatter` | `validate_skills_frontmatter.py` | 校验 SKILL.md YAML frontmatter |
-| `validate product-assessment` | `validate_product_assessment.py` | 校验 well-architected worker JSON |
-| `check example-config` | `check_example_config.py` | 校验 assets/example-config.yaml |
-| `check markdown-links` | `check_markdown_links.py` | 校验本地 markdown 链接 |
-| `check references-links` | `check_references_link_health.py` | 校验 references/ 深链健康 |
-| `check advanced-coverage` | `check_advanced_coverage.py` | 校验 TE-7 advanced/ 覆盖 |
-| `aggregate trace` | `gcl_trace_aggregate.py` | 聚合 trace → quality summary |
-| `scan secret trace` | `check_gcl_trace_security.py` | 扫描 trace 凭据泄露 |
-| `scan secret summary` | `check_gcl_summary_security.py` | 扫描 summary 凭据泄露 |
-| `scan secret alarm-plan` | `check_gcl_alarm_plan_security.py` | 扫描 alarm plan 凭据泄露 |
-| `scan secret shared` | `gcl_security_scan.py`（共享库） | 共享凭据扫描器 |
-| `validate`（总入口，默认） | `validate_local.py` 的 A 类步骤编排 | 一键跑全部 A 类检查；`--root` 默认 = 当前工作目录 |
+| 子命令 | 功能 |
+|---|---|
+| `validate schema trace` | 校验 GCL trace JSON schema |
+| `validate schema summary` | 校验 GCL quality summary schema |
+| `validate schema alarm-plan` | 校验 CES alarm plan schema |
+| `validate eval-queries` | 校验 assets/eval_queries.json |
+| `validate frontmatter` | 校验 SKILL.md YAML frontmatter |
+| `validate product-assessment` | 校验 well-architected worker JSON |
+| `check example-config` | 校验 assets/example-config.yaml |
+| `check markdown-links` | 校验本地 markdown 链接 |
+| `check references-links` | 校验 references/ 深链健康 |
+| `check advanced-coverage` | 校验 TE-7 advanced/ 覆盖 |
+| `aggregate trace` | 聚合 trace → quality summary |
+| `scan secret trace` | 扫描 trace 凭据泄露 |
+| `scan secret summary` | 扫描 summary 凭据泄露 |
+| `scan secret alarm-plan` | 扫描 alarm plan 凭据泄露 |
+| `scan secret shared` | 共享凭据扫描器 |
+| `validate`（总入口，默认） | 一键跑全部 A 类检查；`--root` 默认 = 当前工作目录 |
 
-### 2.2 OUT — B 类：本仓库专属逻辑（Phase 1 不做，留 Python 侧）
+### 2.2 OUT — B 类：本仓库专属逻辑（部分待迁移）
+
 以下脚本硬编码了本仓库结构（20 个 skill 名列表、`huaweicloud-ces-ops` 路径、dual-copy drift 等），
-外部用户仓库无对应内容，**Phase 1 不翻译、不纳入二进制**，保留在仓库 `scripts/` Python 侧：
-- `check_gcl_conformance.py`（硬编码 20 个 skill 名）
-- `check_gcl_alarm_wire_contract.py`（硬编码 `huaweicloud-ces-ops`）
-- `check_skill_generator_drift.py`（dual-copy 机制）
-- `check_safety_class_enum.py` / `check_resource_scope_pii.py`（读本仓库常量）
-- `check_generator_contract.py`（generator 模板契约）
-- `check_audit_results_guard.py`（audit-results gitignore 契约）
-- `check_py310_compat.py`（**直接删除不翻译**：检查 Python 运行时，Go 产物无意义）
+外部用户仓库无对应内容。**其中 6 个已规划迁移到 skillcheck**（见 B 类迁移 spec），其余保留 Python：
+
+| 脚本 | 状态 | 迁移计划 |
+|------|------|---------|
+| `check_gcl_conformance.py` | 待迁移 | 可做 `validate gcl-conformance` |
+| `check_gcl_alarm_wire_contract.py` | 待迁移 | 可做 `validate alarm-wire-contract` |
+| `check_safety_class_enum.py` | 待迁移 | 可做 `validate safety-class` |
+| `check_resource_scope_pii.py` | 待迁移 | 可做 `validate resource-scope` |
+| `check_generator_contract.py` | 待迁移 | 可做 `validate generator-contract` |
+| `check_audit_results_guard.py` | 待迁移 | 可做 `check audit-results` |
+| `check_skill_generator_drift.py` | 保留 Python | 仓库维护工具，不适合 Go |
+| `check_py310_compat.py` | 保留 Python | Python 运行时检查，Go 无意义 |
+| `gcl_runner.py` | 保留 Python | 运行时 GCL 循环，需执行 hcloud CLI |
+| `gcl_alarm_wire.py` | 保留 Python | 运行时 CES 告警联动 |
 
 ### 2.3 OUT — 运行时 GCL 循环（不在本 Spec）
 `gcl_runner.py` / `gcl_alarm_wire.py` 属 agent 运行时调用（调 `hcloud`/`git`），本 Spec 聚焦"静态校验分发"，

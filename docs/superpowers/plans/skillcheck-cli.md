@@ -74,6 +74,7 @@
 ## Definition of Done (本 Plan 完成)
 
 - [x] B1–B5 全部合并 main
+- [x] Python A 类脚本已全部删除（-4,600 行）
 - [ ] 三平台二进制可在 Release 下载
 - [ ] 干净容器（无 python3）中 `skillcheck validate --root <外部仓库>` 跑通
 - [x] T13 等价性套件全绿

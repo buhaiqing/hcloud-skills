@@ -142,14 +142,14 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - Repository linter is **ruff** (`ruff check .`, pinned to `0.11.8` in CI). Config lives in `ruff.toml`.
 - **After every Python script change, run `bash scripts/run_ruff.sh .` locally before declaring the task complete.** Do not batch — fix lint findings introduced by the change immediately. Apply `ruff format .` for any formatting drift introduced by the change.
 - A single shot gun covers everything: `bash scripts/pre_commit_check.sh`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
-- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_git_hook.py`. It auto-runs only when a `scripts/*.py` file is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
+- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_git_hook.py`. It auto-runs when `scripts/*.py` or `skillcheck/**/*.go` or `skillcheck/testdata/*.py` is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.
   - Prefer `argparse` with explicit `--help` text for CLIs.
   - Keep functions short; favor pure helpers that are unit-testable.
 - Shared helpers (`json_schema_subset`, `gcl_security_scan`) MUST be reused instead of copy-pasted patterns — same rule as TE-6.
-- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`.
+- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`. Go tests in `skillcheck/` are run via `go test ./...`.
 - CI runs the full `validate_local.py` suite; local dev MUST run the same suite before pushing.
 
 ## Python 3.10 Syntax Compatibility (P0)
