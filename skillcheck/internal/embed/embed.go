@@ -22,6 +22,7 @@ var (
 
 // Fixture files used by --self-check secret scans.
 var (
+	TraceHealthy     = mustRead(fixtureFS, "fixtures/gcl-trace-healthy.json")
 	AlarmPlanHealthy = mustRead(fixtureFS, "fixtures/gcl-alarm-plan-healthy.json")
 	SummaryHealthy   = mustRead(fixtureFS, "fixtures/gcl-quality-summary-healthy.json")
 )

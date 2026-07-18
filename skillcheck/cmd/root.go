@@ -26,11 +26,11 @@ func Execute() error {
 	case "validate":
 		return runValidate(args)
 	case "check":
-		return fmt.Errorf("check: not yet implemented (see Plan batch B3)")
+		return runCheck(args)
 	case "scan":
-		return fmt.Errorf("scan: not yet implemented (see Plan batch B3)")
+		return runScan(args)
 	case "aggregate":
-		return fmt.Errorf("aggregate: not yet implemented (see Plan batch B3)")
+		return runAggregate(args)
 	case "lint":
 		return fmt.Errorf("lint: not yet implemented (see Plan batch B4)")
 	case "-h", "--help", "help":
@@ -51,9 +51,12 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  skillcheck validate frontmatter --root <dir>                validate SKILL.md frontmatter")
 	fmt.Fprintln(w, "  skillcheck validate eval-queries --root <dir>               validate assets/eval_queries.json")
 	fmt.Fprintln(w, "  skillcheck validate product-assessment --root <dir>         validate well-architected-assessment.md examples")
-	fmt.Fprintln(w, "  skillcheck check ...    (planned, batch B3)")
-	fmt.Fprintln(w, "  skillcheck scan ...     (planned, batch B3)")
-	fmt.Fprintln(w, "  skillcheck aggregate ... (planned, batch B3)")
+	fmt.Fprintln(w, "  skillcheck check example-config --root <dir>                validate assets/example-config.yaml")
+	fmt.Fprintln(w, "  skillcheck check markdown-links --root <dir>                validate local Markdown links")
+	fmt.Fprintln(w, "  skillcheck check references-links --root <dir>              validate references/ anchor health")
+	fmt.Fprintln(w, "  skillcheck check advanced-coverage --root <dir>             validate TE-7 advanced/ coverage")
+	fmt.Fprintln(w, "  skillcheck scan secret <trace|summary|alarm-plan> ...       scan artifacts for credential leaks")
+	fmt.Fprintln(w, "  skillcheck aggregate trace --root <dir>                     aggregate gcl-trace-*.json into a summary")
 	fmt.Fprintln(w, "  skillcheck lint ...     (planned, batch B4)")
 }
 

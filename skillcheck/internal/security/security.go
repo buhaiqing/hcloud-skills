@@ -14,7 +14,10 @@
 package security
 
 import (
+	"bytes"
+	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -54,6 +57,21 @@ var extraPatterns = []struct {
 	{"private_key_block", regexp.MustCompile(`-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----`)},
 	{"password_assignment", regexp.MustCompile(`(?i)password\s*[:=]\s*['"]?[^'"\s]{6,}`)},
 	{"api_key_assignment", regexp.MustCompile(`(?i)(?:api[_-]?key|secret[_-]?key)\s*[:=]\s*['"]?[A-Za-z0-9._\-/+=]{16,}`)},
+}
+
+// allPatterns returns the combined secret + extra pattern set in a stable
+// order, used by both ScanContent and ScanJSON.
+func allPatterns() []struct {
+	typ string
+	re  *regexp.Regexp
+} {
+	out := make([]struct {
+		typ string
+		re  *regexp.Regexp
+	}, 0, len(secretPatterns)+len(extraPatterns))
+	out = append(out, secretPatterns...)
+	out = append(out, extraPatterns...)
+	return out
 }
 
 // maskedSnippets returns the masked form of s for a single pattern type, by
@@ -117,6 +135,83 @@ func ScanContent(data []byte) ([]Finding, error) {
 		})
 	}
 	return findings, nil
+}
+
+// ScanJSON walks a decoded JSON payload (using json.Decoder with UseNumber so
+// numbers are not coerced to float64) and applies the same credential patterns
+// as ScanContent to every scanned string value. It mirrors
+// gcl_security_scan.scan_payload: a string is scanned if its key is in
+// scannedTextFields OR its length is <= 200000, and strings already containing
+// "<masked>" are skipped. The field path (e.g. "iterations[0].critic") is
+// reported so callers can locate the leak.
+func ScanJSON(data []byte) ([]Finding, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var root any
+	if err := dec.Decode(&root); err != nil {
+		return nil, err
+	}
+	var findings []Finding
+	walkValue(root, "", &findings)
+	return findings, nil
+}
+
+var scannedTextFields = map[string]bool{
+	"request": true, "command": true, "result_excerpt": true, "operation": true,
+	"user_request": true, "summary": true, "final_state": true, "raw_response": true,
+}
+
+func walkValue(v any, prefix string, out *[]Finding) {
+	switch val := v.(type) {
+	case map[string]any:
+		for k, item := range val {
+			child := k
+			if prefix != "" {
+				child = prefix + "." + k
+			}
+			if s, ok := item.(string); ok {
+				scanStringField(s, child, out)
+			} else {
+				walkValue(item, child, out)
+			}
+		}
+	case []any:
+		for i, item := range val {
+			child := prefix + "[" + strconv.Itoa(i) + "]"
+			if s, ok := item.(string); ok {
+				scanStringField(s, child, out)
+			} else {
+				walkValue(item, child, out)
+			}
+		}
+	}
+}
+
+func scanStringField(s, field string, out *[]Finding) {
+	if !scannedTextFields[field] && len(s) > 200000 {
+		return
+	}
+	if strings.Contains(s, "<masked>") {
+		return
+	}
+	for _, p := range allPatterns() {
+		if p.re.MatchString(s) {
+			*out = append(*out, Finding{
+				Type:    p.typ,
+				Line:    0,
+				Column:  0,
+				Snippet: maskedSnippets(p.typ, firstMatch(p.re, s)),
+			})
+		}
+	}
+}
+
+func firstMatch(re *regexp.Regexp, s string) string {
+	loc := re.FindStringIndex(s)
+	if loc == nil {
+		return s
+	}
+	return s[loc[0]:loc[1]]
 }
 
 // lineColumn converts a byte offset into 1-based line and rune-column numbers.
