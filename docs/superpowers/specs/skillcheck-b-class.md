@@ -1,6 +1,6 @@
 # Spec: skillcheck B 类迁移 — GCL 契约校验 + 运行时 GCL 编排
 
-> Status: 📝 DRAFT — Final spec after 3-round self-critique
+> Status: ✅ FINAL_SPEC — 3-round self-critique complete (8 findings addressed)
 > Last updated: 2026-07-18
 > Author: orchestrator (per user request)
 > Parent: `docs/superpowers/specs/skillcheck-cli.md`
@@ -158,7 +158,7 @@ skillcheck validate resource-scope --root <dir>
 skillcheck validate generator-contract --root <dir>
 ```
 
-**检查项**（~18 条 regex 契约）：
+**检查项**（参考 Python 原版 `check_generator_contract.py` 的 ~18 条 regex 契约——具体 regex 列表见该文件的 `CONTRACTS` 常量）：
 - `huaweicloud-skill-template.md` — GCL metadata、rubric artifact、prompt templates artifact、operation_intent
 - `huaweicloud-skill-generator/SKILL.md` — 引用 backbone、rubric、prompt-templates
 - `gcl-prompt-backbone.md` — Generator/Critic/Orchestrator 章节、hcloud primary、Go SDK fallback、Critic read-only 约束
@@ -176,6 +176,16 @@ skillcheck check audit-results --root <dir>
 2. **目录权限** — `audit-results/` 存在时 mode 必须为 0700
 3. **Tracked files** — `git ls-files audit-results/` 为空
 4. **文档** — `docs/gcl-spec.md` 包含 audit persistence 策略
+
+**输出格式**：
+```
+skillcheck check audit-results --root <dir>
+```
+文本模式：OK / FAIL + 详细信息。
+支持 `--json` 输出 JSON 报告，格式为：
+```json
+{"ok": true/false, "gitignore_patterns": {"found": 8, "missing": 0}, "mode_ok": true, "tracked_files": 0}
+```
 
 ### 3.7 `gcl run` — GCL 执行循环
 
@@ -197,7 +207,7 @@ skillcheck gcl run \
 4. 循环修复（最多 max_iter 轮）
 5. 写 trace 到 `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`
 
-**退出码**：0 = PASS/MAX_ITER；非 0 = 执行失败
+**退出码**：0 = PASS/MAX_ITER；非 0 = 执行失败（SAFETY_FAIL 也返回非 0）；TIMEOUT 返回退出码 124（与 `timeout` 命令一致）
 
 ### 3.8 `gcl alarm-wire` — CES 告警编排
 
@@ -219,9 +229,16 @@ make check-hook     # 检查是否已安装
 make uninstall-hook  # 移除
 ```
 
-用 Go 程序 `scripts/install_hook.go` 替代 `python3 scripts/install_git_hook.py`。
+用根目录下的 Go 程序 `scripts/install_hook.go` 替代 `python3 scripts/install_git_hook.py`（注意：`scripts/install_hook.go` 是独立 Go 工具，不是 skillcheck 二进制的一部分）。
 
 **pre-commit hook 触发条件更新**：从检测 `scripts/*.py` 改为检测 `skillcheck/**/*.go` + `skillcheck/testdata/*.py` + `scripts/*.go`。
+
+**根 Makefile 新增 target**（见 §5.2）：
+```
+make install-hook    # go run scripts/install_hook.go install
+make check-hook      # go run scripts/install_hook.go check
+make uninstall-hook  # go run scripts/install_hook.go uninstall
+```
 
 ## 4. 异常与边界 (Edge Cases)
 
@@ -229,8 +246,8 @@ make uninstall-hook  # 移除
 |------|------|
 | `--root` 下无 `huaweicloud-*-ops` 目录 | 跳过相关检查，warn 而非 fail |
 | `audit-results/` 不存在 | 不报错（CI 上无 trace 是正常状态） |
-| `gcl run` 命令超时 | 截断，标记为 TIMEOUT，保留部分输出 |
-| `gcl run` Critic JSON 格式错误 | 报错退出，不执行 Generator |
+| `gcl run` 命令超时 | 截断，标记为 TIMEOUT，保留部分输出，退出码 124 |
+| `gcl run` Critic JSON 格式错误 | 报错退出（退出码 2），不执行 Generator |
 | git 工作树非 git checkout | `check audit-results` 跳过 tracked_files 检查 |
 | 批量 `gcl run` | 暂不支持并发执行，单次只处理一个单元 |
 

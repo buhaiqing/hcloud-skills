@@ -1,6 +1,6 @@
 # Plan: skillcheck B 类迁移 — GCL 契约校验 + 运行时 GCL 编排
 
-> Status: 📝 READY (依赖 docs/superpowers/specs/skillcheck-b-class.md ✅ FINAL_SPEC)
+> Status: ✅ READY (依赖 docs/superpowers/specs/skillcheck-b-class.md ✅ FINAL_SPEC)
 > Last updated: 2026-07-18
 > Execution model: **并行 sub-agent + 主 Agent 聚合** (per AGENTS.md orchestrator rule + GCL rules §3)
 
