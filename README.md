@@ -287,7 +287,97 @@ skillcheck check markdown-links --root .
 skillcheck scan secret trace --self-check
 ```
 
+### B-Class Validation Commands (GCL Contract Checks)
+
+These commands validate Generator-Critic-Loop (GCL) artifacts and runtime contracts:
+
+```bash
+# Validate GCL Tier-A conformance (rubric.md, prompt-templates.md, Quality Gate section)
+skillcheck validate gcl-conformance --root .
+
+# Validate Generator template contract (skill-generator GCL artifacts)
+skillcheck validate generator-contract --root .
+
+# Validate safety_class enum contract across the pipeline
+skillcheck validate safety-class --root .
+
+# Validate resource_scope PII masking contract
+skillcheck validate resource-scope --root .
+
+# Validate CES alarm wiring contract (thresholds consistency)
+skillcheck validate alarm-wire-contract --root .
+
+# Validate audit-results directory protection (gitignore, permissions)
+skillcheck check audit-results --root .
+
+# Check skill-generator drift between canonical and runtime copies
+skillcheck check skill-generator-drift
+```
+
+### GCL Runtime Commands
+
+```bash
+# Execute a GCL cycle (Generator → Critic → loop)
+skillcheck gcl run \
+  --skill huaweicloud-billing-ops \
+  --request "CI smoke test" \
+  --operation-intent '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}' \
+  --command 'printf "{\"Response\":{\"RequestId\":\"ci-smoke\"}}"' \
+  --max-iter 1 \
+  --structural-critic-only
+
+# Plan CES alarm rules from a GCL quality summary
+skillcheck gcl alarm-wire plan \
+  --summary scripts/fixtures/gcl-quality-summary-healthy.json \
+  --write-plan
+
+# Apply planned CES alarm rules (requires --dry-run first)
+skillcheck gcl alarm-wire apply \
+  --summary scripts/fixtures/gcl-quality-summary-healthy.json \
+  --dry-run
+```
+
 See [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md) for the full command reference.
+
+## skillcheck CLI Reference
+
+Complete reference for all `skillcheck` subcommands added in Phase 2 and Phase 3 of the B-class migration.
+
+### validate
+
+| Subcommand | Description |
+|------------|-------------|
+| `validate gcl-conformance --root <dir>` | Validates GCL Tier-A conformance: checks `references/rubric.md` (8 sections), `references/prompt-templates.md` (7 sections + `operation_intent` + no bare placeholders), and `## Quality Gate (GCL)` in `SKILL.md`. Exit 0 = all pass, 1 = failures. |
+| `validate generator-contract --root <dir>` | Validates the skill-generator GCL template contract: checks `huaweicloud-skill-template.md` (metadata.gcl.required, rubric artifact, prompt templates artifact, operation_intent), `huaweicloud-skill-generator/SKILL.md` (references backbone, rubric, prompt-templates), and `gcl-prompt-backbone.md` (Generator/Critic/Orchestrator sections, hcloud primary, Go SDK fallback, Critic read-only constraint). Supports `--json` for JSON report. |
+| `validate safety-class --root <dir>` | Validates `safety_class` enum contract across the pipeline: schema gate (`gcl-trace.schema.json`), code gate (sanitizer rejects illegal values), docs gate (`docs/gcl-spec.md`, `gcl-prompt-backbone.md`), and traces gate (no illegal enum values in `audit-results/gcl-trace-*.json`). Expected values: `read-only`, `mutating`, `destructive`. Exit 0 = all pass, 1 = failures. |
+| `validate resource-scope --root <dir>` | Validates `operation_intent.resource_scope` PII masking contract: schema gate (allows `***` / `<masked>` / `prefix-***`), code gate (`maskResourceID()` function), runner gate (`masked_fields` includes `operation_intent`), and traces gate (no bare IDs in traces). Exit 0 = all pass, 1 = failures. |
+| `validate alarm-wire-contract --root <dir>` | Validates CES alarm wire threshold wiring consistency: checks `huaweicloud-ces-ops/assets/example-config.yaml` (gcl_quality block), `docs/gcl-spec.md` (threshold descriptions), and `audit-results/gcl-alarm-plan-*.json` (existing alarm plans). Hardcoded threshold constants: `pass_rate_warn=0.5`, `pass_rate_critical=0.3`, `max_iter_warn_count=5`, `safety_fail_alert=true`. Exit 0 = all pass, 1 = inconsistencies found. |
+
+### check
+
+| Subcommand | Description |
+|------------|-------------|
+| `check audit-results --root <dir>` | Validates `audit-results/` directory protection contract: `.gitignore` must contain 8 required patterns (audit-results/, */audit-results/, gcl-trace-*.json, */gcl-trace-*.json, gcl-quality-summary-*.json, */gcl-quality-summary-*.json, gcl-alarm-plan-*.json, */gcl-alarm-plan-*.json), directory mode must be 0700 when present, no tracked files in git. Supports `--json` for JSON report. Exit 0 = clean, 1 = contract violations. |
+
+### gcl
+
+| Subcommand | Description |
+|------------|-------------|
+| `gcl run --root <dir> [--json] [--quiet]` | Executes GCL quality gate on a skill: runs Generator command, collects stdout/stderr/exit, calls Critic scoring, loops修复 (max `max_iter` iterations), writes trace to `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`. Exit codes: 0 = PASS, 1 = MAX_ITER/ERROR, 2 = SAFETY_VIOLATION, 124 = TIMEOUT. |
+| `gcl alarm-wire --root <dir> [--json] [--quiet] [--plan-file <path>]` | Evaluates GCL trace quality against SLO thresholds and optionally generates/applies CES alarm plan. Loads CES `example-config.yaml` thresholds, finds most recent trace in `audit-results/`, evaluates breaches, renders alarm plan. `--plan-file <path>` writes plan JSON and applies (dry-run by default). Exit 0 = no critical breaches, 1 = alerts/warnings. |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | All checks passed / PASS |
+| 1 | Failures found / MAX_ITER / ERROR |
+| 2 | SAFETY_VIOLATION |
+| 124 | TIMEOUT (matches `timeout` command) |
+
+### Output Modes
+
+All commands support `--json` for machine-readable JSON output. The `validate` total-entry also supports `--json` for a combined summary.
 
 ## Available Skills
 

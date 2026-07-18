@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -16,7 +19,7 @@ import (
 // runCheck dispatches the `skillcheck check` subcommands.
 func runCheck(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("check: missing subcommand (use 'example-config'|'markdown-links'|'references-links')")
+		return fmt.Errorf("check: missing subcommand (use 'example-config'|'markdown-links'|'references-links'|'audit-results')")
 	}
 	switch args[0] {
 	case "example-config":
@@ -27,8 +30,10 @@ func runCheck(args []string) error {
 		return runCheckReferencesLinks(args[1:])
 	case "advanced-coverage":
 		return runCheckAdvancedCoverage(args[1:])
+	case "audit-results":
+		return runCheckAuditResults(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "skillcheck check <example-config|markdown-links|references-links> --root <dir>")
+		fmt.Fprintln(os.Stdout, "skillcheck check <example-config|markdown-links|references-links|audit-results> --root <dir>")
 		return nil
 	default:
 		return fmt.Errorf("check: unknown subcommand %q", args[0])
@@ -871,4 +876,170 @@ func printReferencesJSON(root string, files []string, findings []refFinding, err
 	}
 	fmt.Println("  ]")
 	fmt.Println("}")
+}
+
+// ---------------------------------------------------------------------------
+// check audit-results (L2-C)
+// ---------------------------------------------------------------------------
+
+// gitignoreRequiredPatterns are the required patterns in .gitignore for audit-results.
+var gitignoreRequiredPatterns = []string{
+	`^audit-results/?\s*$`,
+	`^\*\*/audit-results/?\s*$`,
+	`^gcl-trace-\*\.json\s*$`,
+	`^\*\*/gcl-trace-\*\.json\s*$`,
+	`^gcl-quality-summary-\*\.json\s*$`,
+	`^\*\*/gcl-quality-summary-\*\.json\s*$`,
+	`^gcl-alarm-plan-\*\.json\s*$`,
+	`^\*\*/gcl-alarm-plan-\*\.json\s*$`,
+}
+
+// gclDocRequiredFragments are required documentation fragments in docs/gcl-spec.md.
+var gclDocRequiredFragments = []string{"audit-results/", "GCL", "gitignore"}
+
+func runCheckAuditResults(args []string) error {
+	fs := newFlagSet("skillcheck check audit-results")
+	root := fs.String("root", ".", "skill repository root")
+	jsonOut := fs.Bool("json", false, "emit JSON report")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	rootDir, err := filepath.Abs(*root)
+	if err != nil {
+		return err
+	}
+
+	errors := checkAuditResultsAll(rootDir)
+
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.Encode(map[string]any{"ok": len(errors) == 0, "errors": errors})
+	} else {
+		for _, e := range errors {
+			fmt.Printf("  FAIL: %s\n", e)
+		}
+		if len(errors) == 0 {
+			fmt.Println("[audit-results guard] OK")
+		} else {
+			fmt.Printf("[audit-results guard] FAIL: %d issue(s)\n", len(errors))
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("audit-results guard: %d issue(s)", len(errors))
+	}
+	return nil
+}
+
+func checkAuditResultsAll(root string) []string {
+	var allErrors []string
+
+	gitErrors := checkGitignore(root)
+	for _, e := range gitErrors {
+		allErrors = append(allErrors, "gitignore: "+e)
+	}
+
+	dirErrors := checkAuditDirMode(root)
+	for _, e := range dirErrors {
+		allErrors = append(allErrors, "directory: "+e)
+	}
+
+	trackedErrors := checkAuditTrackedFiles(root)
+	for _, e := range trackedErrors {
+		allErrors = append(allErrors, "tracked_files: "+e)
+	}
+
+	docErrors := checkGCLSpecDocs(root)
+	for _, e := range docErrors {
+		allErrors = append(allErrors, "documents: "+e)
+	}
+
+	return allErrors
+}
+
+func checkGitignore(root string) []string {
+	var errors []string
+	path := filepath.Join(root, ".gitignore")
+	if !fileExists(path) {
+		return []string{".gitignore missing"}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return []string{fmt.Sprintf(".gitignore: read error: %v", err)}
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, pattern := range gitignoreRequiredPatterns {
+		found := false
+		re := regexp.MustCompile(pattern)
+		for _, line := range lines {
+			if re.MatchString(strings.TrimSpace(line)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errors = append(errors, fmt.Sprintf("missing pattern: %s", pattern))
+		}
+	}
+	return errors
+}
+
+func checkAuditDirMode(root string) []string {
+	auditDir := filepath.Join(root, "audit-results")
+	if !dirExists(auditDir) {
+		return nil
+	}
+	info, err := os.Stat(auditDir)
+	if err != nil {
+		return nil
+	}
+	mode := info.Mode().Perm()
+	if mode&0o077 != 0 {
+		return []string{fmt.Sprintf("%s: mode %s too permissive; GCL traces should be owner-only (chmod 700)", auditDir, mode.String())}
+	}
+	return nil
+}
+
+func checkAuditTrackedFiles(root string) []string {
+	cmd := exec.Command("git", "ls-files", "audit-results/")
+	cmd.Dir = root
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil
+	}
+	tracked := []string{}
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			tracked = append(tracked, line)
+		}
+	}
+	if len(tracked) > 0 {
+		msg := fmt.Sprintf("audit-results/ contains %d tracked file(s); remove from git history", len(tracked))
+		if len(tracked) <= 3 {
+			msg += fmt.Sprintf(" (%v)", tracked)
+		}
+		return []string{msg}
+	}
+	return nil
+}
+
+func checkGCLSpecDocs(root string) []string {
+	docPath := filepath.Join(root, "docs", "gcl-spec.md")
+	if !fileExists(docPath) {
+		return []string{"docs/gcl-spec.md: missing — audit persistence contract undocumented"}
+	}
+	text, err := os.ReadFile(docPath)
+	if err != nil {
+		return []string{fmt.Sprintf("docs/gcl-spec.md: read error: %v", err)}
+	}
+	lower := strings.ToLower(string(text))
+	for _, fragment := range gclDocRequiredFragments {
+		if !strings.Contains(lower, strings.ToLower(fragment)) {
+			return []string{fmt.Sprintf("docs/gcl-spec.md: missing fragment %q", fragment)}
+		}
+	}
+	return nil
 }

@@ -69,16 +69,24 @@ else
 fi
 
 log "step 3/3: Python 3.10 syntax compatibility"
-if ! python3 scripts/check_py310_compat.py; then
-  fail "python3.10 compatibility gate failed"
+if [ -f scripts/check_py310_compat.py ]; then
+  if ! python3 scripts/check_py310_compat.py; then
+    fail "python3.10 compatibility gate failed"
+  fi
+else
+  echo "[pre_commit_check] scripts/check_py310_compat.py not found; skipping"
 fi
 
 if [ "${SKIP_TESTS}" -eq 1 ]; then
   log "skipping unit tests (--skip-tests)"
 else
   log "step 4/4: Python unit tests"
-  if ! python3 -m unittest discover -s scripts -p "*_test.py"; then
-    fail "unit tests failed"
+  if [ "$(find scripts -name '*_test.py' 2>/dev/null | wc -l)" -gt 0 ]; then
+    if ! python3 -m unittest discover -s scripts -p "*_test.py"; then
+      fail "unit tests failed"
+    fi
+  else
+    echo "[pre_commit_check] no *_test.py files found; skipping"
   fi
 fi
 

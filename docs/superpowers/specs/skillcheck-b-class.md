@@ -1,6 +1,6 @@
 # Spec: skillcheck B 类迁移 — GCL 契约校验 + 运行时 GCL 编排
 
-> Status: ✅ FINAL_SPEC — 3-round self-critique complete (8 findings addressed)
+> Status: ✅ COMPLETE — Phase 4 cleanup done (2026-07-18)
 > Last updated: 2026-07-18
 > Author: orchestrator (per user request)
 > Parent: `docs/superpowers/specs/skillcheck-cli.md`

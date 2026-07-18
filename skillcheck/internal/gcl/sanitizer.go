@@ -18,6 +18,8 @@ import (
 //   - gcl-trace.schema.json  (operation_intent.safety_class enum)
 //   - docs/gcl-spec.md       (§operation_intent)
 //   - huaweicloud-skill-generator/references/gcl-prompt-backbone.md
+//
+// Safety class values: "read-only" | "mutating" | "destructive"
 var SAFETY_CLASS_VALUES = [3]string{"read-only", "mutating", "destructive"}
 
 // IsValidSafetyClass returns true when v is one of the canonical enum values.
