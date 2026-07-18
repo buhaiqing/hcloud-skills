@@ -7,7 +7,7 @@ GO ?= go
 BINARY ?= skillcheck
 PKGS := ./...
 
-.PHONY: all build test vet fmt lint self-check clean tidy help
+.PHONY: all build test vet fmt lint self-check clean tidy release help
 
 all: fmt vet test build ## fmt + vet + test + build
 
@@ -38,6 +38,12 @@ tidy: ## Tidy go.mod / go.sum
 
 clean: ## Remove build artifacts
 	rm -rf bin
+
+VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
+release: all ## Build, tag, and push to trigger GitHub Release (VERSION=vX.Y.Z)
+	git tag $(VERSION)
+	git push origin $(VERSION)
+	@echo "Released $(VERSION) — CI will build + publish artifacts"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
