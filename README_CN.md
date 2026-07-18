@@ -434,6 +434,81 @@ export HW_PROJECT_ID="your-project-id"
 
 > "生成 huaweicloud-ecs-ops Skill，核心功能：实例生命周期管理、磁盘、快照，包含 FinOps 成本优化和 SecOps 安全治理"
 
+## skillcheck — Skill 仓库校验器
+
+`skillcheck` 是一个**独立的 CLI 二进制工具**，用于校验 hcloud-skills 仓库（或任何遵循相同布局的 Skill 集合）。它执行所有 A 类检查（Schema 校验、Frontmatter、YAML 配置、Markdown 链接、凭据扫描等），**零外部依赖**——不需要 Python、不需要 Go 工具链。
+
+### 一键安装
+
+将 `VERSION` 替换为[最新的 Release 标签](https://github.com/buhaiqing/hcloud-skills/releases)（例如 `v0.1.0`）。
+
+**Linux (amd64)：**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-amd64
+chmod +x skillcheck-linux-amd64
+sudo mv skillcheck-linux-amd64 /usr/local/bin/skillcheck
+```
+
+**Linux (arm64)：**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-arm64
+chmod +x skillcheck-linux-arm64
+sudo mv skillcheck-linux-arm64 /usr/local/bin/skillcheck
+```
+
+**macOS (arm64，Apple Silicon)：**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-arm64
+chmod +x skillcheck-darwin-arm64
+sudo mv skillcheck-darwin-arm64 /usr/local/bin/skillcheck
+```
+
+**macOS (amd64，Intel)：**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-amd64
+chmod +x skillcheck-darwin-amd64
+sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
+```
+
+**Windows (amd64，PowerShell 管理员模式)：**
+```powershell
+$version = "VERSION"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
+Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
+Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+```
+
+**Windows (arm64，PowerShell 管理员模式)：**
+```powershell
+$version = "VERSION"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
+Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
+Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+```
+
+### 验证安装
+
+```bash
+skillcheck --help
+# 预期输出: skillcheck — cross-platform hcloud-skills validator
+```
+
+### 快速使用
+
+```bash
+# 校验当前目录下的 Skill 仓库（--root 默认为当前目录）
+skillcheck validate
+
+# 指向外部 Skill 仓库
+skillcheck validate --root ./my-skills
+
+# 执行特定检查
+skillcheck check markdown-links --root .
+skillcheck scan secret trace --self-check
+```
+
+详细命令参考见 [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md)。
+
 ## 可用 Skills
 
 > 以下 Skills 可通过 Agent Runtime 引用，用于华为云指定产品的运维操作。

@@ -201,6 +201,81 @@ Load the generator meta-skill in your agent runtime, then prompt:
 
 See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md) and [AGENTS.md](AGENTS.md) for quality gates and workflow.
 
+## skillcheck — Skill Repository Validator
+
+`skillcheck` is a **standalone CLI binary** that validates a hcloud-skills repository (or any skill collection following the same layout). It runs all A-class checks (schema validation, frontmatter, YAML config, markdown links, secret scanning, etc.) with **zero external dependencies** — no Python, no Go toolchain required.
+
+### One-Click Install
+
+Replace `VERSION` with the [latest release tag](https://github.com/buhaiqing/hcloud-skills/releases) (e.g. `v0.1.0`).
+
+**Linux (amd64):**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-amd64
+chmod +x skillcheck-linux-amd64
+sudo mv skillcheck-linux-amd64 /usr/local/bin/skillcheck
+```
+
+**Linux (arm64):**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-arm64
+chmod +x skillcheck-linux-arm64
+sudo mv skillcheck-linux-arm64 /usr/local/bin/skillcheck
+```
+
+**macOS (arm64, Apple Silicon):**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-arm64
+chmod +x skillcheck-darwin-arm64
+sudo mv skillcheck-darwin-arm64 /usr/local/bin/skillcheck
+```
+
+**macOS (amd64, Intel):**
+```bash
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-amd64
+chmod +x skillcheck-darwin-amd64
+sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
+```
+
+**Windows (amd64, PowerShell as Administrator):**
+```powershell
+$version = "VERSION"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
+Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
+Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+```
+
+**Windows (arm64, PowerShell as Administrator):**
+```powershell
+$version = "VERSION"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
+Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
+Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+```
+
+### Verify Installation
+
+```bash
+skillcheck --help
+# Expected output: skillcheck — cross-platform hcloud-skills validator
+```
+
+### Quick Usage
+
+```bash
+# Validate your skill repository (default --root = current directory)
+skillcheck validate
+
+# Point to an external skill repo
+skillcheck validate --root ./my-skills
+
+# Run specific checks
+skillcheck check markdown-links --root .
+skillcheck scan secret trace --self-check
+```
+
+See [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md) for the full command reference.
+
 ## Available Skills
 
 > Load these skills in an agent runtime for Huawei Cloud product operations.
