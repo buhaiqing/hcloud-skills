@@ -86,6 +86,7 @@ def build_steps(python: str = sys.executable) -> list[Step]:
         Step("GCL alarm plan schema", (python, "scripts/validate_gcl_alarm_plan_schema.py", "--include-fixture")),
         Step("GCL alarm plan security", (python, "scripts/check_gcl_alarm_plan_security.py", "--include-fixture")),
         Step("GCL Tier-A conformance", (python, "scripts/check_gcl_conformance.py")),
+        Step("skillcheck equivalence (Python vs Go)", (python, "skillcheck/testdata/equivalence_test.py")),
     ]
 
 
