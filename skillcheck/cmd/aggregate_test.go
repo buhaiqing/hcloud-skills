@@ -67,6 +67,34 @@ func TestAggregateTraceSinceHours(t *testing.T) {
 	}
 }
 
+func TestAggregateTraceSelfCheck(t *testing.T) {
+	// --self-check aggregates the embedded healthy trace fixture and must
+	// produce a well-formed summary (total_runs>=1, pass_rate in [0,1]).
+	out := filepath.Join(t.TempDir(), "self-summary.json")
+	if err := runAggregate([]string{"trace", "--self-check", "--output", out}); err != nil {
+		t.Fatalf("self-check should succeed, got: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatal(err)
+	}
+	totals, ok := summary["totals"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing totals in self-check summary: %v", summary)
+	}
+	if numOf(totals["total_runs"]) < 1 {
+		t.Fatalf("expected total_runs>=1, got %v", totals["total_runs"])
+	}
+	passRate, ok := summary["pass_rate"].(float64)
+	if !ok || passRate < 0 || passRate > 1 {
+		t.Fatalf("expected pass_rate in [0,1], got %v", summary["pass_rate"])
+	}
+}
+
 func traceFixture(skill, status string, iters int, score float64) string {
 	// Build a minimal valid trace with `iters` iterations, each PASS at score.
 	type iter struct {

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/embed"
 )
 
 // runAggregate dispatches the `skillcheck aggregate` subcommands.
@@ -39,9 +41,15 @@ func runAggregateTrace(args []string) error {
 	root := fs.String("root", ".", "skill repository root")
 	sinceHours := fs.Int("since-hours", -1, "only traces modified within N hours")
 	output := fs.String("output", "", "write summary to FILE instead of stdout")
+	selfCheck := fs.Bool("self-check", false, "aggregate the embedded trace fixture instead of the repo")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	if *selfCheck {
+		return runAggregateSelfCheck(*output)
+	}
+
 	rootDir, err := filepath.Abs(*root)
 	if err != nil {
 		return err
@@ -109,6 +117,44 @@ func runAggregateTrace(args []string) error {
 		}
 		fmt.Printf("Wrote quality summary to %s (total_runs=%d, pass_rate=%.4f)\n",
 			outPath, intOf(summary["totals"].(map[string]any)["total_runs"]), summary["pass_rate"].(float64))
+		return nil
+	}
+	os.Stdout.Write(out)
+	return nil
+}
+
+// runAggregateSelfCheck aggregates the embedded healthy trace fixture and
+// verifies the resulting summary is well-formed (total_runs >= 1, pass_rate in
+// [0,1]). This proves the aggregation path is wired correctly inside the binary
+// without requiring repo trace files.
+func runAggregateSelfCheck(output string) error {
+	var trace map[string]any
+	if err := json.Unmarshal(embed.TraceHealthy, &trace); err != nil {
+		return fmt.Errorf("self-check: bad embedded trace fixture: %w", err)
+	}
+	traces := []map[string]any{trace}
+	summary := aggregateTraces(traces)
+
+	totalRuns, _ := summary["totals"].(map[string]any)["total_runs"].(int)
+	passRate, _ := summary["pass_rate"].(float64)
+	if totalRuns < 1 {
+		return fmt.Errorf("self-check: aggregated summary reported total_runs=%d", totalRuns)
+	}
+	if passRate < 0 || passRate > 1 {
+		return fmt.Errorf("self-check: aggregated summary reported pass_rate=%v", passRate)
+	}
+
+	out, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		return err
+	}
+	out = append(out, '\n')
+
+	if output != "" {
+		if wErr := os.WriteFile(output, out, 0o644); wErr != nil {
+			return wErr
+		}
+		fmt.Printf("Wrote self-check quality summary to %s (total_runs=%d, pass_rate=%.4f)\n", output, totalRuns, passRate)
 		return nil
 	}
 	os.Stdout.Write(out)
