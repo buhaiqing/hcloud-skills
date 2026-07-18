@@ -18,19 +18,7 @@ KMS alarm storms arise from API throttling, unauthorized key state changes, and 
 | Deletion storm | >= 3 keys enter `PENDING_DELETION` within 7 days | Critical |
 | Quota pressure | `kms_quota_usage_ratio` >= 0.8 | Warning |
 
-```bash
-# Query KMS API failure count from CES
-hcloud ces metric-data-query \
-  --metric_name=kms_key_api_fail_count \
-  --namespace=SYS.KMS \
-  --dim.0=key_id:{{user.key_id}} \
-  --start_time=$(date -v-30m +%s) --end_time=$(date +%s) --period=300
-
-# Audit key state changes via CTS
-hcloud cts query-events \
-  --event_name=ScheduleKeyDeletion \
-  --start_time=$(date -v-7d +%Y-%m-%dT%H:%M:%SZ) --limit 100
-```
+Query API failures via `hcloud ces metric-data-query --namespace=SYS.KMS --metric_name=kms_key_api_fail_count`; audit state changes via `hcloud cts query-events --event_name=ScheduleKeyDeletion`.
 
 ---
 
@@ -50,11 +38,10 @@ hcloud cts query-events \
 | Known bulk encryption job | Suppress throttling alarm if quota headroom exists (re-evaluate 15 min) |
 | Authorized deletion (ticketed) | Suppress deletion-storm alarm for that batch |
 
+Suppress a CES alarm during maintenance:
+
 ```bash
-# Suppress a CES alarm during maintenance (example — adjust args)
-hcloud ces alarm-action modify \
-  --alarm_id <alarm-id> \
-  --suppress_duration 3600
+hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 3600
 ```
 
 ---
@@ -65,11 +52,7 @@ hcloud ces alarm-action modify \
 1. Run detection commands; correlate with CTS to separate attack from planned op.
 
 ### Phase 2: Unauthorized Change
-```bash
-# Inspect who disabled/scheduled deletion (placeholder — verify subcommand)
-hcloud cts query-events --event_name=DisableKey --limit 50
-# Cancel scheduled deletion / re-enable key; rotate potentially exposed key
-```
+- Inspect who disabled/scheduled deletion via `hcloud cts query-events --event_name=DisableKey --limit 50`; cancel scheduled deletion / re-enable key; rotate potentially exposed key.
 
 ### Phase 3: Deletion Storm
 - Halt further `ScheduleKeyDeletion`; verify with key owners; check dependent services.

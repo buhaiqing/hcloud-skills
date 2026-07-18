@@ -18,9 +18,7 @@ HSS alarm storms arise from brute-force floods, malware outbreaks, and unhandled
 | Health score drop | Agent offline / unprotected / unhandled > 10 / vulns > 20 (score deduction) | Warning |
 
 ```bash
-# List recent security events
-hcloud hss list-events \
-  --host_name {{user.host_name}} \
+hcloud hss list-events --host_name {{user.host_name}} \
   --start_time=$(date -v-1d +%Y-%m-%dT%H:%M:%SZ) --limit 100
 
 # Group alerts by source IP to spot brute-force floods
@@ -46,11 +44,10 @@ hcloud hss list-events --limit 200 \
 | Auto-ban active | Suppress subsequent login-fail from banned IP (15 min) |
 | Auto-isolate active | Suppress malware duplicates from isolated host |
 
+Suppress a CES/HSS alarm during response:
+
 ```bash
-# Suppress a CES/HSS alarm during response (example — adjust args)
-hcloud ces alarm-action modify \
-  --alarm_id <alarm-id> \
-  --suppress_duration 1800
+hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 1800
 ```
 
 ---
@@ -61,10 +58,7 @@ hcloud ces alarm-action modify \
 1. Group events by `src_ip` / `host_name`; identify dominant pattern.
 
 ### Phase 2: Brute-Force Flood
-```bash
-# Auto-block offending source IP (delegate to VPC security group)
-hcloud hss block-ip --ip {{output.src_ip}}   # placeholder — verify subcommand
-```
+- Auto-block offending source IP via VPC security group (`hcloud hss block-ip --ip {{output.src_ip}}`).
 
 ### Phase 3: Malware Outbreak
 - Auto-isolate host; trigger vulnerability scan; verify health score recovery.

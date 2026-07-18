@@ -18,9 +18,7 @@ WAF alarm storms arise from attack spikes, rule bypass/decay, and certificate ex
 | Domain health | Attack volume > 10000 / 7d | Critical |
 
 ```bash
-# Query attack events from WAF
-hcloud waf list-events \
-  --domain {{user.domain}} \
+hcloud waf list-events --domain {{user.domain}} \
   --start_time=$(date -v-1d +%Y-%m-%dT%H:%M:%SZ) --limit 200
 
 # Group by source IP to spot multi-domain attack source
@@ -46,11 +44,10 @@ hcloud waf list-events --limit 500 \
 | CC auto-tighten active | Suppress CC duplicates from offending IP (15 min) |
 | Known good bot | Suppress rule-decay alarm if allowlist confirmed |
 
+Suppress a CES/WAF alarm during response:
+
 ```bash
-# Suppress a CES/WAF alarm during response (example — adjust args)
-hcloud ces alarm-action modify \
-  --alarm_id <alarm-id> \
-  --suppress_duration 1800
+hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 1800
 ```
 
 ---
@@ -61,10 +58,7 @@ hcloud ces alarm-action modify \
 1. Group events by `sip`; classify attack type (CC / SQLi / XSS / bot).
 
 ### Phase 2: Attack Surge
-```bash
-# Tighten CC rule for offending source (placeholder — verify subcommand)
-hcloud waf modify-policy --domain {{user.domain}} --cc-threshold 500
-```
+- Tighten CC rule for offending source: `hcloud waf modify-policy --domain {{user.domain}} --cc-threshold 500`.
 
 ### Phase 3: Cert Expiry
 - Renew certificate via SCM; bind to domain; verify no expiry alarm remains.
