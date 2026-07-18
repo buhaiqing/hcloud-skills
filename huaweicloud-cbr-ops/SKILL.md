@@ -489,3 +489,5 @@ its result is returned. Read-only are GCL-**exempt**.
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-05-21 | Initial CBR ops skill with vault, policy, backup, restore, replication |
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

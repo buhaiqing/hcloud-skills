@@ -529,3 +529,5 @@ func main() {
 | [智能运维](references/advanced/aiops-patterns.md) | AIOps 异常检测与自愈 |
 | [安全门](references/advanced/safety-gates.md) | 高危操作审批流程 |
 | [错误处理](references/error-handling.md) | 标准化错误诊断流程 |
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

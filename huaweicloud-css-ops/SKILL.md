@@ -752,3 +752,5 @@ This skill's operations are evaluated against Huawei Cloud's Well-Architected Fr
 - [Cost Assessment](references/well-architected-assessment.md#23-成本支柱-cost)
 - [Efficiency Assessment](references/well-architected-assessment.md#24-效率支柱-efficiency)
 - [Performance Assessment](references/well-architected-assessment.md#25-性能支柱-performance)
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

@@ -519,3 +519,5 @@ This skill's operations are evaluated against:
 - [FinOps Integration](references/well-architected-assessment.md#finops): Cost visibility, optimization matrix
 - [SecOps Integration](references/well-architected-assessment.md#secops): IAM, VPC, encryption, threat detection
 - [AIOps Integration](references/knowledge-base.md): Anomaly patterns, cross-skill delegation, knowledge base
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

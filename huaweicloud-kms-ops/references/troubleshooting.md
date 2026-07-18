@@ -56,3 +56,28 @@
 | RevokeGrant | ✅ | ❌ | ❌ |
 | ScheduleKeyDeletion | ✅ | ✅ | ❌ (already scheduled) |
 | CancelKeyDeletion | ❌ | ❌ | ✅ |
+
+## 官方错误码参考（API Error Codes）
+
+> **权威说明**：下表为华为云 KMS API **真实返回**的错误码（`KMS.*` 命名空间），故障定位时优先匹配。上文「Error Code Quick Reference」中的 `CMKAccessDenied` / `KeyNotFound` / `QuotaExceeded` / `InvalidParameter` 等为本 runbook 的**文档约定码**（语义化助记，非 API 原始返回码），仅用于正文 T1–T8 流程引用；当 `hcloud` 返回 `KMS.*` 码时以下表为准。
+
+来源：[华为云 KMS API 参考 — 附录：错误码](https://support.huaweicloud.com/api-kms/ErrorCode.html)。以下为真实 `KMS.*` 错误码（CSMS.* 为凭据库错误码，不在此列）。
+
+| Error Code | Meaning | Recovery |
+|---|---|---|
+| `KMS.0207` | 密钥不存在 | 选择有效密钥或先创建密钥 |
+| `KMS.0209` | 密钥已被禁用 | 启用该密钥 |
+| `KMS.0210` | 密钥处于计划删除状态，不可使用 | 启用密钥（取消计划删除） |
+| `KMS.0211` | 默认主密钥不支持该操作 | 使用普通 CMK 执行操作 |
+| `KMS.1104` | 密钥别名重复 | 使用其他别名 |
+| `KMS.1105` | 密钥数量过多 | 提升配额或删除无用密钥 |
+| `KMS.1201` | 密钥未处于禁用状态 | 先禁用密钥 |
+| `KMS.1301` | 密钥未处于启用状态 | 启用密钥 |
+| `KMS.1402` | 密钥已处于待删除状态 | 无需进一步操作 |
+| `KMS.2601` | 导入令牌过期（BYOK） | 获取新令牌 |
+| `KMS.2603` | 导入密钥与令牌中的 Key ID 不匹配 | 确保导入密钥的 Key ID 与令牌一致 |
+| `KMS.2605` | 令牌校验失败 | 获取新令牌 |
+| `KMS.1902` | `key_spec` 仅支持 AES_128 / AES_256 | 输入合法参数 |
+| `KMS.0301` | X-Auth-Token 非法或为空 | 重新获取 token 并确保字符串完整 |
+| `KMS.0303` | X-Auth-Token 已过期 | 重新获取 token |
+| `KMS.0306` | 无访问权限 | 联系管理员授予所需权限 |

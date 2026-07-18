@@ -175,6 +175,13 @@ Every generated skill MUST satisfy these five standards. Reference them througho
 - Cross-product delegation: document in Trigger & Scope, do NOT duplicate full flows
 - Naming: `huaweicloud-[product]-ops` (lowercase, hyphenated)
 
+### Standard 6: Asset Distillation Hook (复利资产沉淀钩子)
+- Every generated skill MUST inject a trailing line at the end of its `SKILL.md`:
+  `> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。`
+- This makes the skill self-aware of the Compound-Asset Distillation Loop (CADL) defined in root `AGENTS.md`, so any agent calling the skill sees the trigger signal after task completion.
+- The hook covers ALL reusable-asset dimensions — review patterns, fix patterns, cross-skill collaboration, verification findings, pitfall experience — NOT limited to CodeGraph integration.
+- Generator itself MUST also follow CADL after each generation run (distill generator-specific patterns into root or user-level AGENTS.md).
+
 ---
 
 ## Anti-Pattern Checklist

@@ -651,3 +651,4 @@ This skill is **GCL-optional** (per `AGENTS.md` §8). Most BSS operations are re
 - [references/knowledge-base.md](references/knowledge-base.md) — Common billing fault patterns
 - [references/rubric.md](references/rubric.md) — GCL rubric (v1, 5-dim, S1–S7 BSS-specific Safety rules)
 - [references/prompt-templates.md](references/prompt-templates.md) — GCL Generator / Critic / Orchestrator skeletons
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

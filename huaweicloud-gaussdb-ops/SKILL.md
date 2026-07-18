@@ -377,3 +377,5 @@ This skill's `references/prompt-templates.md` keeps GaussDB-specific overrides
 - [Example Output](assets/example-output.json) — Sample API responses
 - [GCL Rubric](references/rubric.md) — Adversarial quality gate (v1, 5-dim, S1–S17 GaussDB-specific Safety rules; S12/S13 DWS-gated)
 - [GCL Prompt Templates](references/prompt-templates.md) — Generator / Critic / Orchestrator skeletons
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

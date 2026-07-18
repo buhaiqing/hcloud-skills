@@ -649,3 +649,5 @@ not introduce bare `{...}` placeholders.
 | [错误处理](references/error-handling.md) | 标准化错误诊断流程 |
 | [GCL Rubric](references/rubric.md) | 对抗式质量门 (v1, 5 维, S1–S17 WAF 特定 Safety 规则) |
 | [GCL Prompt 模板](references/prompt-templates.md) | Generator / Critic / Orchestrator 模板 |
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

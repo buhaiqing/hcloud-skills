@@ -481,3 +481,5 @@ Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
 ## Well-Architected Assessment
 
 Refer to `references/well-architected-assessment.md` for the five-pillar assessment including FinOps, SecOps, and AIOps integration.
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

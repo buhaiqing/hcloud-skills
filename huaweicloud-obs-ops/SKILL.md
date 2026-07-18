@@ -507,3 +507,5 @@ This skill's operations are evaluated against:
 - [FinOps Integration](references/well-architected-assessment.md#finops): Cost visibility, idle detection
 - [SecOps Integration](references/well-architected-assessment.md#secops): Public bucket audit, SSE-KMS
 - [AIOps Integration](references/knowledge-base.md): Access anomaly detection, egress spike detection
+
+> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

@@ -104,6 +104,54 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 **不可压缩的内容**：Agent 可执行命令本身（参数、JSON paths）、错误恢复逻辑、安全门、Credential 规则、跨技能编排链。
 
+## 复利资产沉淀机制（Compound-Asset Distillation Loop, CADL）
+
+**这不是一条规范，而是一套工作闭环——任何实质任务完成后，Agent 必须走完「提取 → 判定落点 → 写入 → 门禁」才能结束。目的是让每次踩坑、每次评审、每次跨 skill 协作都变成下一次的可复用资产，形成复利。**
+
+### 为什么是机制而非规范
+
+单条规则（如"记得写 AGENTS.md"）会被忽略，因为无触发、无闭环。CADL 把沉淀变成工作流的**必经出口**：任务不做沉淀 = 任务未完成。Agent 调用任何 Skill 后都走到这一步，Skill 本身也通过下方「Skill 侧钩子」提示大模型。
+
+### 触发条件（满足任一即必须走 CADL，不局限 CodeGraph）
+
+- 多步 / 跨文件任务完成
+- 跨 Skill 协作（用了 delegation matrix 或并行 agent）
+- 评审 / 修复循环（如 Generic Critic Loop、GCL、self-review）
+- 发现 repo 缺陷 / 坑（即使不在本次 scope，也记）
+- 验证中发现预存 FAIL 并归因
+- 用户给出可复用的工作流偏好（如"用双写子命令绕过 CLI bug"）
+
+### 闭环步骤
+
+```
+1. 提取   → 从刚完成的任务中抽象出可复用模式：
+            踩坑避免 / 评审维度 / 协作模式 / 验证命令 / 复用 helper
+            格式："问题 → 反模式 → 正确做法（含代码示例）"
+2. 落点判定 → 离开本仓库还有用？ → 用户级 ~/.config/opencode/AGENTS.md
+            仅本仓库适用？     → 项目级 AGENTS.md（本文件）
+            是某 skill 专属可调用的能力？ → 独立 Skill 文件（经 generator）
+3. 写入   → 可执行、有示例、有边界、先 grep 现有 AGENTS.md 确认未覆盖（不重复）
+4. 门禁   → 写入前查 wc -l，本文件 ≥500 行先精简再写（见 AGENTS.md 行数门禁）
+5. 复用   → 下次同类任务，Agent 读 AGENTS.md 即获得该资产 → 复利生效
+```
+
+### Skill 侧钩子（让每个 Skill 自带沉淀意识）
+
+- **源头**：`huaweicloud-skill-generator` 在生成每个 skill 时，须在 SKILL.md 末尾注入一行：
+  `> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。`
+  未来所有 `huaweicloud-*-ops` 自动继承此意识。
+- **现存 skill**：逐批在 SKILL.md 末尾补同一行提示，使大模型调用任何 skill 后都看到触发信号。
+- **大模型侧**：Agent 在任意 skill 调用结束前，主动检查 CADL 触发条件，而非等用户提醒。
+
+### 反模式（违反 CADL）
+
+| 反模式 | 正确做法 |
+|---|---|
+| 任务做完就结束，不沉淀 | 走完 CADL 闭环再交付 |
+| 把一次性上下文当资产写进 AGENTS.md | 只沉淀跨任务可复用的模式 |
+| 重复已有条目 | 写入前 grep 确认未覆盖 |
+| 只在 CodeGraph 相关任务才沉淀 | 评审/修复/协作/验证都触发 |
+
 ## Skill Update Rule: 2-Round Self-Reflection
 
 **After every skill update or creation, execute 2 mandatory self-reflection rounds and auto-fix all discovered issues before finishing.**
@@ -261,7 +309,6 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | Skipping safety gate on destructive ops | Add explicit confirmation step |
 | Hardcoding regions/timeouts | Use `{{env.*}}` / `{{user.*}}` placeholders |
 | One skill does everything | Single product, single resource model; delegate cross-product ops |
-| SKILL.md duplicates references/ | SKILL.md = entry point; references = depth; no overlap |
 
 ## Delegation Matrix (Common Cross-Product Operations)
 
@@ -336,6 +383,14 @@ Build-time 2-round self-reflection and runtime GCL are independent gates. A clea
 ## CodeGraph Integration — 代码变动即时同步
 
 CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Server（`.mcp.json`），Agent 启动时自动获得 `codegraph_explore` 工具。索引数据位于全局 `~/`.omo/codegraph/`（仓库内 `.codegraph` 为软链，已被 `.gitignore` 忽略）。
+
+### MANDATORY: 集成 CodeGraph 前先 sync
+
+> **铁律 — 接入前置纪律。** 任何依赖 CodeGraph 的操作（启动 MCP server、`codegraph explore/impact/callees`、CI 索引检查、或任何把 codegraph 当作事实来源的步骤）**之前**，必须先跑一次 `codegraph sync --quiet`。
+
+**Why**: 本地索引可能落后于工作区（他人提交、自己未提交的改动、`.gitignore` 软链延迟）。在过期索引上做 `explore`/`impact` 会得到"查无此符号"或"调用方缺失"的假阴性，误导后续修改。先 sync 是把 CodeGraph 当可信源的前置条件，与"变更后 sync"互补：前者保证**读**的是最新，后者保证**写**后别人读到的是最新。
+
+**例外**: 仅当能确认索引新鲜（`codegraph status` 显示 `up-to-date` 且距上次变更 < 几分钟）时可跳过；其余情况一律先 sync 再集成。
 
 ### MANDATORY: 每次代码变更后必须 sync
 
