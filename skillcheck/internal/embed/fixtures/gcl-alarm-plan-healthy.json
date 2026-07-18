@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-06-19T00:00:00Z",
+  "cloud": "huaweicloud",
+  "metric_namespace": "CUSTOM.GCL",
+  "summary_path": "scripts/fixtures/gcl-quality-summary-healthy.json",
+  "thresholds": {
+    "pass_rate_warn": 0.85,
+    "pass_rate_critical": 0.70,
+    "max_iter_warn_count": 3,
+    "safety_fail_alert": true
+  },
+  "evaluation": {
+    "pass_rate": 1.0,
+    "safety_fail": 0,
+    "max_iter": 0,
+    "breaches": [],
+    "ok": true
+  },
+  "alarm_plan": [
+    {
+      "op": "create-or-update-alarm-rule",
+      "name": "gcl-overall-pass-rate-critical",
+      "namespace": "CUSTOM.GCL",
+      "metric_name": "gcl_overall_pass_rate",
+      "comparison_operator": "LT",
+      "threshold": 0.7,
+      "period": 300,
+      "evaluation_periods": 3,
+      "severity": "CRITICAL",
+      "description": "Fires when GCL pass_rate is below critical threshold."
+    },
+    {
+      "op": "create-or-update-alarm-rule",
+      "name": "gcl-overall-pass-rate-warn",
+      "namespace": "CUSTOM.GCL",
+      "metric_name": "gcl_overall_pass_rate",
+      "comparison_operator": "LT",
+      "threshold": 0.85,
+      "period": 300,
+      "evaluation_periods": 3,
+      "severity": "WARN",
+      "description": "Fires when GCL pass_rate is below warning threshold."
+    },
+    {
+      "op": "create-or-update-alarm-rule",
+      "name": "gcl-safety-fail-critical",
+      "namespace": "CUSTOM.GCL",
+      "metric_name": "gcl_safety_fail_count",
+      "comparison_operator": "GT",
+      "threshold": 0,
+      "period": 60,
+      "evaluation_periods": 1,
+      "severity": "CRITICAL",
+      "description": "Fires on any GCL SAFETY_FAIL."
+    },
+    {
+      "op": "create-or-update-alarm-rule",
+      "name": "gcl-max-iter-warning",
+      "namespace": "CUSTOM.GCL",
+      "metric_name": "gcl_max_iter_count",
+      "comparison_operator": "GT",
+      "threshold": 3,
+      "period": 300,
+      "evaluation_periods": 2,
+      "severity": "WARN",
+      "description": "Fires when GCL MAX_ITER count exceeds threshold."
+    }
+  ]
+}

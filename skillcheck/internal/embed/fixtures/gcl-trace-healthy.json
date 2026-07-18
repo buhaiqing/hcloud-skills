@@ -1,0 +1,47 @@
+{
+  "trace_schema_version": "v1",
+  "skill": "huaweicloud-ecs-ops",
+  "request": "list servers",
+  "operation_intent": {
+    "operation": "list",
+    "resource_scope": ["*"],
+    "expected_state": "ok",
+    "safety_class": "read-only"
+  },
+  "rubric_version": "1.0",
+  "masked_fields": ["access_key"],
+  "iterations": [
+    {
+      "iter": 1,
+      "generator": {
+        "command": "hcloud ECS ListServers --limit 10",
+        "exit_code": 0,
+        "result_excerpt": "servers: 3 items",
+        "stdout_len": 256,
+        "stderr_len": 0,
+        "args": {
+          "iter": 1,
+          "critic_feedback": null
+        }
+      },
+      "critic": {
+        "scores": {
+          "correctness": 1.0,
+          "safety": 1.0,
+          "idempotency": 1.0,
+          "traceability": 1.0,
+          "spec_compliance": 1.0
+        },
+        "suggestions": [],
+        "blocking": false
+      },
+      "decision": "PASS"
+    }
+  ],
+  "final": {
+    "status": "PASS",
+    "iter": 1,
+    "output": null,
+    "failure_pattern": null
+  }
+}

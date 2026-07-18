@@ -237,6 +237,9 @@ gcl-quality-summary-*.json
 gcl-alarm-plan-*.json
 **/gcl-alarm-plan-*.json
 
+# Allow embed fixtures (committed into binary via //go:embed)
+!skillcheck/internal/embed/fixtures/*.json
+
 # macOS
 .DS_Store
 .audit/
