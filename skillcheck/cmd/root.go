@@ -46,8 +46,11 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "skillcheck — cross-platform hcloud-skills validator")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  skillcheck validate --root <dir>                   validate a skill repository")
-	fmt.Fprintln(w, "  skillcheck validate schema <kind> --file <path>   validate a JSON instance against an embedded schema")
+	fmt.Fprintln(w, "  skillcheck validate --root <dir>                             validate a skill repository")
+	fmt.Fprintln(w, "  skillcheck validate schema <kind> --file <path>             validate a JSON instance against an embedded schema")
+	fmt.Fprintln(w, "  skillcheck validate frontmatter --root <dir>                validate SKILL.md frontmatter")
+	fmt.Fprintln(w, "  skillcheck validate eval-queries --root <dir>               validate assets/eval_queries.json")
+	fmt.Fprintln(w, "  skillcheck validate product-assessment --root <dir>         validate well-architected-assessment.md examples")
 	fmt.Fprintln(w, "  skillcheck check ...    (planned, batch B3)")
 	fmt.Fprintln(w, "  skillcheck scan ...     (planned, batch B3)")
 	fmt.Fprintln(w, "  skillcheck aggregate ... (planned, batch B3)")
@@ -61,6 +64,12 @@ func runValidate(args []string) error {
 	switch args[0] {
 	case "schema":
 		return runValidateSchema(args[1:])
+	case "frontmatter":
+		return runValidateFrontmatter(args[1:])
+	case "eval-queries":
+		return runValidateEvalQueries(args[1:])
+	case "product-assessment":
+		return runValidateProductAssessment(args[1:])
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
