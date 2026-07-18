@@ -474,16 +474,29 @@ sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
 ```powershell
 $version = "VERSION"
 $url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
-Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
-Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
+Invoke-WebRequest -Uri $url -OutFile $out
+# 若 PATH 中未包含 .local\bin 则自动添加
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*\.local\bin*") {
+  [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
+}
+Write-Host "已安装到 $out — 重启终端或运行：`$env:Path += `";$env:USERPROFILE\.local\bin`""
 ```
 
 **Windows (arm64，PowerShell 管理员模式)：**
 ```powershell
 $version = "VERSION"
 $url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
-Invoke-WebRequest -Uri $url -OutFile "skillcheck.exe"
-Move-Item .\skillcheck.exe C:\Windows\System32\skillcheck.exe
+$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
+Invoke-WebRequest -Uri $url -OutFile $out
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*\.local\bin*") {
+  [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
+}
+Write-Host "已安装到 $out — 重启终端或运行：`$env:Path += `";$env:USERPROFILE\.local\bin`""
 ```
 
 ### 验证安装
