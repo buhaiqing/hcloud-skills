@@ -150,22 +150,6 @@ func ValidateValue(value, schema any, path string) []string {
 
 func validateObject(obj, schemaMap map[string]any, path string) []string {
 	var errors []string
-	fmt.Printf("DBG validateObject path=%q requiredPresent=%v objKeys=%d\n", path, schemaMap["required"] != nil, len(obj))
-	fmt.Printf("DBG validateObject path=%q requiredPresent=%v objKeys=%d\n", path, schemaMap["required"] != nil, len(obj))
-	if path == "$" {
-		for _, k := range []string{"version","metric_namespace","totals","pass_rate","by_skill"}{
-			_, pr := obj[k]
-			fmt.Printf("DBG path=$ obj[%q]=%v required-type=%T\n", k, pr, schemaMap["required"])
-		}
-	}
-	if path == "$" {
-		for _, k := range []string{"version","metric_namespace","totals","pass_rate","by_skill"}{
-			_, pr := obj[k]
-			_, sr := schemaMap["required"]
-			_ = sr
-			fmt.Printf("DBG path=$ obj[%q]=%v\n", k, pr)
-		}
-	}
 
 	if req, ok := schemaMap["required"].([]any); ok {
 		for _, key := range req {
