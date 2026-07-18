@@ -40,10 +40,12 @@ clean: ## Remove build artifacts
 	rm -rf bin
 
 VERSION ?= $(shell git describe --tags --dirty 2>/dev/null || echo "dev")
-release: all ## Build, tag, and push to trigger GitHub Release (VERSION=vX.Y.Z)
-	git tag $(VERSION)
-	git push origin $(VERSION)
-	@echo "Released $(VERSION) — CI will build + publish artifacts"
+# Normalize: prepend "v" if VERSION doesn't start with "v"
+RELEASE_TAG = $(if $(filter v%,$(VERSION)),$(VERSION),v$(VERSION))
+release: all ## Build, tag, and push to trigger GitHub Release (VERSION=X.Y.Z or vX.Y.Z)
+	git tag $(RELEASE_TAG)
+	git push origin $(RELEASE_TAG)
+	@echo "Released $(RELEASE_TAG) — CI will build + publish artifacts"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
