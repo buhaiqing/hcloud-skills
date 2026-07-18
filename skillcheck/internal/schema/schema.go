@@ -270,6 +270,54 @@ func ResolveSchemaRefs(schema any) (map[string]any, error) {
 	return resolvedMap, nil
 }
 
+// ValidateDef validates an instance against a single named entry in a
+// schema's "$defs" (e.g. one of the eval-queries union contracts). It mirrors
+// scripts/validate_eval_queries_schema.py:_schema_def + validate_value, which
+// wrap a {"$ref": "#/$defs/<name>", "$defs": ...} document and validate it.
+// This is required because such schemas have no top-level required/properties
+// and ValidateFile would trivially accept any instance.
+func ValidateDef(schemaData []byte, defName string, instanceData []byte) ([]string, error) {
+	decode := func(b []byte) (any, error) {
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.UseNumber()
+		var v any
+		if err := dec.Decode(&v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	}
+	schema, err := decode(schemaData)
+	if err != nil {
+		return nil, fmt.Errorf("parse schema: %w", err)
+	}
+	root, ok := schema.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("schema root must be an object")
+	}
+	defs, ok := root["$defs"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("schema has no $defs")
+	}
+	if _, found := defs[defName]; !found {
+		return nil, fmt.Errorf("unknown schema $def: %s", defName)
+	}
+	// Wrap the chosen def in a ref-bearing document so ResolveSchemaRefs
+	// inlines any nested #/$defs/* references.
+	wrapped := map[string]any{
+		"$ref":  "#/$defs/" + string(defName),
+		"$defs": defs,
+	}
+	resolved, err := ResolveSchemaRefs(wrapped)
+	if err != nil {
+		return nil, err
+	}
+	instance, err := decode(instanceData)
+	if err != nil {
+		return nil, fmt.Errorf("parse instance: %w", err)
+	}
+	return ValidateValue(instance, resolved, "$"), nil
+}
+
 // ValidateFile validates an instance JSON byte slice against a schema byte
 // slice, returning collected error messages. Numbers are decoded with
 // UseNumber so integers and floats are distinguished, matching the Python

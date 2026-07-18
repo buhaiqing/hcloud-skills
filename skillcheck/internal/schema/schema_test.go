@@ -150,3 +150,45 @@ func TestResolveSchemaRefs(t *testing.T) {
 		t.Error("unknown $ref should error")
 	}
 }
+
+// TestValidateDef verifies ValidateDef validates an instance against a single
+// named $def within a schema that has no top-level required/properties (the
+// eval-queries "union contract" shape). Mirrors
+// scripts/validate_eval_queries_schema.py:_schema_def + validate_value.
+func TestValidateDef(t *testing.T) {
+	schemaData := []byte(`{
+	  "$defs": {
+	    "nonEmptyString": {"type": "string", "minLength": 1},
+	    "matchArrayEntry": {
+	      "type": "object",
+	      "required": ["query", "should_match", "skill"],
+	      "properties": {
+	        "query": {"$ref": "#/$defs/nonEmptyString"},
+	        "should_match": {"type": "boolean"},
+	        "skill": {"$ref": "#/$defs/nonEmptyString"},
+	        "reason": {"type": "string"}
+	      },
+	      "additionalProperties": false
+	    }
+	  }
+	}`)
+
+	good := []byte(`{"query":"list ecs","should_match":true,"skill":"huaweicloud-ecs-ops"}`)
+	if errs, err := ValidateDef(schemaData, "matchArrayEntry", good); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if len(errs) != 0 {
+		t.Errorf("valid matchArrayEntry should pass, got %v", errs)
+	}
+
+	bad := []byte(`{"query":"","should_match":true}`)
+	if errs, err := ValidateDef(schemaData, "matchArrayEntry", bad); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if len(errs) == 0 {
+		t.Error("missing required fields / empty query should fail")
+	}
+
+	// unknown def name must surface an error.
+	if _, err := ValidateDef(schemaData, "nope", good); err == nil {
+		t.Error("unknown $def name should error")
+	}
+}

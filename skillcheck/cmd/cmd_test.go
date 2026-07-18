@@ -82,3 +82,52 @@ func TestExecuteUnknownSubcommand(t *testing.T) {
 		t.Fatal("unknown subcommand should error")
 	}
 }
+
+// TestValidateSchemaAlarmPlanHealthy validates the embedded healthy
+// alarm-plan fixture against the alarm-plan schema (T5 coverage for the
+// 4th validate-schema kind).
+func TestValidateSchemaAlarmPlanHealthy(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "alarm-plan.json")
+	if err := os.WriteFile(path, embed.AlarmPlanHealthy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runValidateSchema([]string{"alarm-plan", "--file", path}); err != nil {
+		t.Fatalf("healthy alarm-plan fixture should validate, got: %v", err)
+	}
+}
+
+// TestValidateSchemaEvalQueries validates a constructed eval_queries instance
+// (matchArrayEntry array shape) against the eval-queries union schema (T5
+// coverage for the 4th kind). The schema is a $defs-only union contract, so we
+// validate the specific $def via format auto-detection.
+func TestValidateSchemaEvalQueries(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "eval-queries.json")
+	// matchArrayEntry requires query/should_match/skill; the whole file is an
+	// array of entries (mirrors scripts/validate_eval_queries_schema.py).
+	instance := []byte(`[
+	  {"query":"list ecs instances","should_match":true,"skill":"huaweicloud-ecs-ops","reason":"smoke"},
+	  {"query":"delete everything","should_match":false,"skill":"huaweicloud-ecs-ops","reason":"negative"}
+	]`)
+	if err := os.WriteFile(path, instance, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runValidateSchema([]string{"eval-queries", "--file", path}); err != nil {
+		t.Fatalf("valid eval-queries instance should validate, got: %v", err)
+	}
+}
+
+// TestValidateSchemaEvalQueriesInvalid confirms an invalid eval_queries
+// instance (missing required fields, empty query) is rejected.
+func TestValidateSchemaEvalQueriesInvalid(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "eval-queries-bad.json")
+	instance := []byte(`[{"query":"","should_match":true}]`)
+	if err := os.WriteFile(path, instance, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runValidateSchema([]string{"eval-queries", "--file", path}); err == nil {
+		t.Fatal("invalid eval-queries instance should fail validation")
+	}
+}
