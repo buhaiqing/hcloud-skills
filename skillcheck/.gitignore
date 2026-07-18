@@ -1,0 +1,2 @@
+# Build output produced by `make build` / `go build`.
+/bin/
