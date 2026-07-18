@@ -51,11 +51,11 @@
 
 ### 🔶 skillcheck-b-class.md — DoD 未完成
 
-**2026-07-18 更新**: Phase 1 部分完成（L1-A ✅ L1-C ✅ L5-A ✅ L5-B ✅），其余 Phase 未开始。
+**2026-07-18 更新**: Phase 1 部分完成（L1-A ✅ L1-B ✅ L1-C ✅ L5-A ✅ L5-B ✅），其余 Phase 未开始。
 
 | # | DoD 项 | 状态 | 说明 |
 |---|--------|------|------|
-| 1 | Phase 1~4 全部完成并合并 main | 🔄 | Phase 1 已完成（L1-A ✅ L1-C ✅ L5-A ✅ L5-B ✅）；Phase 1.5/2/3/4 未开始 |
+| 1 | Phase 1~4 全部完成并合并 main | 🔄 | Phase 1 已完成（L1-A ✅ L1-B ✅ L1-C ✅ L5-A ✅ L5-B ✅）；Phase 1.5/2/3/4 未开始 |
 | 2 | 8 个 Python 脚本删除 | ❌ | Phase 4（L5-C）待执行 |
 | 3 | `check_py310_compat.py` 删除，`ruff.toml` 删除 | ❌ | Phase 4（L5-D）待执行 |
 | 4 | `scripts/install_hook.go` + make targets | ✅ | 已完成 (b425927) |
@@ -83,7 +83,7 @@ docs/superpowers/specs/aiops-optimization.md  ← 不存在（应该有对应 pl
 
 ## 执行建议
 
-1. **继续**: `skillcheck-b-class.md` — 下一个任务：Phase 1.5 (L1-B: runner.go，依赖 L1-A sanitizer)
+1. **继续**: `skillcheck-b-class.md` — Phase 1 完成！下一个任务：Phase 2 (L2-A~D: 4 路并行校验命令)
 2. **继续**: Phase 2 (L2-A~D: 4 路并行校验命令)
 3. **继续**: Phase 3 (L3-A~B: safety-class + resource-scope，依赖 L1-A；L4-A~B: gcl run + alarm-wire，依赖 L1-B)
 4. **收尾**: Phase 4 清理（L5-C~L5-E: 删除 Python 脚本、更新文档）
