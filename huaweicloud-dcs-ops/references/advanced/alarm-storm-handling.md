@@ -18,23 +18,7 @@ DCS alarm storms typically arise from resource exhaustion cascades. Signals come
 | Network saturation | `bytes_out` > 80% of bandwidth | Warning |
 | Resource cascade | `cpu` / `memory` / `clients` all > 80% simultaneously | Critical |
 
-```bash
-# Query memory + eviction signals from CES (SYS.DCS namespace)
-hcloud ces metric-data-query \
-  --metric_name=memory_usage \
-  --namespace=SYS.DCS \
-  --dim.0=instance_id:{{user.instance_id}} \
-  --start_time=$(date -v-30m +%s) \
-  --end_time=$(date +%s) \
-  --period=300
-
-# Query evicted / hit-rate signals
-hcloud ces metric-data-query \
-  --metric_name=evicted_keys \
-  --namespace=SYS.DCS \
-  --dim.0=instance_id:{{user.instance_id}} \
-  --start_time=$(date -v-30m +%s) --end_time=$(date +%s) --period=300
-```
+Query these signals via `hcloud ces metric-data-query --namespace=SYS.DCS` (one call per metric, e.g. `memory_usage`, `evicted_keys`).
 
 ---
 
@@ -55,11 +39,10 @@ hcloud ces metric-data-query \
 | Known load test | Suppress connection/latency alarms for test window |
 | Confirmed OOM cascade | Suppress `evicted_keys` duplicates once OOM warning fired (15 min, re-evaluate) |
 
+Suppress a CES alarm during maintenance:
+
 ```bash
-# Suppress a CES alarm during maintenance (example — adjust args)
-hcloud ces alarm-action modify \
-  --alarm_id <alarm-id> \
-  --suppress_duration 3600
+hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 3600
 ```
 
 ---
@@ -71,11 +54,7 @@ hcloud ces alarm-action modify \
 2. Confirm whether load is legitimate (peak traffic) or anomalous (attack/leak).
 
 ### Phase 2: OOM / Eviction
-```bash
-# Inspect current memory clients and keyspace (placeholder — verify subcommand)
-hcloud dcs show-instance --instance {{user.instance_id}}
-# Add capacity or enable maxmemory-policy via instance config (delegate to DCS)
-```
+- Inspect instance state with `hcloud dcs show-instance --instance {{user.instance_id}}`; add capacity or enable `maxmemory-policy` via instance config (delegate to DCS).
 
 ### Phase 3: Connection Exhaustion
 - Scale max_clients or kill idle connections; verify `connected_clients` trend returns below 80%.

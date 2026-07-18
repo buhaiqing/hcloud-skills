@@ -18,21 +18,7 @@ DMS alarm storms come from queue backlog, broker resource exhaustion, and throug
 | Producing burst | `kafka_messages_in_rate` > 70% of max TPS | Warning |
 | RabbitMQ backlog | `rabbitmq_queue_length` > 50000 OR `messages_unack` > 10000 | Critical |
 
-```bash
-# Query consumer lag from CES
-hcloud ces metric-data-query \
-  --metric_name=kafka_messages_consumer_lag \
-  --namespace=SYS.DMS \
-  --dim.0=instance_id:{{user.instance_id}} \
-  --start_time=$(date -v-30m +%s) --end_time=$(date +%s) --period=300
-
-# Compare in/out rate to distinguish producer burst vs consumer stall
-hcloud ces metric-data-query \
-  --metric_name=kafka_messages_in_total \
-  --namespace=SYS.DMS \
-  --dim.0=instance_id:{{user.instance_id}} \
-  --start_time=$(date -v-30m +%s) --end_time=$(date +%s) --period=300
-```
+Query these signals via `hcloud ces metric-data-query --namespace=SYS.DMS` (compare `kafka_messages_consumer_lag` against `_in_total` / `_out_total` to disambiguate producer burst vs consumer stall).
 
 ---
 
@@ -52,11 +38,10 @@ hcloud ces metric-data-query \
 | Known producer campaign | Suppress lag alarm if `_in_total` burst is expected (15 min window) |
 | Consumer stall under maintenance | Suppress lag duplicates once root cause confirmed |
 
+Suppress a CES alarm during maintenance:
+
 ```bash
-# Suppress a CES alarm during maintenance (example — adjust args)
-hcloud ces alarm-action modify \
-  --alarm_id <alarm-id> \
-  --suppress_duration 3600
+hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 3600
 ```
 
 ---
@@ -67,11 +52,7 @@ hcloud ces alarm-action modify \
 1. Run detection commands; classify as producer burst or consumer stall.
 
 ### Phase 2: Consumer Stall
-```bash
-# Inspect consumer groups (placeholder — verify subcommand)
-hcloud dms show-consumer-group --instance {{user.instance_id}} --group {{user.group}}
-# Scale consumer pods via CCE or restart stalled consumers
-```
+- Inspect consumer groups with `hcloud dms show-consumer-group --instance {{user.instance_id}} --group {{user.group}}`; scale consumer pods via CCE or restart stalled consumers.
 
 ### Phase 3: Broker Pressure
 - Expand broker storage / add broker; verify `broker_disk_usage` < 85%.

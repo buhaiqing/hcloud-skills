@@ -74,36 +74,27 @@ suppression_rules:
 
 ### 4.1 P1 — 主备切换/只读/存储满
 
-```
 立即动作:
 1. 确认主备切换状态与 RDS-P001 关联
-2. 存储满 → 扩容或清理: hcloud rds expand-volume <instance_id> --size <gb>
+2. 存储满 → 扩容或清理: `hcloud rds expand-volume <instance_id> --size <gb>`
 3. 非预期只读 → 排查只读副本权重与磁盘水位
 4. 10min 未恢复 → 升级 on-call
-```
+
+### 4.2 P2 — 连接饱和 + CPU 高 (RDS-P002)
+- 查看连接来源 Top、杀除空闲长连接、查看实例指标与主备延迟：
 
 ```bash
-# 查看实例指标快照
+hcloud rds list-connections <instance_id> --top 20
+hcloud rds kill-session <instance_id> --idle-minutes 30
 hcloud rds show-metrics <instance_id> --metrics rds001_cpu_usage,rds002_mem_usage,rds004_disk
-# 查看主备延迟
 hcloud rds show-replication <instance_id>
 ```
 
-### 4.2 P2 — 连接饱和 + CPU 高 (RDS-P002)
-
-```bash
-# 查看连接来源 Top
-hcloud rds list-connections <instance_id> --top 20
-# 杀除空闲长连接
-hcloud rds kill-session <instance_id> --idle-minutes 30
-```
-
 ### 4.3 P3 — 慢查询/备份失败
+- 慢查询明细与备份重试：
 
 ```bash
-# 慢查询明细
 hcloud rds show-slow-log <instance_id> --threshold 5000
-# 备份重试
 hcloud rds retry-backup <instance_id>
 ```
 
