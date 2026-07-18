@@ -61,7 +61,7 @@ def build_steps(python: str = sys.executable) -> list[Step]:
             ),
         ),
         # skillcheck equivalence test (Python vs Go, A-class coverage)
-        Step("skillcheck equivalence (Python vs Go)", (python, "skillcheck/testdata/equivalence_test.py")),
+        Step("skillcheck smoke test (embedded fixtures)", (python, "skillcheck/testdata/equivalence_test.py")),
     ]
 
 
