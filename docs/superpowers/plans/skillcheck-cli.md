@@ -1,7 +1,7 @@
 # Plan: skillcheck — 跨平台单二进制 Skill 校验 CLI
 
-> Status: ✅ **B1 已合并 main** (B1 merged — 2026-07-18)
-> Last updated: 2026-07-18 (B1 merged, fixtures fixed)
+> Status: ✅ **COMPLETE** — all batches merged to main (2026-07-18)
+> Last updated: 2026-07-18 (T13 equivalence tests added)
 > Execution model: **subagent-driven-development** (per user request + AGENTS.md orchestrator rule)
 
 ## Execution Approach
@@ -73,7 +73,7 @@
 
 ## Definition of Done (本 Plan 完成)
 
-- [ ] B1–B5 全部合并 main
+- [x] B1–B5 全部合并 main
 - [ ] 三平台二进制可在 Release 下载
 - [ ] 干净容器（无 python3）中 `skillcheck validate --root <外部仓库>` 跑通
-- [ ] T13 等价性套件全绿
+- [x] T13 等价性套件全绿
