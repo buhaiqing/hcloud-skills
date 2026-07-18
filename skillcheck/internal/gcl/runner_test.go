@@ -49,17 +49,16 @@ func TestDecide_Retry(t *testing.T) {
 	}
 }
 
-func TestDecide_MaxIter(t *testing.T) {
-	// This test mirrors Python: when all pass but max_iter exhausted (called after loop).
-	// The loop calls Decide after MAX_ITER; with all below threshold → MAX_ITER.
-	// Note: Python decides RETRY for below threshold during loop; MAX_ITER is a loop-exit status.
-	// In Go we distinguish by calling context, but the test covers the "still below threshold after max iter" case.
+func TestDecide_AllBelowThreshold(t *testing.T) {
+	// All dimensions below threshold → RETRY.
+	// Note: MAX_ITER is a loop-exit status, not a Decide() return value.
+	// Decide() only returns PASS | RETRY | SAFETY_FAIL.
 	scores := map[string]float64{
-		"correctness":      0.0,
-		"safety":           1.0,
-		"idempotency":      0.0,
-		"traceability":     0.0,
-		"spec_compliance":  0.0,
+		"correctness":     0.0,
+		"safety":          1.0,
+		"idempotency":     0.0,
+		"traceability":    0.0,
+		"spec_compliance": 0.0,
 	}
 	if got := Decide(scores); got != "RETRY" {
 		t.Errorf("Decide all-fail: got %q, want RETRY", got)
@@ -162,29 +161,22 @@ func TestRun_SafetyFail(t *testing.T) {
 }
 
 func TestRun_MaxIter(t *testing.T) {
-	// A command that always fails structurally → RETRY every iter → MAX_ITER.
-	// Use a low-score command: exit 1 with low scores.
-	// We can't easily make structural critic return below-threshold scores for every iter
-	// without an external critic. The structural critic gives 0.5 on some dimensions but
-	// correctness/safety are determined by exit code and leaks.
-	// To test MAX_ITER we need a command that keeps getting RETRY decisions.
-	// Since structural critic gives correctness=1.0 when exit=0, and safety=1.0 when no leak,
-	// the only way to get RETRY is to use an external critic that returns scores below threshold.
-	// For this test we verify that when we hit MaxIter, we get exit code 1.
-	// We use a command that has empty output (traceability=0.5, below 0.5? No, 0.5 == threshold).
-	// Actually structural critic returns traceability=1.0 when both command and excerpt exist.
-	// This test is inherently limited without an external critic; verify exit code for PASS at minimum.
+	// A command that exits 1 (structural critic: correctness=0, safety=1.0 → RETRY).
+	// With MaxIter=1, loop exhausts → MAX_ITER → exit 1.
 	cfg := RunConfig{
 		Skill:   "huaweicloud-ecs-ops",
 		Request: "list servers",
-		Command: "echo ok",
+		Command: "echo '{\"error\":1}' && exit 1", // stderr JSON → but exit 1 is enough
 		MaxIter: 1,
 		Timeout: 10,
 	}
 	result := Run(cfg)
-	// echo ok → exit 0 → PASS → exit 0
-	if result.ExitCode != 0 {
-		t.Errorf("Run echo ok: exit code %d, want 0", result.ExitCode)
+	// exit 1 → correctness=0 → RETRY → MAX_ITER → exit 1
+	if result.ExitCode != 1 {
+		t.Errorf("Run with exit 1: exit code %d, want 1 (MAX_ITER)", result.ExitCode)
+	}
+	if result.TracePath == "" {
+		t.Error("TracePath should not be empty after MAX_ITER Run")
 	}
 }
 
