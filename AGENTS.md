@@ -332,3 +332,45 @@ Build-time 2-round self-reflection and runtime GCL are independent gates. A clea
 - `docs/gcl-spec.md` — full runtime GCL spec
 - `huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json` — quality summary contract
 - `huaweicloud-ces-ops/references/gcl-monitoring.md` — CES monitoring design
+
+## CodeGraph Integration — 代码变动即时同步
+
+CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Server（`.mcp.json`），Agent 启动时自动获得 `codegraph_explore` 工具。索引数据位于全局 `~/`.omo/codegraph/`（仓库内 `.codegraph` 为软链，已被 `.gitignore` 忽略）。
+
+### MANDATORY: 每次代码变更后必须 sync
+
+> **铁律 — Agent 纪律，非 CI 门禁。** 每次 Go / Python 脚本变更提交前，**必须**执行 `codegraph sync --quiet` 确保索引最新。
+
+**Why**: 过期索引导致调用链分析和影响面判断错误。不 sync = 索引不可信 = 后续所有查询无效。注意：这是本地索引刷新的 Agent 纪律（类似 `git` 提交习惯），并非构建/测试/发布门禁；CI 不强制，但违反会让后续代码理解任务基于过期图谱。
+
+### MANDATORY: CodeGraph MCP 优先于 grep/read
+
+> **强规则：所有代码理解任务必须先用 `codegraph explore <symbol>`，再用 grep/read 补充。**
+
+CodeGraph 的 AST + 调用图覆盖了 grep 无法到达的跳转（接口实现、动态派送、跨包调用）。
+
+**执行顺序**：`codegraph explore <symbol>` → grep/read 交叉验证 → 修改代码前确认所有调用方已知
+
+**例外**：纯文本内容搜索（日志关键字、文档内容）除外。
+
+### 常用命令
+
+| 场景 | 命令 |
+|------|------|
+| 查符号定义+调用者 | `codegraph explore <pkg.Symbol>` |
+| 查影响面 | `codegraph impact <pkg.Symbol>` |
+| 查调用链（被调方） | `codegraph callees <pkg.Symbol>` |
+| 索引状态 | `codegraph status` |
+| 同步索引 | `codegraph sync --quiet` |
+
+**Agent 自动执行**（每次编码任务结束时）：sync → explore 核心符号 → 检查 blast radius
+
+### MCP 配置
+
+MCP Server 配置见仓库根 `.mcp.json`（stdio 启动 `codegraph serve --mcp`，已随本变更提交）：
+
+```json
+{ "mcpServers": { "codegraph": { "type": "stdio", "command": "codegraph", "args": ["serve", "--mcp"] } } }
+```
+
+> **前置条件**：`codegraph` 必须在 `PATH` 中（本机位于 `~/.local/bin/codegraph`，`which codegraph` 可验证），否则 stdio server 静默启动失败。若 Agent 运行时未自动加载该 MCP Server，确认 PATH，或在用户级配置（如 `~/.claude.json`）显式声明同一 server。额外 MCP 工具可按 CodeGraph 文档通过环境变量开启。
