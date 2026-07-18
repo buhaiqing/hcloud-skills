@@ -520,6 +520,56 @@ skillcheck check markdown-links --root .
 skillcheck scan secret trace --self-check
 ```
 
+### B 类校验命令（GCL 契约检查）
+
+这些命令用于校验 Generator-Critic-Loop（GCL）产物和运行时契约：
+
+```bash
+# 校验 GCL Tier-A 合规性（rubric.md、prompt-templates.md、Quality Gate 章节）
+skillcheck validate gcl-conformance --root .
+
+# 校验 Generator 模板契约（skill-generator GCL 产物）
+skillcheck validate generator-contract --root .
+
+# 校验 safety_class 枚举在管线中的一致性
+skillcheck validate safety-class --root .
+
+# 校验 resource_scope PII 掩码契约
+skillcheck validate resource-scope --root .
+
+# 校验 CES 告警连线契约（阈值一致性）
+skillcheck validate alarm-wire-contract --root .
+
+# 校验 audit-results 目录保护（gitignore、权限）
+skillcheck check audit-results --root .
+
+# 检查 skill-generator 规范副本与运行时副本的一致性
+skillcheck check skill-generator-drift
+```
+
+### GCL 运行时命令
+
+```bash
+# 执行一轮 GCL 循环（Generator → Critic → 循环修复）
+skillcheck gcl run \
+  --skill huaweicloud-billing-ops \
+  --request "CI smoke test" \
+  --operation-intent '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}' \
+  --command 'printf "{\"Response\":{\"RequestId\":\"ci-smoke\"}}"' \
+  --max-iter 1 \
+  --structural-critic-only
+
+# 从 GCL 质量摘要生成 CES 告警计划
+skillcheck gcl alarm-wire plan \
+  --summary scripts/fixtures/gcl-quality-summary-healthy.json \
+  --write-plan
+
+# 应用计划的 CES 告警规则（建议先用 --dry-run 验证）
+skillcheck gcl alarm-wire apply \
+  --summary scripts/fixtures/gcl-quality-summary-healthy.json \
+  --dry-run
+```
+
 详细命令参考见 [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md)。
 
 ## 可用 Skills

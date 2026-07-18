@@ -17,24 +17,46 @@ class Step:
     argv: tuple[str, ...]
 
 
-def build_steps(python: str = sys.executable) -> list[Step]:
+def build_steps(root: Path | None = None) -> list[Step]:
+    if root is None:
+        root = Path(__file__).resolve().parents[1]
+    skillcheck = str(root / "skillcheck")
     return [
-        Step("Ruff Python lint", ("bash", "scripts/run_ruff.sh", ".")),
-        Step("Python 3.10 syntax compat", (python, "scripts/check_py310_compat.py")),
-        # B-class checks (repo-specific, not in skillcheck)
-        Step("audit-results gitignore guard", (python, "scripts/check_audit_results_guard.py")),
-        Step("gcl_quality wiring contract", (python, "scripts/check_gcl_alarm_wire_contract.py")),
-        Step("safety_class enum contract", (python, "scripts/check_safety_class_enum.py")),
-        Step("skill_generator drift guard", (python, "scripts/check_skill_generator_drift.py", "check")),
-        Step("resource_scope PII contract", (python, "scripts/check_resource_scope_pii.py")),
-        Step("Generator GCL contract", (python, "scripts/check_generator_contract.py")),
-        Step("GCL Tier-A conformance", (python, "scripts/check_gcl_conformance.py")),
-        # Runtime GCL components (not static validation)
+        # B-class checks (now in skillcheck CLI)
+        Step(
+            "GCL Tier-A conformance",
+            (skillcheck, "validate", "gcl-conformance", "--root", str(root)),
+        ),
+        Step(
+            "Generator GCL contract",
+            (skillcheck, "validate", "generator-contract", "--root", str(root)),
+        ),
+        Step(
+            "safety_class enum contract",
+            (skillcheck, "validate", "safety-class", "--root", str(root)),
+        ),
+        Step(
+            "resource_scope PII contract",
+            (skillcheck, "validate", "resource-scope", "--root", str(root)),
+        ),
+        Step(
+            "gcl_quality wiring contract",
+            (skillcheck, "validate", "alarm-wire-contract", "--root", str(root)),
+        ),
+        Step(
+            "audit-results gitignore guard",
+            (skillcheck, "check", "audit-results", "--root", str(root)),
+        ),
+        Step(
+            "skill_generator drift guard",
+            (skillcheck, "check", "skill-generator-drift"),
+        ),
+        # Runtime GCL components (skillcheck gcl subcommands)
         Step(
             "GCL runner smoke test",
             (
-                python,
-                "scripts/gcl_runner.py",
+                skillcheck,
+                "gcl",
                 "run",
                 "--skill",
                 "huaweicloud-billing-ops",
@@ -52,16 +74,20 @@ def build_steps(python: str = sys.executable) -> list[Step]:
         Step(
             "GCL alarm wire plan",
             (
-                python,
-                "scripts/gcl_alarm_wire.py",
+                skillcheck,
+                "gcl",
+                "alarm-wire",
                 "plan",
                 "--summary",
-                "scripts/fixtures/gcl-quality-summary-healthy.json",
+                str(root / "scripts/fixtures/gcl-quality-summary-healthy.json"),
                 "--write-plan",
             ),
         ),
-        # skillcheck equivalence test (Python vs Go, A-class coverage)
-        Step("skillcheck smoke test (embedded fixtures)", (python, "skillcheck/testdata/equivalence_test.py")),
+        # skillcheck equivalence test
+        Step(
+            "skillcheck smoke test (embedded fixtures)",
+            ("python3", str(root / "skillcheck/testdata/equivalence_test.py")),
+        ),
     ]
 
 
@@ -74,15 +100,19 @@ def run_step(root: Path, step: Step) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--list", action="store_true", help="Print commands without running them")
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[1]
+    )
+    parser.add_argument(
+        "--list", action="store_true", help="Print commands without running them"
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     root = args.root.resolve()
-    steps = build_steps()
+    steps = build_steps(root)
 
     if args.list:
         for step in steps:

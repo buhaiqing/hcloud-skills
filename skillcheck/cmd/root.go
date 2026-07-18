@@ -34,6 +34,8 @@ func Execute() error {
 		return runAggregate(args)
 	case "lint":
 		return runLint(args)
+	case "gcl":
+		return runGCL(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -52,13 +54,21 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  skillcheck validate frontmatter --root <dir>                validate SKILL.md frontmatter")
 	fmt.Fprintln(w, "  skillcheck validate eval-queries --root <dir>               validate assets/eval_queries.json")
 	fmt.Fprintln(w, "  skillcheck validate product-assessment --root <dir>         validate well-architected-assessment.md examples")
+	fmt.Fprintln(w, "  skillcheck validate gcl-conformance --root <dir>           validate GCL artifact set (rubric/prompt/quality gate)")
+	fmt.Fprintln(w, "  skillcheck validate generator-contract --root <dir>         validate skill-generator GCL template contract")
+	fmt.Fprintln(w, "  skillcheck validate safety-class --root <dir>               validate operation_intent.safety_class enum contract")
+	fmt.Fprintln(w, "  skillcheck validate resource-scope --root <dir>              validate operation_intent.resource_scope PII masking contract")
+	fmt.Fprintln(w, "  skillcheck validate alarm-wire-contract --root <dir>       validate CES alarm wire threshold wiring")
 	fmt.Fprintln(w, "  skillcheck check example-config --root <dir>                validate assets/example-config.yaml")
 	fmt.Fprintln(w, "  skillcheck check markdown-links --root <dir>                validate local Markdown links")
 	fmt.Fprintln(w, "  skillcheck check references-links --root <dir>              validate references/ anchor health")
 	fmt.Fprintln(w, "  skillcheck check advanced-coverage --root <dir>             validate TE-7 advanced/ coverage")
+	fmt.Fprintln(w, "  skillcheck check audit-results --root <dir>                validate audit-results gitignore + directory mode contract")
 	fmt.Fprintln(w, "  skillcheck scan secret <trace|summary|alarm-plan> ...       scan artifacts for credential leaks")
 	fmt.Fprintln(w, "  skillcheck aggregate trace --root <dir>                     aggregate gcl-trace-*.json into a summary")
 	fmt.Fprintln(w, "  skillcheck lint go --root <dir> [--fix]                      gofmt + go vet the module")
+	fmt.Fprintln(w, "  skillcheck gcl run --root <dir> [--json] [--quiet]          run GCL quality gate on a skill")
+	fmt.Fprintln(w, "  skillcheck gcl alarm-wire --root <dir> [--plan-file <path>]   apply alarm thresholds to GCL trace")
 	fmt.Fprintln(w, "  skillcheck validate --root <dir>                             run all A-class checks (total entry)")
 }
 
@@ -76,6 +86,16 @@ func runValidate(args []string) error {
 		return runValidateEvalQueries(args[1:])
 	case "product-assessment":
 		return runValidateProductAssessment(args[1:])
+	case "gcl-conformance":
+		return runValidateGCL(args[1:])
+	case "generator-contract":
+		return runValidateContract(args[1:])
+	case "safety-class":
+		return runValidateContract(args[1:])
+	case "resource-scope":
+		return runValidateContract(args[1:])
+	case "alarm-wire-contract":
+		return runValidateGCL(args[1:])
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
