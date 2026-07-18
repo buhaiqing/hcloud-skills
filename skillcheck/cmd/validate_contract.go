@@ -43,16 +43,16 @@ type contractCheckItem struct {
 
 // generatorContractReport is the full report.
 type generatorContractReport struct {
-	OK      bool                 `json:"ok"`
-	Summary contractSummary      `json:"summary"`
-	Checks  []contractCheckItem `json:"checks"`
+	OK       bool                `json:"ok"`
+	Summary  contractSummary     `json:"summary"`
+	Checks   []contractCheckItem `json:"checks"`
 	Failures []contractFailure   `json:"failures"`
 }
 
 type contractSummary struct {
-	Total    int `json:"total"`
-	Passing  int `json:"passing"`
-	Failing  int `json:"failing"`
+	Total   int `json:"total"`
+	Passing int `json:"passing"`
+	Failing int `json:"failing"`
 }
 
 type contractFailure struct {
@@ -387,7 +387,7 @@ func checkSafetyClassCode(skillcheckRoot string) []string {
 	// Check SAFETY_CLASS_VALUES
 	for _, val := range expectedSafetyClassValues {
 		if !strings.Contains(src, fmt.Sprintf("%q", val)) &&
-		   !strings.Contains(src, fmt.Sprintf("\"%s\"", val)) {
+			!strings.Contains(src, fmt.Sprintf("\"%s\"", val)) {
 			errors = append(errors, fmt.Sprintf("sanitizer.go: missing safety_class value %q", val))
 		}
 	}
@@ -461,8 +461,8 @@ func checkSafetyClassTraces(root string) []string {
 // ---------------------------------------------------------------------------
 
 var allowedResourceScopePatterns = []string{
-	`^\*+$`,             // pure ****
-	`^<masked>$`,        // explicit placeholder
+	`^\*+$`,                       // pure ****
+	`^<masked>$`,                  // explicit placeholder
 	`^[A-Za-z][A-Za-z0-9-]*-\*+$`, // prefix-***
 }
 
@@ -524,16 +524,16 @@ func runValidateResourceScope(args []string) error {
 }
 
 type resourceScopeResult struct {
-	SchemaOK      bool     `json:"schema_ok"`
-	CodeOK        bool     `json:"code_ok"`
+	SchemaOK       bool     `json:"schema_ok"`
+	CodeOK         bool     `json:"code_ok"`
 	RunnerMaskedOK bool     `json:"runner_masked_fields_ok"`
-	DocsOK        bool     `json:"docs_ok"`
-	TracesOK      bool     `json:"traces_ok"`
-	SchemaErrors  []string `json:"schema_errors"`
-	CodeErrors    []string `json:"code_errors"`
-	DocsErrors    []string `json:"docs_errors"`
-	TracesErrors  []string `json:"traces_errors"`
-	OK            bool     `json:"ok"`
+	DocsOK         bool     `json:"docs_ok"`
+	TracesOK       bool     `json:"traces_ok"`
+	SchemaErrors   []string `json:"schema_errors"`
+	CodeErrors     []string `json:"code_errors"`
+	DocsErrors     []string `json:"docs_errors"`
+	TracesErrors   []string `json:"traces_errors"`
+	OK             bool     `json:"ok"`
 }
 
 func checkResourceScopeContract(skillcheckRoot, root string) resourceScopeResult {
@@ -617,16 +617,6 @@ func safeStr(s []string, i int) string {
 
 func checkResourceScopeCode(skillcheckRoot string) []string {
 	var errors []string
-	// Verify MaskResourceID handles the documented patterns
-	samples := map[string]string{
-		"i-abc123def456":         "i-***",
-		"sg-0f8c9a1b":            "sg-***",
-		"vpc-prod-1":              "vpc-***",
-		"elb-abcdef":              "elb-***",
-		"rds-mysql-prod-01":        "rds-***",
-		"acs:rds:cn-north-4:12345:instance/i-abc": "acs:rds:cn-north-4:12345:instance/***",
-		"12345678-90ab-cdef-1234-567890abcdef": "***",
-	}
 	sanitizerPath := filepath.Join(skillcheckRoot, "internal", "gcl", "sanitizer.go")
 	data, err := os.ReadFile(sanitizerPath)
 	if err != nil {
@@ -640,7 +630,6 @@ func checkResourceScopeCode(skillcheckRoot string) []string {
 	if !strings.Contains(src, "alreadyMaskedRe") && !strings.Contains(src, "***") {
 		errors = append(errors, "sanitizer.go: idempotent masking check missing")
 	}
-	_ = samples
 	return errors
 }
 

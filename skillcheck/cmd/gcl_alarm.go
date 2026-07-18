@@ -85,7 +85,7 @@ func runGCLAlarmWire(args []string) error {
 			Cloud:           "huaweicloud",
 			MetricNamespace: gcl.GCLNamespace,
 			SummaryPath:     tracePath,
-			Thresholds:     thresholds,
+			Thresholds:      thresholds,
 			Evaluation:      evaluation,
 			AlarmPlan:       alarmPlan,
 		}
@@ -181,12 +181,12 @@ func printGCLAlarmJSON(evaluation gcl.EvaluationResult, plan []gcl.AlarmPlanEntr
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(map[string]any{
-		"ok":          evaluation.OK,
-		"pass_rate":    evaluation.PassRate,
-		"safety_fail":  evaluation.SafetyFail,
-		"max_iter":     evaluation.MaxIter,
-		"breaches":     evaluation.Breaches,
-		"alarm_plan":   plan,
+		"ok":              evaluation.OK,
+		"pass_rate":       evaluation.PassRate,
+		"safety_fail":     evaluation.SafetyFail,
+		"max_iter":        evaluation.MaxIter,
+		"breaches":        evaluation.Breaches,
+		"alarm_plan":      plan,
 		"alarm_plan_path": planPath,
 	})
 }

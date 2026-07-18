@@ -1,20 +1,26 @@
 package gcl
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// maskPattern is the raw string form of "<masked>" as it appears in a JSON file.
+// Go's json.Marshal encodes < as \u003c, so this is the actual bytes in the file.
+const maskPattern = "<masked>"
 
 // ---- Decide ---------------------------------------------------------------
 
 func TestDecide_Pass(t *testing.T) {
 	scores := map[string]float64{
-		"correctness":      1.0,
-		"safety":           1.0,
-		"idempotency":      0.5,
-		"traceability":     0.5,
-		"spec_compliance":  1.0,
+		"correctness":     1.0,
+		"safety":          1.0,
+		"idempotency":     0.5,
+		"traceability":    0.5,
+		"spec_compliance": 1.0,
 	}
 	if got := Decide(scores); got != "PASS" {
 		t.Errorf("Decide all-pass: got %q, want PASS", got)
@@ -24,11 +30,11 @@ func TestDecide_Pass(t *testing.T) {
 func TestDecide_SafetyFail(t *testing.T) {
 	// Safety score of 0 must always return SAFETY_FAIL, regardless of other scores.
 	scores := map[string]float64{
-		"correctness":      1.0,
+		"correctness":     1.0,
 		"safety":          0.0,
-		"idempotency":      1.0,
-		"traceability":     1.0,
-		"spec_compliance":  1.0,
+		"idempotency":     1.0,
+		"traceability":    1.0,
+		"spec_compliance": 1.0,
 	}
 	if got := Decide(scores); got != "SAFETY_FAIL" {
 		t.Errorf("Decide safety=0: got %q, want SAFETY_FAIL", got)
@@ -38,11 +44,11 @@ func TestDecide_SafetyFail(t *testing.T) {
 func TestDecide_Retry(t *testing.T) {
 	// Below-threshold dimension should return RETRY (not MAX_ITER which is only at loop end).
 	scores := map[string]float64{
-		"correctness":      0.0, // below 0.5 threshold
-		"safety":           1.0,
-		"idempotency":      1.0,
-		"traceability":     1.0,
-		"spec_compliance":  1.0,
+		"correctness":     0.0, // below 0.5 threshold
+		"safety":          1.0,
+		"idempotency":     1.0,
+		"traceability":    1.0,
+		"spec_compliance": 1.0,
 	}
 	if got := Decide(scores); got != "RETRY" {
 		t.Errorf("Decide below threshold: got %q, want RETRY", got)
@@ -211,12 +217,12 @@ func TestPersistTrace(t *testing.T) {
 		Request:            "test request",
 		OperationIntent:    nil,
 		RubricVersion:      "v1",
-		MaskedFields:      []string{"request"},
-		Iterations:        nil,
+		MaskedFields:       []string{"request"},
+		Iterations:         nil,
 		Final: &FinalResult{
-			Status:  "PASS",
-			Iter:    1,
-			Output:  "ok",
+			Status: "PASS",
+			Iter:   1,
+			Output: "ok",
 		},
 	}
 
@@ -233,7 +239,7 @@ func TestPersistTrace(t *testing.T) {
 }
 
 func TestMaskedFields(t *testing.T) {
-	// Verify that credential values are masked in the trace.
+	// Verify that credential values are masked in the persisted trace.
 	cfg := RunConfig{
 		Skill:   "huaweicloud-ecs-ops",
 		Request: "list with secret",
@@ -241,12 +247,34 @@ func TestMaskedFields(t *testing.T) {
 		MaxIter: 1,
 		Timeout: 10,
 	}
-	_ = Run(cfg)
+	result := Run(cfg)
 
-	// The trace file should contain <masked> instead of RealSecretToken...
-	// We verify by checking the trace path is non-empty (actual content verified by integration test).
-	if cfg.Command == "" {
-		t.Error("cfg.Command should be populated")
+	if result.TracePath == "" {
+		t.Fatal("TracePath should not be empty after Run")
+	}
+	data, err := os.ReadFile(result.TracePath)
+	if err != nil {
+		t.Fatalf("failed to read trace at %s: %v", result.TracePath, err)
+	}
+	traceJSON := string(data)
+	// The real secret token must NOT appear in the trace.
+	if strings.Contains(traceJSON, "RealSecretToken123456789012") {
+		t.Error("raw secret token found in trace — MaskSecrets failed")
+	}
+	// Also verify the trace is valid JSON and the masked value is present.
+	var trace GCLTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		t.Fatalf("trace is not valid JSON: %v", err)
+	}
+	// Verify the masked value is in the unmarshaled trace.
+	// After unmarshaling, Go decodes \u003c back to '<'.
+	traceStr := strings.Join([]string{
+		trace.Request,
+		trace.Iterations[0].Generator.Command,
+		trace.Iterations[0].Generator.ResultExcerpt,
+	}, " ")
+	if !strings.Contains(traceStr, "<masked>") {
+		t.Errorf("<masked> not found in unmarshaled trace fields")
 	}
 }
 
@@ -292,9 +320,9 @@ func TestTracePath_Naming(t *testing.T) {
 		Request:            "list",
 		OperationIntent:    nil,
 		RubricVersion:      "v1",
-		MaskedFields:      []string{},
-		Iterations:        []Iteration{},
-		Final: &FinalResult{Status: "PASS", Iter: 1},
+		MaskedFields:       []string{},
+		Iterations:         []Iteration{},
+		Final:              &FinalResult{Status: "PASS", Iter: 1},
 	}
 	path, err := PersistTrace(trace, tmp)
 	if err != nil {

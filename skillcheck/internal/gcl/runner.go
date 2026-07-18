@@ -21,21 +21,21 @@ import (
 
 // Exit codes (UNIX conventions).
 const (
-	ExitOK       = 0  // PASS
-	ExitMaxIter  = 1  // MAX_ITER: loop exhausted
-	ExitUsage    = 2  // usage / internal error
-	ExitSafety   = 3  // SAFETY_FAIL: credential leak or safety violation
-	ExitTimeout  = 124 // TIMEOUT: command exceeded timeout
+	ExitOK      = 0   // PASS
+	ExitMaxIter = 1   // MAX_ITER: loop exhausted
+	ExitUsage   = 2   // usage / internal error
+	ExitSafety  = 3   // SAFETY_FAIL: credential leak or safety violation
+	ExitTimeout = 124 // TIMEOUT: command exceeded timeout
 )
 
 // RUBRIC_THRESHOLDS are the minimum passing scores for each quality dimension.
 // Mirrors RUBRIC_THRESHOLDS in gcl_runner.py.
 var RUBRIC_THRESHOLDS = map[string]float64{
-	"correctness":      0.5,
-	"safety":           1.0, // strict: any leak is a SAFETY_FAIL
-	"idempotency":      0.5,
-	"traceability":     0.5,
-	"spec_compliance":  0.5,
+	"correctness":     0.5,
+	"safety":          1.0, // strict: any leak is a SAFETY_FAIL
+	"idempotency":     0.5,
+	"traceability":    0.5,
+	"spec_compliance": 0.5,
 }
 
 // SKILL_MAX_ITER is the default maximum GCL loop iterations per skill.
@@ -54,13 +54,13 @@ var SKILL_MAX_ITER = map[string]int{
 	"huaweicloud-obs-ops":           2,
 	"huaweicloud-swr-ops":           2,
 	"huaweicloud-functiongraph-ops": 2,
-	"huaweicloud-waf-ops":          2,
-	"huaweicloud-hss-ops":          2,
-	"huaweicloud-elb-ops":          3,
-	"huaweicloud-ces-ops":          3,
-	"huaweicloud-lts-ops":          3,
-	"huaweicloud-cts-ops":          3,
-	"huaweicloud-billing-ops":      5,
+	"huaweicloud-waf-ops":           2,
+	"huaweicloud-hss-ops":           2,
+	"huaweicloud-elb-ops":           3,
+	"huaweicloud-ces-ops":           3,
+	"huaweicloud-lts-ops":           3,
+	"huaweicloud-cts-ops":           3,
+	"huaweicloud-billing-ops":       5,
 	"huaweicloud-skill-generator":   3,
 }
 
@@ -83,36 +83,38 @@ type CriticResult struct {
 	Suggestions []string
 	Blocking    bool
 	Mode        string // e.g. "structural-only"
+	Model       string // LLM model used for scoring (optional; "unknown" if unavailable)
 }
 
 // GCLTrace is the full record of a GCL loop execution.
 // Mirrors the trace schema in gcl_runner.py.
 type GCLTrace struct {
-	TraceSchemaVersion string                 `json:"trace_schema_version"`
-	Skill             string                 `json:"skill"`
-	Request           string                 `json:"request"`
-	OperationIntent   map[string]any         `json:"operation_intent,omitempty"`
-	RubricVersion     string                 `json:"rubric_version"`
-	MaskedFields      []string               `json:"masked_fields"`
-	Iterations        []Iteration            `json:"iterations"`
-	Final             *FinalResult           `json:"final,omitempty"`
+	TraceSchemaVersion string         `json:"trace_schema_version"`
+	Skill              string         `json:"skill"`
+	Model              string         `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
+	Request            string         `json:"request"`
+	OperationIntent    map[string]any `json:"operation_intent,omitempty"`
+	RubricVersion      string         `json:"rubric_version"`
+	MaskedFields       []string       `json:"masked_fields"`
+	Iterations         []Iteration    `json:"iterations"`
+	Final              *FinalResult   `json:"final,omitempty"`
 }
 
 // Iteration records one pass through the GCL loop.
 type Iteration struct {
-	Iter      int           `json:"iter"`
+	Iter      int             `json:"iter"`
 	Generator GeneratorOutput `json:"generator"`
-	Critic    CriticResult  `json:"critic"`
-	Decision  string        `json:"decision"`
+	Critic    CriticResult    `json:"critic"`
+	Decision  string          `json:"decision"`
 }
 
 // FinalResult describes the terminal state of a GCL loop.
 type FinalResult struct {
-	Status         string           `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
-	Iter           int              `json:"iter"`
-	Output         string           `json:"output,omitempty"`
-	FailurePattern *FailurePattern  `json:"failure_pattern,omitempty"`
-	Unresolved     []string         `json:"unresolved,omitempty"`
+	Status         string          `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
+	Iter           int             `json:"iter"`
+	Output         string          `json:"output,omitempty"`
+	FailurePattern *FailurePattern `json:"failure_pattern,omitempty"`
+	Unresolved     []string        `json:"unresolved,omitempty"`
 }
 
 // FailurePattern categorizes a recurring failure for事后 analysis.
@@ -136,6 +138,7 @@ type RunConfig struct {
 	MaxIter         int    // maximum loop iterations (0 = use SKILL_MAX_ITER default)
 	Timeout         int    // command timeout in seconds (default 120)
 	Root            string // repository root for audit-results/
+	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
 }
 
 // RunResult is the output of a GCL Run.
@@ -181,14 +184,19 @@ func Run(cfg RunConfig) RunResult {
 		}
 	}
 
+	model := cfg.Model
+	if model == "" {
+		model = "unknown"
+	}
 	trace := GCLTrace{
 		TraceSchemaVersion: "v1",
-		Skill:             cfg.Skill,
-		Request:           cfg.Request,
-		OperationIntent:   opIntent,
-		RubricVersion:     "v1",
-		MaskedFields:     []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
-		Iterations:        []Iteration{},
+		Skill:              cfg.Skill,
+		Model:              model,
+		Request:            cfg.Request,
+		OperationIntent:    opIntent,
+		RubricVersion:      "v1",
+		MaskedFields:       []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
+		Iterations:         []Iteration{},
 	}
 
 	timeout := cfg.Timeout
@@ -214,22 +222,28 @@ func Run(cfg RunConfig) RunResult {
 		switch decision {
 		case "SAFETY_FAIL":
 			trace.Final = &FinalResult{
-				Status:  "SAFETY_FAIL",
-				Iter:    iteration,
-				Output:  "",
+				Status:         "SAFETY_FAIL",
+				Iter:           iteration,
+				Output:         "",
 				FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, generator, critic),
 			}
-			path, _ := PersistTrace(&trace, cfg.Root)
+			path, err := PersistTrace(&trace, cfg.Root)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+			}
 			fmt.Fprintf(os.Stderr, "SAFETY_FAIL — trace: %s\n", path)
 			return RunResult{ExitCode: ExitSafety, TracePath: path}
 
 		case "PASS":
 			trace.Final = &FinalResult{
-				Status:  "PASS",
-				Iter:    iteration,
-				Output:  generator.ResultExcerpt,
+				Status: "PASS",
+				Iter:   iteration,
+				Output: generator.ResultExcerpt,
 			}
-			path, _ := PersistTrace(&trace, cfg.Root)
+			path, err := PersistTrace(&trace, cfg.Root)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+			}
 			fmt.Printf("PASS (iter %d) — trace: %s\n", iteration, path)
 			return RunResult{ExitCode: ExitOK, TracePath: path}
 		}
@@ -245,13 +259,16 @@ func Run(cfg RunConfig) RunResult {
 		}
 	}
 	trace.Final = &FinalResult{
-		Status:     "MAX_ITER",
-		Iter:       maxIter,
-		Output:     last.Generator.ResultExcerpt,
-		Unresolved: unresolved,
+		Status:         "MAX_ITER",
+		Iter:           maxIter,
+		Output:         last.Generator.ResultExcerpt,
+		Unresolved:     unresolved,
 		FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, last.Generator, last.Critic),
 	}
-	path, _ := PersistTrace(&trace, cfg.Root)
+	path, err := PersistTrace(&trace, cfg.Root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+	}
 	fmt.Fprintf(os.Stderr, "MAX_ITER — trace: %s\n", path)
 	return RunResult{ExitCode: ExitMaxIter, TracePath: path}
 }
@@ -319,6 +336,7 @@ func StructuralCritic(gen GeneratorOutput) CriticResult {
 		Suggestions: suggestions,
 		Blocking:    scores["safety"] == 0.0 || scores["correctness"] == 0.0,
 		Mode:        "structural-only",
+		Model:       "structural-only",
 	}
 }
 

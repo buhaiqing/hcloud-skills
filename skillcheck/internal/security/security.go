@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Finding describes a single suspected credential leak in scanned content.
@@ -225,8 +226,10 @@ func lineColumn(text string, offset int) (int, int) {
 		}
 	}
 	col := 0
-	for i := lastNL + 1; i < offset && i < len(text); i++ {
+	for i := lastNL + 1; i < offset && i < len(text); {
+		_, size := utf8.DecodeRuneInString(text[i:])
 		col++
+		i += size
 	}
 	return line, col + 1
 }

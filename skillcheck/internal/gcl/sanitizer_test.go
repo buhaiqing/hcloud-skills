@@ -183,4 +183,3 @@ func assertErrorAs(err error, target **SanitizeError) bool {
 	*target = se
 	return true
 }
-

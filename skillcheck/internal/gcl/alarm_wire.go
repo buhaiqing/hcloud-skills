@@ -16,46 +16,46 @@ import (
 
 // Default thresholds mirroring gcl_alarm_wire.DEFAULT_THRESHOLDS.
 var DefaultThresholds = ThresholdConfig{
-	PassRateWarn:      0.85,
-	PassRateCritical:  0.70,
-	MaxIterWarnCount:  3,
-	SafetyFailAlert:   true,
+	PassRateWarn:     0.85,
+	PassRateCritical: 0.70,
+	MaxIterWarnCount: 3,
+	SafetyFailAlert:  true,
 }
 
 const (
-	GCLNamespace         = "CUSTOM.GCL"
-	GCLPassRateMetric    = "gcl_overall_pass_rate"
-	GCLSafetyFailMetric  = "gcl_safety_fail_count"
-	GCLMaxIterMetric     = "gcl_max_iter_count"
+	GCLNamespace        = "CUSTOM.GCL"
+	GCLPassRateMetric   = "gcl_overall_pass_rate"
+	GCLSafetyFailMetric = "gcl_safety_fail_count"
+	GCLMaxIterMetric    = "gcl_max_iter_count"
 )
 
 // ThresholdConfig holds the SLO threshold values for GCL quality evaluation.
 type ThresholdConfig struct {
-	PassRateWarn      float64
-	PassRateCritical  float64
-	MaxIterWarnCount  int
-	SafetyFailAlert   bool
+	PassRateWarn     float64
+	PassRateCritical float64
+	MaxIterWarnCount int
+	SafetyFailAlert  bool
 }
 
 // QualitySummary represents the aggregated GCL quality data from gcl_trace_aggregate.
 type QualitySummary struct {
-	Totals   map[string]int     `json:"totals"`
-	PassRate float64            `json:"pass_rate"`
-	Skills   map[string]any     `json:"skills,omitempty"`
+	Totals   map[string]int `json:"totals"`
+	PassRate float64        `json:"pass_rate"`
+	Skills   map[string]any `json:"skills,omitempty"`
 }
 
 // EvaluationResult holds the evaluated SLO status and detected breaches.
 type EvaluationResult struct {
-	PassRate  float64     `json:"pass_rate"`
-	SafetyFail int        `json:"safety_fail"`
-	MaxIter   int         `json:"max_iter"`
-	Breaches  []Breach    `json:"breaches"`
-	OK        bool        `json:"ok"`
+	PassRate   float64  `json:"pass_rate"`
+	SafetyFail int      `json:"safety_fail"`
+	MaxIter    int      `json:"max_iter"`
+	Breaches   []Breach `json:"breaches"`
+	OK         bool     `json:"ok"`
 }
 
 // Breach represents a single SLO threshold breach.
 type Breach struct {
-	Severity  string `json:"severity"`   // "CRITICAL" or "WARN"
+	Severity  string `json:"severity"` // "CRITICAL" or "WARN"
 	Metric    string `json:"metric"`
 	Value     string `json:"value"`
 	Threshold string `json:"threshold"`
@@ -78,13 +78,13 @@ type AlarmPlanEntry struct {
 
 // AlarmPlanReport is the top-level output of the plan command.
 type AlarmPlanReport struct {
-	GeneratedAt   string            `json:"generated_at"`
-	Cloud         string            `json:"cloud"`
-	MetricNamespace string          `json:"metric_namespace"`
-	SummaryPath   string            `json:"summary_path"`
-	Thresholds    ThresholdConfig   `json:"thresholds"`
-	Evaluation    EvaluationResult  `json:"evaluation"`
-	AlarmPlan     []AlarmPlanEntry  `json:"alarm_plan"`
+	GeneratedAt     string           `json:"generated_at"`
+	Cloud           string           `json:"cloud"`
+	MetricNamespace string           `json:"metric_namespace"`
+	SummaryPath     string           `json:"summary_path"`
+	Thresholds      ThresholdConfig  `json:"thresholds"`
+	Evaluation      EvaluationResult `json:"evaluation"`
+	AlarmPlan       []AlarmPlanEntry `json:"alarm_plan"`
 }
 
 // LoadThresholdsFromConfig parses gcl_quality thresholds from a YAML config file.

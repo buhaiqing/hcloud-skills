@@ -202,13 +202,13 @@ func TestBuildReport_FileNotFound(t *testing.T) {
 func TestWritePlan(t *testing.T) {
 	tmpDir := t.TempDir()
 	report := &AlarmPlanReport{
-		GeneratedAt:   "2026-07-18T00:00:00Z",
-		Cloud:        "huaweicloud",
+		GeneratedAt:     "2026-07-18T00:00:00Z",
+		Cloud:           "huaweicloud",
 		MetricNamespace: "CUSTOM.GCL",
-		SummaryPath:  "/tmp/summary.json",
-		Thresholds:   DefaultThresholds,
-		Evaluation:   EvaluationResult{OK: true, Breaches: nil},
-		AlarmPlan:    []AlarmPlanEntry{},
+		SummaryPath:     "/tmp/summary.json",
+		Thresholds:      DefaultThresholds,
+		Evaluation:      EvaluationResult{OK: true, Breaches: nil},
+		AlarmPlan:       []AlarmPlanEntry{},
 	}
 	path, err := WritePlan(report, tmpDir, "test")
 	if err != nil {
@@ -222,13 +222,13 @@ func TestWritePlan(t *testing.T) {
 func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 	tmpDir := t.TempDir()
 	report := &AlarmPlanReport{
-		GeneratedAt:   "2026-07-18T00:00:00Z",
-		Cloud:        "huaweicloud",
+		GeneratedAt:     "2026-07-18T00:00:00Z",
+		Cloud:           "huaweicloud",
 		MetricNamespace: "CUSTOM.GCL",
-		SummaryPath:  "/tmp/summary.json",
-		Thresholds:   DefaultThresholds,
-		Evaluation:   EvaluationResult{PassRate: 0.90, OK: true, Breaches: nil},
-		AlarmPlan:    RenderPlan(EvaluationResult{PassRate: 0.90, OK: true}, 0.85, 0.70, 3),
+		SummaryPath:     "/tmp/summary.json",
+		Thresholds:      DefaultThresholds,
+		Evaluation:      EvaluationResult{PassRate: 0.90, OK: true, Breaches: nil},
+		AlarmPlan:       RenderPlan(EvaluationResult{PassRate: 0.90, OK: true}, 0.85, 0.70, 3),
 	}
 	path, err := WritePlan(report, tmpDir, "roundtrip")
 	if err != nil {

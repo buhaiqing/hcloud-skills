@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/gcl"
 	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/yaml"
@@ -39,6 +41,7 @@ func runGCLRun(args []string) error {
 	root := fs.String("root", ".", "skill directory (e.g., huaweicloud-ecs-ops/)")
 	jsonOut := fs.Bool("json", false, "emit JSON report")
 	quiet := fs.Bool("quiet", false, "suppress stdout except final result")
+	model := fs.String("model", "", "LLM model name for the Generator (e.g. 'anthropic/claude-3-5-sonnet'). Stored in trace. If empty, 'unknown' is recorded.")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil // help was shown; exit cleanly
@@ -65,12 +68,6 @@ func runGCLRun(args []string) error {
 		}
 	}
 
-	// Load rubric and prompt templates (loaded for validation; passed via RunConfig).
-	rubricText := readFileString(filepath.Join(skillDir, "references", "rubric.md"))
-	promptText := readFileString(filepath.Join(skillDir, "references", "prompt-templates.md"))
-	_ = rubricText
-	_ = promptText
-
 	// Run GCL with a smoke command (echo ok) to test the structural critic path.
 	// Root is set to skillDir so audit-results/ is created there.
 	cfg := gcl.RunConfig{
@@ -78,26 +75,41 @@ func runGCLRun(args []string) error {
 		Request: "smoke test",
 		Command: "echo ok",
 		Root:    skillDir,
+		Model:   *model,
 	}
 
 	// Suppress gcl.Run's printf output when --json or --quiet.
 	var result gcl.RunResult
 	if *jsonOut || *quiet {
 		// Redirect stdout/stderr to suppress gcl.Run's messages.
+		// Use goroutines with WaitGroup to avoid pipe deadlock when
+		// gcl.Run output exceeds the 64KB pipe buffer.
+		var wg sync.WaitGroup
+		var stdoutBuf, stderrBuf bytes.Buffer
 		oldStdout := os.Stdout
 		oldStderr := os.Stderr
 		rStdout, wStdout, _ := os.Pipe()
 		rStderr, wStderr, _ := os.Pipe()
 		os.Stdout = wStdout
 		os.Stderr = wStderr
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			io.Copy(&stdoutBuf, rStdout)
+			rStdout.Close()
+		}()
+		go func() {
+			defer wg.Done()
+			io.Copy(&stderrBuf, rStderr)
+			rStderr.Close()
+		}()
 		result = gcl.Run(cfg)
 		os.Stdout = oldStdout
 		os.Stderr = oldStderr
 		wStdout.Close()
 		wStderr.Close()
-		// Drain the pipe buffers.
-		io.ReadAll(rStdout)
-		io.ReadAll(rStderr)
+		wg.Wait()                                     // drain both pipes before continuing
+		_, _ = stdoutBuf.String(), stderrBuf.String() // captured but not used
 	} else {
 		result = gcl.Run(cfg)
 	}

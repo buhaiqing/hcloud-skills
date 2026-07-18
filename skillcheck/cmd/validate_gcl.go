@@ -68,10 +68,10 @@ type gclConformanceResult struct {
 	HasQualityGate              bool   `json:"has_quality_gate"`
 	PromptHasOperationIntent    bool   `json:"prompt_has_operation_intent"`
 	PromptHasNoBarePlaceholders bool   `json:"prompt_has_no_bare_placeholders"`
-	RubricOK                   bool   `json:"rubric_ok"`
-	PromptOK                   bool   `json:"prompt_ok"`
-	SkillOK                    bool   `json:"skill_ok"`
-	OK                         bool   `json:"ok"`
+	RubricOK                    bool   `json:"rubric_ok"`
+	PromptOK                    bool   `json:"prompt_ok"`
+	SkillOK                     bool   `json:"skill_ok"`
+	OK                          bool   `json:"ok"`
 }
 
 var rubricSectionRe = regexp.MustCompile(`(?m)^## (\d+)\. `)
@@ -102,6 +102,8 @@ func hasBarePlaceholders(text string) bool {
 	// Strip fenced code blocks and escaped {{...}} placeholders first
 	text = codeBlockRe.ReplaceAllString(text, "")
 	text = doubleBraceRe.ReplaceAllString(text, "")
+	// Strip inline comments so {placeholders} in comments don't trigger false positives
+	text = stripComments(text)
 	return barePlaceholderRe.MatchString(text)
 }
 
@@ -138,10 +140,10 @@ func checkGCLSkillConformance(root, skill string) gclConformanceResult {
 		HasQualityGate:              hasQualityGate,
 		PromptHasOperationIntent:    promptHasOpIntent,
 		PromptHasNoBarePlaceholders: promptNoBare,
-		RubricOK:                   rubricOK,
-		PromptOK:                   promptOK,
-		SkillOK:                    skillOK,
-		OK:                         rubricOK && promptOK && skillOK,
+		RubricOK:                    rubricOK,
+		PromptOK:                    promptOK,
+		SkillOK:                     skillOK,
+		OK:                          rubricOK && promptOK && skillOK,
 	}
 }
 
@@ -285,8 +287,8 @@ func checkAlarmWireContract(root string) []string {
 
 	// Check numeric keys match defaults
 	defaults := map[string]float64{
-		"pass_rate_warn":     0.85,
-		"pass_rate_critical": 0.70,
+		"pass_rate_warn":      0.85,
+		"pass_rate_critical":  0.70,
 		"max_iter_warn_count": 3.0,
 	}
 	for key, defVal := range defaults {
