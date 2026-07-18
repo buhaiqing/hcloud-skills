@@ -194,7 +194,12 @@ func scanArtifactPaths(paths []string) []scanSecretResult {
 			results = append(results, res)
 			continue
 		}
-		findings, _ := security.ScanContent(data)
+		findings, sErr := security.ScanContent(data)
+		if sErr != nil {
+			res.error = "scan error: " + sErr.Error()
+			results = append(results, res)
+			continue
+		}
 		res.leaks = len(findings)
 		res.ok = len(findings) == 0
 		results = append(results, res)
@@ -252,7 +257,10 @@ func runScanSelfCheck(kind string, jsonOut bool) error {
 		return fmt.Errorf("scan secret: unknown artifact kind %q", kind)
 	}
 
-	findings, _ := security.ScanContent(fixture)
+	findings, sErr := security.ScanContent(fixture)
+	if sErr != nil {
+		return fmt.Errorf("self-check %s fixture scan error: %w", kind, sErr)
+	}
 	if len(findings) > 0 {
 		if jsonOut {
 			fmt.Printf("{\"ok\":false,\"kind\":%q,\"leaks\":%d}\n", kind, len(findings))

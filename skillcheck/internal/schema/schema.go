@@ -270,6 +270,18 @@ func ResolveSchemaRefs(schema any) (map[string]any, error) {
 	return resolvedMap, nil
 }
 
+// decodeJSON reads a JSON byte slice with UseNumber, preserving integer/float
+// distinction per the Python reference's isinstance(value, int) behavior.
+func decodeJSON(b []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
 // ValidateDef validates an instance against a single named entry in a
 // schema's "$defs" (e.g. one of the eval-queries union contracts). It mirrors
 // scripts/validate_eval_queries_schema.py:_schema_def + validate_value, which
@@ -277,16 +289,7 @@ func ResolveSchemaRefs(schema any) (map[string]any, error) {
 // This is required because such schemas have no top-level required/properties
 // and ValidateFile would trivially accept any instance.
 func ValidateDef(schemaData []byte, defName string, instanceData []byte) ([]string, error) {
-	decode := func(b []byte) (any, error) {
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.UseNumber()
-		var v any
-		if err := dec.Decode(&v); err != nil {
-			return nil, err
-		}
-		return v, nil
-	}
-	schema, err := decode(schemaData)
+	schema, err := decodeJSON(schemaData)
 	if err != nil {
 		return nil, fmt.Errorf("parse schema: %w", err)
 	}
@@ -311,7 +314,7 @@ func ValidateDef(schemaData []byte, defName string, instanceData []byte) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	instance, err := decode(instanceData)
+	instance, err := decodeJSON(instanceData)
 	if err != nil {
 		return nil, fmt.Errorf("parse instance: %w", err)
 	}
@@ -323,20 +326,11 @@ func ValidateDef(schemaData []byte, defName string, instanceData []byte) ([]stri
 // UseNumber so integers and floats are distinguished, matching the Python
 // reference's isinstance(value, int) behavior.
 func ValidateFile(instanceData, schemaData []byte) ([]string, error) {
-	decode := func(b []byte) (any, error) {
-		dec := json.NewDecoder(bytes.NewReader(b))
-		dec.UseNumber()
-		var v any
-		if err := dec.Decode(&v); err != nil {
-			return nil, err
-		}
-		return v, nil
-	}
-	instance, err := decode(instanceData)
+	instance, err := decodeJSON(instanceData)
 	if err != nil {
 		return nil, fmt.Errorf("parse instance: %w", err)
 	}
-	schema, err := decode(schemaData)
+	schema, err := decodeJSON(schemaData)
 	if err != nil {
 		return nil, fmt.Errorf("parse schema: %w", err)
 	}

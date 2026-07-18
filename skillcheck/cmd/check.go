@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/coverage"
 	"github.com/buhaiqing/hcloud-skills/skillcheck/internal/yaml"
@@ -70,7 +71,10 @@ func runCheckExampleConfig(args []string) error {
 	if err != nil {
 		return err
 	}
-	skills := discoverSkillDirs(rootDir)
+	skills, err := discoverSkillDirs(rootDir)
+	if err != nil {
+		return fmt.Errorf("example-config: %w", err)
+	}
 
 	results := make([]checkExampleConfigResult, 0, len(skills))
 	for _, skill := range skills {
@@ -98,10 +102,10 @@ func runCheckExampleConfig(args []string) error {
 
 // discoverSkillDirs returns sorted skill directory names (huaweicloud-*-ops)
 // directly under root.
-func discoverSkillDirs(root string) []string {
+func discoverSkillDirs(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var skills []string
 	for _, e := range entries {
@@ -110,7 +114,7 @@ func discoverSkillDirs(root string) []string {
 		}
 	}
 	sort.Strings(skills)
-	return skills
+	return skills, nil
 }
 
 // validateExampleConfig validates one skill's example-config.yaml.
@@ -198,7 +202,8 @@ func runeAt(s string, i int) rune {
 	if i < 0 || i >= len(s) {
 		return 0
 	}
-	return rune(s[i])
+	r, _ := utf8.DecodeRuneInString(s[i:])
+	return r
 }
 
 func checkExampleYAMLBasic(block, rel string) []string {

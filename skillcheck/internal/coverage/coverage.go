@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -107,7 +108,7 @@ func ValidateSkill(root, skill string, warnOnly bool) SkillReport {
 		hits := countSecurityMarkers(path)
 		if hits > 0 {
 			secMarkers += hits
-			secMarkerFiles = append(secMarkerFiles, filepath.Base(path)+"="+itoa(hits))
+			secMarkerFiles = append(secMarkerFiles, filepath.Base(path)+"="+strconv.Itoa(hits))
 		}
 	}
 
@@ -212,26 +213,4 @@ func relNames(references string, names []string) []string {
 		out = append(out, filepath.Join("references", "advanced", n))
 	}
 	return out
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }

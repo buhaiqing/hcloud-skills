@@ -7,12 +7,6 @@ import (
 	"strings"
 )
 
-// marshalJSON is a small helper used after decode-with-UseNumber so we can
-// re-serialize a single element for $def validation.
-func marshalJSON(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
 // evalFormat detection mirrors validate_eval_queries_schema.py. For an array
 // document it returns the entry $def name; for an object document it returns
 // the object $def name; otherwise an error.

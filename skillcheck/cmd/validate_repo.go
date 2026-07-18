@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -228,7 +229,7 @@ func validateEvalQueriesFile(content, schemaData []byte, skillName string) []str
 	if arr, ok := parsed.([]any); ok {
 		var all []string
 		for i, item := range arr {
-			itemBytes, mErr := marshalJSON(item)
+			itemBytes, mErr := json.Marshal(item)
 			if mErr != nil {
 				all = append(all, fmt.Sprintf("$[%d]: %v", i, mErr))
 				continue

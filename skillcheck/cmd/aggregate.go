@@ -182,8 +182,8 @@ func parseAggregateTrace(path string) (map[string]any, error) {
 // aggregateTraces reduces a set of traces into a quality summary with totals,
 // pass_rate, per-dimension average scores, and per-skill buckets.
 func aggregateTraces(traces []map[string]any) map[string]any {
-	dims := splitComma(rubricDims)
-	statuses := splitComma(finalStatuses)
+	dims := splitOnComma(rubricDims)
+	statuses := splitOnComma(finalStatuses)
 
 	totals := map[string]any{}
 	for _, s := range statuses {
@@ -298,14 +298,6 @@ func lastCriticScores(trace map[string]any) map[string]float64 {
 		out[k] = floatOf(v)
 	}
 	return out
-}
-
-func splitComma(s string) []string {
-	parts := []string{}
-	for _, p := range splitOnComma(s) {
-		parts = append(parts, p)
-	}
-	return parts
 }
 
 func splitOnComma(s string) []string {

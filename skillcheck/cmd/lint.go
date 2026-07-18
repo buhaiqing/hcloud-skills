@@ -43,24 +43,28 @@ func runLint(args []string) error {
 	if err != nil {
 		return fmt.Errorf("lint go: 'gofmt' not found on PATH (required for linting)")
 	}
-	formatArgs := []string{"-l"}
-	if *fix {
-		formatArgs = []string{"-w"}
-	}
-	formatArgs = append(formatArgs, rootDir)
-	cmd := exec.Command(gofmtBin, formatArgs...)
+	// Always list files needing formatting first, even in --fix mode.
+	listCmd := exec.Command(gofmtBin, "-l", rootDir)
 	var fmtOut bytes.Buffer
-	cmd.Stdout = &fmtOut
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	listCmd.Stdout = &fmtOut
+	listCmd.Stderr = os.Stderr
+	if err := listCmd.Run(); err != nil {
 		return fmt.Errorf("lint go: gofmt failed: %w", err)
 	}
-	if !*fix {
-		for _, line := range strings.Split(strings.TrimSpace(fmtOut.String()), "\n") {
+	needsFormat := strings.TrimSpace(fmtOut.String())
+	if needsFormat != "" {
+		for _, line := range strings.Split(needsFormat, "\n") {
 			if line == "" {
 				continue
 			}
 			failures = append(failures, "gofmt: "+line)
+		}
+		if *fix {
+			fixCmd := exec.Command(gofmtBin, "-w", rootDir)
+			fixCmd.Stderr = os.Stderr
+			if err := fixCmd.Run(); err != nil {
+				return fmt.Errorf("lint go: gofmt -w failed: %w", err)
+			}
 		}
 	}
 
