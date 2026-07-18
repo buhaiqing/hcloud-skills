@@ -374,3 +374,47 @@ MCP Server 配置见仓库根 `.mcp.json`（stdio 启动 `codegraph serve --mcp`
 ```
 
 > **前置条件**：`codegraph` 必须在 `PATH` 中（本机位于 `~/.local/bin/codegraph`，`which codegraph` 可验证），否则 stdio server 静默启动失败。若 Agent 运行时未自动加载该 MCP Server，确认 PATH，或在用户级配置（如 `~/.claude.json`）显式声明同一 server。额外 MCP 工具可按 CodeGraph 文档通过环境变量开启。
+
+---
+
+## Cross-Language Migration Lessons (skillcheck Go Migration Retrospective)
+
+Lessons from migrating ~5000 lines of Python A-class validation scripts to a Go CLI binary (`skillcheck/`). Reusable for any future Go migration in this repo.
+
+### 1. Embed + .gitignore Trap
+
+`//go:embed fixtures/*.json` requires fixture files to be tracked by git. Top-level `.gitignore` patterns (`**/gcl-trace-*.json`) silently exclude them → `go build` fails with `no matching files found`.
+
+**Rule**: Always verify `git check-ignore` on every `//go:embed` glob pattern before committing. Add `!` negation rules in `.gitignore` for embed directories.
+
+### 2. Equivalence Test Strategy
+
+When comparing Python ↔ Go output, use **structured equivalence** not byte-for-byte comparison:
+
+| Check | Rule |
+|-------|------|
+| Exit code | Python fail → Go must also fail (no false negatives) |
+| Failure items | Same `[FAIL]` line set (after normalizing paths/timestamps) |
+| Strictness | Go may be stricter than Python — acceptable |
+
+### 3. String → Rune in Go
+
+`s[i]` yields a single byte, not a rune. For multi-byte UTF-8 characters (Chinese, emoji, special symbols in YAML/markdown), use `utf8.DecodeRuneInString()`. This is the #1 correctness bug in Python→Go migrations.
+
+### 4. Subprocess Flag Semantics
+
+`gofmt -l` (list unformatted files) and `gofmt -w` (write in-place) are mutually exclusive output modes. Never replace one with the other — use `-l` for detection and conditionally run `-w` for fix mode, preserving the listing output.
+
+### 5. Error Disposal in Go
+
+`_ = fn()` in Go is the equivalent of `try: fn() except: pass` in Python — it silently swallows failures. Every non-trivial return value (especially `error`) must be checked. A `grep '_ = .*error'` check before commit catches most of these.
+
+### 6. Migration Order
+
+```
+Shared libraries (schema validator, security scanner) → Internal packages (YAML, coverage) → CLI subcommands (validate, check, scan, aggregate) → Integration tests → Equivalence tests → Delete Python originals (after 2-week bake)
+```
+
+### 7. Zero-External-Dependency Binary
+
+`schema/`, `security/`, `yaml/`, `coverage/` + Go stdlib + `gopkg.in/yaml.v3` = complete A-class coverage. No Python, no Node, no shell scripts needed at runtime.
