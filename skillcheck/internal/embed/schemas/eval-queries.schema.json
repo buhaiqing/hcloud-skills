@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hcloud-skills.local/huaweicloud-skill-generator/assets/eval-queries.schema.json",
+  "title": "Huawei Cloud Skill eval_queries.json",
+  "description": "Union contract for assets/eval_queries.json. Validated by scripts/validate_eval_queries_schema.py (multi-format dispatch).",
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "queryWithReason": {
+      "type": "object",
+      "required": ["query", "reason"],
+      "properties": {
+        "query": { "$ref": "#/$defs/nonEmptyString" },
+        "reason": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "matchArrayEntry": {
+      "type": "object",
+      "required": ["query", "should_match", "skill"],
+      "properties": {
+        "query": { "$ref": "#/$defs/nonEmptyString" },
+        "should_match": { "type": "boolean" },
+        "skill": { "$ref": "#/$defs/nonEmptyString" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "activateArrayEntry": {
+      "type": "object",
+      "required": ["query", "should_activate"],
+      "properties": {
+        "query": { "$ref": "#/$defs/nonEmptyString" },
+        "should_activate": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "triggerArrayEntry": {
+      "type": "object",
+      "required": ["query", "should_trigger"],
+      "properties": {
+        "query": { "$ref": "#/$defs/nonEmptyString" },
+        "should_trigger": { "type": "boolean" },
+        "expected_skill": { "$ref": "#/$defs/nonEmptyString" },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "smokeArrayEntry": {
+      "type": "object",
+      "required": ["query", "description"],
+      "properties": {
+        "query": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "$ref": "#/$defs/nonEmptyString" }
+      },
+      "additionalProperties": false
+    },
+    "matchObject": {
+      "type": "object",
+      "required": ["should_match", "should_not_match"],
+      "properties": {
+        "skill": { "$ref": "#/$defs/nonEmptyString" },
+        "should_match": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/queryWithReason" }
+        },
+        "should_not_match": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/queryWithReason" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "triggerObject": {
+      "type": "object",
+      "required": ["should_trigger", "should_not_trigger"],
+      "properties": {
+        "should_trigger": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/queryWithReason" }
+        },
+        "should_not_trigger": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/queryWithReason" }
+        },
+        "edge_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["query", "reason", "expected"],
+            "properties": {
+              "query": { "$ref": "#/$defs/nonEmptyString" },
+              "reason": { "$ref": "#/$defs/nonEmptyString" },
+              "expected": { "$ref": "#/$defs/nonEmptyString" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "structuredObject": {
+      "type": "object",
+      "required": ["skill_name", "evaluation_queries"],
+      "properties": {
+        "skill_name": { "$ref": "#/$defs/nonEmptyString" },
+        "version": { "type": "string" },
+        "last_updated": { "type": "string" },
+        "description": { "type": "string" },
+        "summary": { "type": "object", "additionalProperties": true },
+        "evaluation_queries": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "category", "query", "expected_skill", "pass_condition", "priority"],
+            "properties": {
+              "id": { "$ref": "#/$defs/nonEmptyString" },
+              "category": {
+                "type": "string",
+                "enum": [
+                  "should_trigger",
+                  "should_not_trigger",
+                  "trigger_accuracy",
+                  "execution_quality",
+                  "finops_integration",
+                  "secops_integration",
+                  "aiops_integration"
+                ]
+              },
+              "query": { "$ref": "#/$defs/nonEmptyString" },
+              "expected_skill": { "$ref": "#/$defs/nonEmptyString" },
+              "pass_condition": { "$ref": "#/$defs/nonEmptyString" },
+              "priority": { "enum": ["P0", "P1", "P2"] },
+              "validation_checks": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/nonEmptyString" }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
