@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
 # Repository-managed git pre-commit hook.
 #
-# Installed by `python3 scripts/install_git_hook.py` (which copies this file
+# Installed by `go run scripts/install_hook.go` (which copies this file
 # into `.git/hooks/pre-commit`). It delegates to `scripts/pre_commit_check.sh`
 # so the same gate runs locally and in CI.
 #
-# Skips work for commits that touch no Python file under `scripts/` to keep
-# pure-markdown commits fast.
+# Skips work for commits that touch no skillcheck Go file, testdata Python, or
+# scripts Go file to keep pure-markdown commits fast.
 
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
-# Detect Python changes in the working tree OR the index. We lint everything
-# touched by this commit (staged + unstaged) so contributors can't sneak a
-# style fix past `git commit --amend`.
-PY_TOUCHED=$( (git diff --cached --name-only --diff-filter=AM ; git diff --name-only --diff-filter=AM) \
+# Detect relevant changes in the working tree OR the index. Triggers on:
+#   - skillcheck/**/*.go
+#   - skillcheck/testdata/*.py
+#   - scripts/*.go
+TOUCHED=$( (git diff --cached --name-only --diff-filter=AM ; git diff --name-only --diff-filter=AM) \
   | sort -u \
-  | grep -E '^scripts/.*\.py$' || true)
+  | grep -E '^(skillcheck/.*\.go|skillcheck/testdata/.*\.py|scripts/.*\.go)$' \
+  | grep -v '_test.go$' || true)
 
-if [ -z "${PY_TOUCHED}" ]; then
+if [ -z "${TOUCHED}" ]; then
   exit 0
 fi
 
