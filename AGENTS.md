@@ -481,3 +481,15 @@ Shared libraries (schema validator, security scanner) → Internal packages (YAM
 When migrating a Python CLI to Go binary, orchestration scripts (`validate_local.py`, CI workflows) that invoke the CLI **must** be updated to match the new Go flag interface. Go binaries often simplify flags (e.g., `--root <skill-dir>` replaces `--skill <name> --request <text> --command <cmd>`). Also: not every Python subcommand needs a Go equivalent — some (like `skill-generator-drift`) remain Python-only and should be called directly via `python3 scripts/...`.
 
 **Rule**: After any CLI migration, grep all callers (`validate_local.py`, `.github/workflows/`, `Makefile`) for the old invocation pattern and update them in the same PR.
+
+### 9. Advanced Ops Component Pattern (CADL)
+
+When adding standalone operational intelligence scripts (`dynamic_orchestration.py`, `predictive_ops.py`, `topology_graph.py`, `progressive_trust.py`):
+
+| Rule | Rationale |
+|------|----------|
+| Each script is self-contained with argparse CLI + `--json` output | Enables pipeline composition and CI integration |
+| Static knowledge (skill registry, dependency edges, thresholds) lives as module-level dicts | Avoids external config files; versioned with code |
+| All scripts share `ROOT_DEFAULT = Path(__file__).resolve().parents[1]` | Consistent repo-root resolution |
+| Use `UTC = timezone.utc  # noqa: UP017` (not `datetime.UTC`) | Python 3.10 compat (P0 gate) |
+| Smoke-test each subcommand after creation | Catches argparse wiring bugs (e.g. duplicate `set_defaults`) early |
