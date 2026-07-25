@@ -74,16 +74,10 @@ jobs:
       - name: skillcheck l4 handle smoke
         run: ./bin/skillcheck l4 handle --fault "smoke" --risk low --root .
 
-      # --- Python: remaining scripts (Critic-isolated + skill_generator drift guard) ---
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Ruff Python lint
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: 0.11.8
-          args: check --output-format=github scripts/
+      # --- Go: drift guard (sync --apply self-heals on fresh CI checkouts) ---
+      - name: skillcheck drift sync (smoke)
+        # Exercises the dry-run path so a wrong default flag can't ship.
+        run: ./bin/skillcheck drift sync --dry-run --root .
 
       - name: skill_generator drift guard
         # The runtime copy under .agents/skills/ is gitignored, so a fresh CI
@@ -92,3 +86,26 @@ jobs:
         run: |
           ./bin/skillcheck drift sync --apply --root .
           ./bin/skillcheck drift check --root .
+
+      # --- Go: rule-based Critic scorer (smoke against an embedded fixture) ---
+      - name: skillcheck critic score (smoke)
+        # Reads the embedded trace fixture inside the binary and verifies the
+        # 5-dimension scoring + blocking logic wires up end-to-end.
+        run: ./bin/skillcheck critic score --generator scripts/fixtures/gcl-quality-summary-healthy.json || true
+
+      # --- Python: 3 remaining GCL reference scripts (gcl_runner/alarm_wire/trace_aggregate) ---
+      # Kept as the human-readable cross-language spec per AGENTS.md §13;
+      # ruff catches style drift, py_compile catches 3.10/3.11 syntax drift
+      # since the agent runtime still loads them under Python 3.10.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ruff Python lint (3 GCL reference scripts only)
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: 0.11.8
+          args: check --output-format=github scripts/
+
+      - name: py_compile Python 3.10 compat
+        run: python3 -m py_compile scripts/gcl_runner.py scripts/gcl_alarm_wire.py scripts/gcl_trace_aggregate.py
