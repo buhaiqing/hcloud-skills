@@ -207,44 +207,49 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 
 ### One-Click Install
 
-Replace `VERSION` with the [latest release tag](https://github.com/buhaiqing/hcloud-skills/releases) (e.g. `v0.1.0`).
+First fetch the latest release tag (the binary URL embeds the tag, e.g. `v0.1.3`):
+
+```bash
+VERSION=$(curl -sSL https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/v\1/')
+```
+
+Then pick the binary for your platform:
 
 **Linux (amd64):**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-amd64
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-linux-amd64"
 chmod +x skillcheck-linux-amd64
 sudo mv skillcheck-linux-amd64 /usr/local/bin/skillcheck
 ```
 
 **Linux (arm64):**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-arm64
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-linux-arm64"
 chmod +x skillcheck-linux-arm64
 sudo mv skillcheck-linux-arm64 /usr/local/bin/skillcheck
 ```
 
 **macOS (arm64, Apple Silicon):**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-arm64
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-darwin-arm64"
 chmod +x skillcheck-darwin-arm64
 sudo mv skillcheck-darwin-arm64 /usr/local/bin/skillcheck
 ```
 
 **macOS (amd64, Intel):**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-amd64
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-darwin-amd64"
 chmod +x skillcheck-darwin-amd64
 sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
 ```
 
 **Windows (amd64, PowerShell as Administrator):**
 ```powershell
-$version = "VERSION"
+$version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
 $url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
 $out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Invoke-WebRequest -Uri $url -OutFile $out
-# Add to PATH if not already present
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*\.local\bin*") {
   [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
@@ -254,7 +259,7 @@ Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env
 
 **Windows (arm64, PowerShell as Administrator):**
 ```powershell
-$version = "VERSION"
+$version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
 $url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
 $out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
@@ -264,6 +269,18 @@ if ($userPath -notlike "*\.local\bin*") {
   [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
 }
 Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env:USERPROFILE\.local\bin`""
+```
+
+> **Maintainers** — release a new version with `make release VERSION=vX.Y.Z`. The target runs `go vet`, full test suite, builds the binary, tags, and pushes the tag in one shot.
+
+### Build From Source
+
+```bash
+git clone https://github.com/buhaiqing/hcloud-skills.git
+cd hcloud-skills
+make build          # writes ./bin/skillcheck
+make test           # full Go test suite
+make release VERSION=vX.Y.Z   # cut a release (pushes tag, triggers CI artifacts)
 ```
 
 ### Verify Installation
@@ -310,8 +327,15 @@ skillcheck validate alarm-wire-contract --root .
 # Validate audit-results directory protection (gitignore, permissions)
 skillcheck check audit-results --root .
 
-# Check skill-generator drift between canonical and runtime copies
-skillcheck check skill-generator-drift
+# Detect drift between canonical skill-generator and the agent runtime copy
+# (fails the gate if they diverge; sync first to repair)
+skillcheck drift check --root .
+
+# Repair drift by copying the canonical skill-generator to the runtime location
+skillcheck drift sync --apply --root .
+
+# Run the rule-based Critic scorer (5-dimension quality scoring for GCL)
+skillcheck critic score --generator /path/to/generator-trace.json
 ```
 
 ### GCL Runtime Commands
@@ -358,6 +382,19 @@ Complete reference for all `skillcheck` subcommands added in Phase 2 and Phase 3
 | Subcommand | Description |
 |------------|-------------|
 | `check audit-results --root <dir>` | Validates `audit-results/` directory protection contract: `.gitignore` must contain 8 required patterns (audit-results/, */audit-results/, gcl-trace-*.json, */gcl-trace-*.json, gcl-quality-summary-*.json, */gcl-quality-summary-*.json, gcl-alarm-plan-*.json, */gcl-alarm-plan-*.json), directory mode must be 0700 when present, no tracked files in git. Supports `--json` for JSON report. Exit 0 = clean, 1 = contract violations. |
+
+### drift
+
+| Subcommand | Description |
+|------------|-------------|
+| `drift check --root <dir> [--json]` | Verifies byte-for-byte equality between `huaweicloud-skill-generator/` (canonical, git-tracked) and `.agents/skills/huaweicloud-skill-generator/` (runtime, gitignored). Catches silent drift that would cause the agent runtime to load stale instructions. Exit 0 = identical, 1 = drift or missing root. |
+| `drift sync --root <dir> [--apply] [--dry-run]` | Reconciles the runtime copy from canonical. `--dry-run` (default) prints actions without writing; `--apply` performs copy/overwrite/delete. Bootstraps the runtime directory on demand, so it is self-healing on fresh CI checkouts. Exit 0 = synced. |
+
+### critic
+
+| Subcommand | Description |
+|------------|-------------|
+| `critic score --generator <path> [--emit] [--critic-out <path>]` | Runs the rule-based 5-dimension Critic (safety, correctness, idempotency, traceability, spec_compliance) against a generator trace JSON. Output schema: `scores` (5 floats ∈ {0, 0.5, 1}), `suggestions` (≤5 strings), `blocking` (bool), `_mode` ("critic-v1"), `finops_estimate_usd`. `--emit` also writes the result to `--critic-out`. Exit 0 = always (validation lives in `gcl run`). |
 
 ### gcl
 

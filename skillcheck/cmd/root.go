@@ -40,6 +40,10 @@ func Execute() error {
 		return runLearning(args)
 	case "l4":
 		return runL4(args)
+	case "drift":
+		return runDrift(args)
+	case "critic":
+		return runCritic(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -76,6 +80,9 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  skillcheck learning gen --root <dir>                       regenerate failure_patterns.json + remediation-playbooks.json for top skills")
 	fmt.Fprintln(w, "  skillcheck learning trace <aggregate|learn|report> ...    GCL trace → failure_patterns.json")
 	fmt.Fprintln(w, "  skillcheck l4 handle --fault <text> [--root <dir>] [--json]  closed-loop L4 fault handler")
+	fmt.Fprintln(w, "  skillcheck drift check --root <dir>                        verify canonical/runtime skill copy equality")
+	fmt.Fprintln(w, "  skillcheck drift sync --root <dir> [--apply]              reconcile runtime copy with canonical")
+	fmt.Fprintln(w, "  skillcheck critic score --generator <path> [--emit]       rule-based 5-dimension scorer")
 	fmt.Fprintln(w, "  skillcheck validate --root <dir>                            run all A-class checks (total entry)")
 }
 

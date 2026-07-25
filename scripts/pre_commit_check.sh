@@ -50,7 +50,7 @@ run_gate() {
 }
 
 # ── 1. ruff lint (remaining Python files) ───────────────
-if [[ -f "$ROOT/scripts/check_skill_generator_drift.py" || -f "$ROOT/scripts/critic_v1.py" ]]; then
+if ls "$ROOT"/scripts/*.py >/dev/null 2>&1; then
   run_gate "ruff lint" ruff check scripts/
 fi
 
@@ -82,10 +82,8 @@ run_gate "skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --root "
 run_gate "skillcheck learning gen" "$SKILLCHECK_BIN" learning gen --root "$ROOT"
 run_gate "skillcheck l4 handle smoke" "$SKILLCHECK_BIN" l4 handle --fault "smoke" --risk low --root "$ROOT"
 
-# ── 8. Python: skill_generator drift guard (Python-only, per AGENTS.md invariant) ──
-if [[ -f "$ROOT/scripts/check_skill_generator_drift.py" ]]; then
-  run_gate "skill_generator drift guard" python3 "$ROOT/scripts/check_skill_generator_drift.py" check
-fi
+# ── 8. Go: skill_generator drift guard (sync + check; sync is self-healing) ──
+run_gate "skill_generator drift guard" bash -c "\"$SKILLCHECK_BIN\" drift sync --apply --root \"$ROOT\" && \"$SKILLCHECK_BIN\" drift check --root \"$ROOT\""
 
 # ── 9. Unit tests (skipped in pre-commit hook) ──────────
 if (( SKIP_TESTS == 0 )); then

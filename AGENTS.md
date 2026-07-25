@@ -44,10 +44,10 @@ When editing the generator, update the **root copy** only. The runtime copy
 MUST be brought back in sync via:
 
 ```bash
-python3 scripts/check_skill_generator_drift.py sync --apply
+skillcheck drift sync --apply --root .
 ```
 
-The drift guard (`scripts/check_skill_generator_drift.py check`) is wired into
+The drift guard (`skillcheck drift check --root .`) is wired into
 `scripts/pre_commit_check.sh` and the CI workflow (`validate-skills.yml`), so a drifted runtime copy is
 a release-blocker. See also `docs/gcl-spec.md` §Dual-Copy Drift.
 
@@ -198,13 +198,12 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ## Python 3.10 Syntax Compatibility (P0)
 
-> **As of 2026-07-26, only 5 Python scripts remain in `scripts/`:**
-> `critic_v1.py` (Critic-isolated, GCL spec invariant), `check_skill_generator_drift.py`
-> (Python-only per AGENTS.md §Dual-Copy Trap), and the 3 GCL runtime scripts (`gcl_runner.py`,
-> `gcl_alarm_wire.py`, `gcl_trace_aggregate.py`) which are kept as reference implementations of
-> the GCL spec (see `docs/gcl-spec.md`). The 12 scripts previously listed here have all been
-> migrated to Go: see §"Cross-Language Migration Lessons (skillcheck Go Migration Retrospective)"
-> below for the latest wave (L4 engines + learning + dead-code cleanup).
+> **As of 2026-07-26, only 3 Python scripts remain in `scripts/`:**
+> the 3 GCL runtime scripts (`gcl_runner.py`, `gcl_alarm_wire.py`, `gcl_trace_aggregate.py`) which
+> are kept as reference implementations of the GCL spec (see `docs/gcl-spec.md`). The 14 scripts
+> previously listed here have all been migrated to Go: see §"Cross-Language Migration Lessons
+> (skillcheck Go Migration Retrospective)" below for the latest wave (L4 engines + learning +
+> dead-code cleanup + drift guard + critic).
 ## Python 3.10 Syntax Compatibility (P0)
 
 - Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only symbol silently breaks the agent.
@@ -575,8 +574,6 @@ of dev time if applied upfront:
 
 | Script | Why kept |
 |--------|----------|
-| `critic_v1.py` | Critic MUST be isolated from Generator (GCL spec §"Critic is read-only"). Migrating to Go would couple Critic to the Generator binary. |
-| `check_skill_generator_drift.py` | AGENTS.md §Dual-Copy Trap explicitly says "not every Python subcommand needs a Go equivalent — some remain Python-only and should be called directly via `python3 scripts/...`". |
 | `gcl_runner.py`, `gcl_alarm_wire.py`, `gcl_trace_aggregate.py` | The Go versions (`internal/gcl/*.go`) are the *implementation*; these Python files are the *reference spec* cited by `docs/gcl-spec.md` and `references/self-healing-spec.md`. Deleting them would break the spec citations. The Go versions are now the canonical runtime path; the Python versions serve as human-readable cross-language documentation. |
 
 ### 14. Self-Reflection: This Migration (2026-07-26)
