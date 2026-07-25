@@ -1,5 +1,12 @@
 ---
 name: huaweicloud-cdn-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-eip-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-waf-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei Cloud CDN
   (Content Delivery Network / 内容分发网络) — domain lifecycle, cache rules, HTTPS certificates,

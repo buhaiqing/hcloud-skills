@@ -1,5 +1,14 @@
 ---
 name: huaweicloud-swr-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-codearts-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to manage container images, repositories, organizations, or troubleshoot image pull/push on Huawei Cloud SWR (Software Repository for Container / 容器镜像服务) — organization management, repository lifecycle, image and tag management, retention policies, cross-region synchronization, and Docker client integration. User mentions SWR, container image, 容器镜像, 镜像仓库, Docker image, image pull/push, or describes image-related scenarios (e.g., image pull failure, repository full, vulnerability scan, image cleanup, cross-region sync) even without naming the product directly. Not for billing, IAM, or related products that have their own ops skills.
 license: MIT

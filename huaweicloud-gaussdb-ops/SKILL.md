@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-gaussdb-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-dcs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud GaussDB (for openGauss) — instance lifecycle, backup/restore, parameter

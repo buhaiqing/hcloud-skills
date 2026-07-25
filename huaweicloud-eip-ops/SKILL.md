@@ -1,5 +1,15 @@
 ---
 name: huaweicloud-eip-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cdn-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ddos-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-nat-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud Elastic IP (EIP / 弹性公网IP) and bandwidth — public IP allocation,

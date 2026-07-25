@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-css-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-kms-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud CSS (Cloud Search Service) — Elasticsearch/OpenSearch cluster lifecycle,

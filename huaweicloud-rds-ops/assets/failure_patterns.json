@@ -1,0 +1,161 @@
+{
+  "$schema": "failure-patterns/v1",
+  "skill_id": "huaweicloud-rds-ops",
+  "patterns": [
+    {
+      "id": "RDS-FP001",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "DBS.200001",
+        "error_message_regex": "instance.*not found|InstanceNotFound",
+        "command_pattern": "describe-instance"
+      },
+      "root_cause": "DB instance ID invalid or instance deleted",
+      "fix": {
+        "strategy": "retry",
+        "action": "List instances to verify ID: hcloud RDS listInstances --region {{env.HW_REGION_ID}} --limit 50"
+      },
+      "prevention": "Cache instance ID from listInstances before state operations"
+    },
+    {
+      "id": "RDS-FP002",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "DBS.200013",
+        "error_message_regex": "instance.*not.*running|InvalidDBInstanceState",
+        "command_pattern": "*"
+      },
+      "root_cause": "Operation attempted while DB in transitional state (Creating/Restarting/FlavorChanging)",
+      "fix": {
+        "strategy": "retry",
+        "action": "Poll showInstance until status==ACTIVE, then retry"
+      },
+      "prevention": "Pre-check status before state-mutating operations"
+    },
+    {
+      "id": "RDS-FP003",
+      "category": "permission",
+      "signature": {
+        "error_code": "DBS.200028",
+        "error_message_regex": "Quota exceeded|InstanceQuota",
+        "command_pattern": "create-instance"
+      },
+      "root_cause": "RDS instance quota exhausted for project/region",
+      "fix": {
+        "strategy": "halt",
+        "action": "Delegate to huaweicloud-iam-ops for quota raise; do not retry"
+      },
+      "prevention": "Check RDS quota via listQuotas before batch create"
+    },
+    {
+      "id": "RDS-FP004",
+      "category": "cross_skill",
+      "signature": {
+        "error_code": "DBS.201011",
+        "error_message_regex": "VPC.*not found|subnet.*not found",
+        "command_pattern": "create-instance"
+      },
+      "root_cause": "VPC/subnet does not exist or wrong region",
+      "fix": {
+        "strategy": "delegate",
+        "action": "Delegate to huaweicloud-vpc-ops to verify/create VPC+subnet, then retry RDS create"
+      },
+      "prevention": "Verify vpc_id/subnet_id + cross-region match before create"
+    },
+    {
+      "id": "RDS-FP005",
+      "category": "network",
+      "signature": {
+        "error_code": "DBS.201015",
+        "error_message_regex": "connection.*timeout|connect.*refused",
+        "command_pattern": "*"
+      },
+      "root_cause": "Network ACL/security group blocks 3306/5432/1433 traffic to RDS",
+      "fix": {
+        "strategy": "fallback",
+        "action": "Inspect security group: hcloud VPC showSecurityGroup --id {{output.sg_id}}; ensure inbound allows client CIDR on DB port"
+      },
+      "prevention": "Validate SG rules + NACL at provisioning time"
+    },
+    {
+      "id": "RDS-FP006",
+      "category": "runtime",
+      "signature": {
+        "error_code": "",
+        "error_message_regex": "RequestLimitExceeded|Throttling",
+        "command_pattern": "*"
+      },
+      "root_cause": "API rate limit exceeded during burst operations",
+      "fix": {
+        "strategy": "retry",
+        "action": "Exponential backoff: 2^n seconds (cap 60s), respect Retry-After header"
+      },
+      "prevention": "Throttle batch operations; respect per-API rate limits"
+    },
+    {
+      "id": "RDS-FP007",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "DBS.200301",
+        "error_message_regex": "storage.*full|diskfull",
+        "command_pattern": "*"
+      },
+      "root_cause": "Disk space exhausted; writes failing",
+      "fix": {
+        "strategy": "fallback",
+        "action": "Extend volume: hcloud RDS enlargeInstanceVolume --instance_id {{output.id}} --size {{output.new_size}}; or prune old backups"
+      },
+      "prevention": "Monitor disk_util via CES; alarm at 80%"
+    },
+    {
+      "id": "RDS-FP008",
+      "category": "cli_parameter",
+      "signature": {
+        "error_code": "DBS.200021",
+        "error_message_regex": "InvalidParameter|flavor.*invalid",
+        "command_pattern": "create-instance"
+      },
+      "root_cause": "flavor_ref / engine_version / HA mode invalid",
+      "fix": {
+        "strategy": "retry",
+        "action": "List valid flavors: hcloud RDS listFlavors --region {{env.HW_REGION_ID}} --engine_type {{output.engine}}"
+      },
+      "prevention": "Validate flavor via listFlavors before create"
+    },
+    {
+      "id": "RDS-FP009",
+      "category": "cli_parameter",
+      "signature": {
+        "error_code": "DBS.200019",
+        "error_message_regex": "password.*policy|weak.*password",
+        "command_pattern": "create-instance"
+      },
+      "root_cause": "DB root password violates complexity policy",
+      "fix": {
+        "strategy": "retry",
+        "action": "Use a password meeting: 8-32 chars, 3 of {upper,lower,digit,special}; do NOT log the password"
+      },
+      "prevention": "Generate password client-side with policy validator"
+    },
+    {
+      "id": "RDS-FP010",
+      "category": "runtime",
+      "signature": {
+        "error_code": "DBS.202005",
+        "error_message_regex": "backup.*failed|BackupError",
+        "command_pattern": "create-backup"
+      },
+      "root_cause": "Backup window collision or storage backend unavailable",
+      "fix": {
+        "strategy": "fallback",
+        "action": "Retry with --wait_until off-peak or delegate to huaweicloud-cbr-ops for cross-region backup"
+      },
+      "prevention": "Schedule backups in low-traffic windows; verify CBR policy"
+    }
+  ],
+  "meta": {
+    "total_patterns": 10,
+    "last_aggregation": "2026-07-25T16:50:25Z",
+    "source_traces_analyzed": 0
+  }
+}

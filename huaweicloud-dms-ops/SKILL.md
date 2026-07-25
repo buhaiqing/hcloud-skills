@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-dms-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-swr-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei Cloud DMS (Distributed Message Service / Kafka / RabbitMQ) — instance lifecycle, topic/queue management, consumer groups, message query, backup/restore, and monitoring. User mentions DMS, Kafka, RabbitMQ, distributed message, 分布式消息服务, 消息队列, or describes messaging scenarios (e.g., producer timeouts, consumer lag, partition imbalance, connection refused, message accumulation) even without naming the product directly. Not for billing, IAM, or related products that have their own ops skills.
 license: MIT

@@ -1,5 +1,11 @@
 ---
 name: huaweicloud-kms-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-rds-ops
 description: >-
   Use when the user needs to create, manage, rotate, grant, or troubleshoot Huawei Cloud
   Key Management Service (KMS / 密钥管理) master keys — CMK lifecycle, envelope encryption,

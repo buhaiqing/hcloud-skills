@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -10,8 +11,8 @@ import (
 // evalFormat detection mirrors validate_eval_queries_schema.py. For an array
 // document it returns the entry $def name; for an object document it returns
 // the object $def name; otherwise an error.
-func detectEvalFormat(content, schemaData []byte) (string, any, error) {
-	dec := json.NewDecoder(strings.NewReader(string(content)))
+func detectEvalFormat(content []byte) (string, any, error) {
+	dec := json.NewDecoder(bytes.NewReader(content))
 	dec.UseNumber()
 	var parsed any
 	if err := dec.Decode(&parsed); err != nil {

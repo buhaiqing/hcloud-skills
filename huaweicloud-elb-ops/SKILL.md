@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-elb-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-dns-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-vpc-ops
+  - huaweicloud-waf-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud ELB (Elastic Load Balancer) — load balancer lifecycle, listeners, pool

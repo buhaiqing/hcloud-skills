@@ -222,10 +222,99 @@ class TopologyGraph:
         }
 
 
-def build_graph_from_skills(root: Path, skills: list[str] | None = None) -> TopologyGraph:  # noqa: ARG001
-    """Build topology graph from skill definitions and static dependency model.
+def discover_dynamic_edges(root: Path) -> list[tuple[str, str, str]]:
+    """Discover cross-skill edges by parsing skill assets (SKILL.md + integration.md).
 
-    Note: `root` is reserved for future dynamic resource discovery from skill assets.
+    Sources scanned per skill (in priority order):
+      1. SKILL.md frontmatter `delegates_to:` YAML list — explicit, highest confidence
+      2. SKILL.md body — prose lines containing "delegate to `huaweicloud-X-ops`"
+      3. references/integration.md — Delegation Matrix table rows (Primary Skill | Secondary Skill)
+      4. references/integration.md body — prose mentions of other huaweicloud-*-ops skills
+
+    Only edges between resources present in SKILL_RESOURCE_MAP are returned (deduped).
+    """
+    import re
+
+    skill_pattern = re.compile(r"huaweicloud-([a-z]+)-ops")
+    edges: list[tuple[str, str, str]] = []
+    skill_dirs = sorted(root.glob("huaweicloud-*-ops"))
+
+    for skill_dir in skill_dirs:
+        primary_skill = skill_dir.name
+        primary_resources = SKILL_RESOURCE_MAP.get(primary_skill, [])
+
+        # Source 1 + 2: SKILL.md (frontmatter delegates_to + body prose)
+        skill_md = skill_dir / "SKILL.md"
+        if skill_md.exists():
+            text = skill_md.read_text(encoding="utf-8")
+            # Source 1: YAML frontmatter `delegates_to: [huaweicloud-x-ops, ...]`
+            fm_match = re.search(r"^delegates_to:\s*\n((?:\s*-\s*huaweicloud-[a-z]+-ops\s*\n)+)", text, re.MULTILINE)
+            if fm_match:
+                block = fm_match.group(1)
+                for m in skill_pattern.finditer(block):
+                    secondary_full = f"huaweicloud-{m.group(1)}-ops"
+                    if secondary_full == primary_skill:
+                        continue
+                    secondary_resources = SKILL_RESOURCE_MAP.get(secondary_full, [])
+                    if primary_resources and secondary_resources:
+                        edges.append((primary_resources[0], secondary_resources[0], f"delegates_to:{m.group(1)}"))
+            # Source 2: SKILL.md body prose — 'delegate to `huaweicloud-X-ops`'
+            for line in text.splitlines():
+                if "delegate" not in line.lower():
+                    continue
+                for m in skill_pattern.finditer(line):
+                    secondary_full = f"huaweicloud-{m.group(1)}-ops"
+                    if secondary_full == primary_skill:
+                        continue
+                    secondary_resources = SKILL_RESOURCE_MAP.get(secondary_full, [])
+                    if primary_resources and secondary_resources:
+                        edges.append((primary_resources[0], secondary_resources[0], f"delegates_to:{m.group(1)}"))
+
+        # Source 3 + 4: references/integration.md (table + body prose)
+        integration = skill_dir / "references" / "integration.md"
+        if not integration.exists():
+            continue
+        text = integration.read_text(encoding="utf-8")
+        # Source 3: Delegation Matrix table rows
+        for line in text.splitlines():
+            if "huaweicloud-" not in line or "|" not in line:
+                continue
+            skills_in_row = skill_pattern.findall(line)
+            if len(skills_in_row) < 2:
+                continue
+            secondary_short = skills_in_row[1]
+            secondary_full = f"huaweicloud-{secondary_short}-ops"
+            if secondary_full == primary_skill:
+                continue
+            secondary_resources = SKILL_RESOURCE_MAP.get(secondary_full, [])
+            if primary_resources and secondary_resources:
+                edges.append((primary_resources[0], secondary_resources[0], f"delegates_to:{secondary_short}"))
+        # Source 4: integration.md prose — any other huaweicloud-*-ops mentions
+        for line in text.splitlines():
+            if "|" in line:
+                continue  # already covered by table parser above
+            for m in skill_pattern.finditer(line):
+                secondary_full = f"huaweicloud-{m.group(1)}-ops"
+                if secondary_full == primary_skill:
+                    continue
+                secondary_resources = SKILL_RESOURCE_MAP.get(secondary_full, [])
+                if primary_resources and secondary_resources:
+                    edges.append((primary_resources[0], secondary_resources[0], f"delegates_to:{m.group(1)}"))
+
+    return list({(f, t, r) for f, t, r in edges})  # dedupe, preserve last relationship
+
+
+def build_graph_from_skills(root: Path, skills: list[str] | None = None, static_only: bool = False) -> TopologyGraph:
+    """Build topology graph by combining static DEPENDENCY_EDGES with dynamic discovery.
+
+    Dynamic discovery (default) parses SKILL.md frontmatter, SKILL.md body prose, and
+    references/integration.md for cross-skill delegation signals. Set static_only=True
+    to use only the hand-curated DEPENDENCY_EDGES (legacy behavior).
+
+    Args:
+        root: Repo root path.
+        skills: Subset of skills to include (default: all).
+        static_only: If True, skip dynamic discovery (only static DEPENDENCY_EDGES).
     """
     graph = TopologyGraph()
 
@@ -241,6 +330,13 @@ def build_graph_from_skills(root: Path, skills: list[str] | None = None) -> Topo
     for from_type, to_type, rel in DEPENDENCY_EDGES:
         if from_type in graph.nodes and to_type in graph.nodes:
             graph.add_edge(from_type, to_type, rel)
+
+    # Dynamic discovery from SKILL.md + integration.md is the default (L4 maturity).
+    # Use static_only=True to opt out for backward compatibility / debugging.
+    if not static_only:
+        for from_type, to_type, rel in discover_dynamic_edges(root):
+            if from_type in graph.nodes and to_type in graph.nodes:
+                graph.add_edge(from_type, to_type, rel)
 
     return graph
 
@@ -275,7 +371,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 def cmd_impact(args: argparse.Namespace) -> int:
     """Compute blast radius for a resource."""
     root: Path = args.root
-    graph = build_graph_from_skills(root)
+    graph = build_graph_from_skills(root, static_only=args.static_only)
 
     resource = args.resource
     # Allow type-level queries (e.g., "ecs:instance")
@@ -344,6 +440,42 @@ def cmd_criticality(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discovery(args: argparse.Namespace) -> int:
+    """Inspect dynamically discovered cross-skill edges.
+
+    Lists every edge inferred from SKILL.md frontmatter, SKILL.md body prose, and
+    references/integration.md. Use --filter-skill to narrow to edges involving a specific skill.
+    """
+    root: Path = args.root
+    edges = discover_dynamic_edges(root)
+
+    if args.filter_skill:
+        needle = args.filter_skill
+        edges = [e for e in edges if needle in e[0] or needle in e[1] or needle in e[2]]
+
+    # Group by primary skill (extracted from relationship)
+    by_skill: dict[str, list[tuple[str, str, str]]] = {}
+    for f, t, r in edges:
+        primary = f.split(":")[0]  # resource prefix before ':'
+        by_skill.setdefault(primary, []).append((f, t, r))
+
+    if args.json:
+        print(json.dumps({
+            "total_edges": len(edges),
+            "edges": [{"from": f, "to": t, "relationship": r} for f, t, r in edges],
+            "by_primary_resource": by_skill,
+            "sources_scanned": ["SKILL.md frontmatter", "SKILL.md body prose", "integration.md table", "integration.md body prose"],
+        }, indent=2, ensure_ascii=False))
+    else:
+        print(f"=== Dynamically Discovered Edges ({len(edges)}) ===")
+        for primary, group in sorted(by_skill.items()):
+            print(f"\n[{primary}] {len(group)} edges:")
+            for f, t, r in sorted(group):
+                print(f"  {f} --[{r}]--> {t}")
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Topology Knowledge Graph — resource dependency and blast radius analysis"
@@ -363,6 +495,7 @@ def build_parser() -> argparse.ArgumentParser:
     i.add_argument("--resource", required=True, help="Resource ID or type (e.g., ecs:instance)")
     i.add_argument("--root", type=Path, default=ROOT_DEFAULT, help="Repo root")
     i.add_argument("--depth", type=int, default=3, help="Max traversal depth")
+    i.add_argument("--static-only", action="store_true", help="Use only static DEPENDENCY_EDGES (skip dynamic discovery from SKILL.md + integration.md)")
     i.add_argument("--json", action="store_true", help="Output as JSON")
     i.set_defaults(func=cmd_impact)
 
@@ -380,6 +513,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--top", type=int, default=10, help="Number of results")
     c.add_argument("--json", action="store_true", help="Output as JSON")
     c.set_defaults(func=cmd_criticality)
+
+    # discovery
+    d = subparsers.add_parser("discovery", help="Inspect dynamically discovered cross-skill edges")
+    d.add_argument("--root", type=Path, default=ROOT_DEFAULT, help="Repo root")
+    d.add_argument("--filter-skill", default=None, help="Narrow to edges mentioning this skill short name (e.g., 'rds')")
+    d.add_argument("--json", action="store_true", help="Output as JSON")
+    d.set_defaults(func=cmd_discovery)
 
     return parser
 

@@ -35,11 +35,12 @@ func runValidateSchema(args []string) error {
 	}
 
 	var instanceData []byte
-	if *file == "" {
+	switch *file {
+	case "":
 		return fmt.Errorf("validate schema %s: --file is required", kind)
-	} else if *file == "-" {
+	case "-":
 		instanceData, err = io.ReadAll(osStdin)
-	} else {
+	default:
 		instanceData, err = os.ReadFile(*file)
 	}
 	if err != nil {

@@ -74,7 +74,6 @@ type gclConformanceResult struct {
 	OK                          bool   `json:"ok"`
 }
 
-var rubricSectionRe = regexp.MustCompile(`(?m)^## (\d+)\. `)
 var qualityGateRe = regexp.MustCompile(`(?m)^## Quality Gate \(GCL\)$`)
 
 // barePlaceholderRe matches {word} placeholders.

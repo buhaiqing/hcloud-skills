@@ -1,5 +1,15 @@
 ---
 name: huaweicloud-cts-ops
+delegates_to:
+  - huaweicloud-apig-ops
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-smn-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud CTS (Cloud Trace Service) — audit trail lifecycle, event collection,

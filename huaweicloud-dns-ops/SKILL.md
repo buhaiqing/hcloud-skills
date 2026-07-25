@@ -1,5 +1,11 @@
 ---
 name: huaweicloud-dns-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cdn-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-eip-ops
+  - huaweicloud-elb-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei Cloud DNS
   (云解析DNS / Cloud DNS) — zone management, DNS record lifecycle, DNSSEC,

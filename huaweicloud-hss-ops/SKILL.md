@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-hss-ops
+delegates_to:
+  - huaweicloud-antiddos-ops
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-vpc-ops
+  - huaweicloud-waf-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud HSS (Host Security Service) — host management, asset collection, intrusion

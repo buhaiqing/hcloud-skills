@@ -518,7 +518,7 @@ func runCheckAdvancedCoverage(args []string) error {
 	}
 
 	if *jsonOut {
-		printAdvancedJSON(rootDir, report)
+		printAdvancedJSON(report)
 	} else {
 		for _, item := range report.Reports {
 			status := "OK"
@@ -549,7 +549,7 @@ func runCheckAdvancedCoverage(args []string) error {
 	return nil
 }
 
-func printAdvancedJSON(root string, report coverage.Report) {
+func printAdvancedJSON(report coverage.Report) {
 	fmt.Println("{")
 	fmt.Printf("  \"ok\": %v,\n", report.OK)
 	fmt.Printf("  \"skills_checked\": %d,\n", report.SkillsChecked)
@@ -708,7 +708,7 @@ func checkReferencesFile(root, path string, cache map[string][]string) []refFind
 				}
 				continue
 			}
-			resolved := resolveRefRelative(root, path, linkPath)
+			resolved := resolveRefRelative(path, linkPath)
 			if resolved == "" || !fileExists(resolved) {
 				if strings.HasPrefix(linkPath, "huaweicloud-") && strings.Contains(linkPath, "/") {
 					skillPart := strings.SplitN(linkPath, "/", 2)[0]
@@ -756,7 +756,7 @@ func splitRefTarget(raw string) (string, string) {
 	return raw, ""
 }
 
-func resolveRefRelative(root, source, linkPath string) string {
+func resolveRefRelative(source, linkPath string) string {
 	if linkPath == "" {
 		return ""
 	}

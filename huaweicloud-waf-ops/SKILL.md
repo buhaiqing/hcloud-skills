@@ -1,5 +1,15 @@
 ---
 name: huaweicloud-waf-ops
+delegates_to:
+  - huaweicloud-antiddos-ops
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-scm-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud WAF (Web Application Firewall) — policies, rules, domains, certificates,

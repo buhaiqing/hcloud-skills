@@ -1,5 +1,17 @@
 ---
 name: huaweicloud-functiongraph-ops
+delegates_to:
+  - huaweicloud-apig-ops
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-dms-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-smn-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud FunctionGraph — serverless function lifecycle, triggers, versioning,

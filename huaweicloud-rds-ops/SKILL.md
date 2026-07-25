@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-rds-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-dcs-ops
+  - huaweicloud-gaussdb-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud RDS (Relational Database Service) — DB instance lifecycle, backup/restore,

@@ -1,5 +1,14 @@
 ---
 name: huaweicloud-billing-ops
+delegates_to:
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-obs-ops
+  - huaweicloud-rds-ops
 description: >-
   Use when the user needs to manage Huawei Cloud Billing & Cost (费用中心 / BSS) —
   account balance, customer bills, bill details, resource usage, monthly summaries,

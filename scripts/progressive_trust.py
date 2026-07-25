@@ -282,20 +282,56 @@ def cmd_score(args: argparse.Namespace) -> int:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
-    """Evaluate if an operation needs confirmation."""
-    trust_path = Path(args.trust_data)
-    if not trust_path.exists():
-        print(f"ERROR: trust data not found: {trust_path}", file=sys.stderr)
-        return 1
+    """Evaluate if an operation needs confirmation.
 
-    trust_data = json.loads(trust_path.read_text(encoding="utf-8"))
-    history = trust_data.get("history", [])
+    Loads trust history from --trust-data if provided, otherwise defaults to
+    `<root>/<skill>/assets/trust_history.json`. After evaluation, records the
+    outcome back to the source file so trust scores accumulate across sessions.
+    """
+    if args.trust_data:
+        trust_path = Path(args.trust_data)
+        if not trust_path.exists():
+            print(f"ERROR: trust data not found: {trust_path}", file=sys.stderr)
+            return 1
+        trust_data = json.loads(trust_path.read_text(encoding="utf-8"))
+        history = trust_data.get("history", [])
+        persist_back = False  # external file: caller manages writes
+    else:
+        if not args.skill:
+            print("ERROR: --skill is required when --trust-data is not provided", file=sys.stderr)
+            return 1
+        trust_path = args.root / args.skill / "assets" / "trust_history.json"
+        data = load_trust_data(args.root, args.skill)
+        # Normalize: trust_history.json stores {operations: {op: [...]}}; evaluate wants flat history
+        all_ops: list[dict[str, Any]] = []
+        for op_history in data.get("operations", {}).values():
+            all_ops.extend(op_history)
+        history = all_ops
+        trust_data = {"history": history}
+        persist_back = True
+
     score = compute_trust_score(history)
 
     op_risk = args.risk
     op_type = args.operation_type
 
     result = evaluate_operation(score, op_risk, op_type)
+
+    # Persist back to default location so trust accumulates across sessions
+    if persist_back and not args.trust_data:
+        ops_dict = data.setdefault("operations", {})
+        op_history_list = ops_dict.setdefault(op_type, [])
+        # Append a single neutral observation so the score reflects activity
+        op_history_list.append({
+            "operation": op_type,
+            "outcome": "evaluated",
+            "risk": op_risk,
+            "ts": _now_iso(),
+            "trust_level": result["trust_level"],
+        })
+        data["meta"]["total_evaluations"] = data["meta"].get("total_evaluations", 0) + 1
+        save_trust_data(args.root, args.skill, data)
+        result["persisted_to"] = str(trust_path)
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -305,7 +341,16 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         print(f"Decision: {status}")
         print(f"Reason: {result['reason']}")
         print(f"Trust level: {result['trust_level']} (score={result['trust_score']})")
+        if result.get("persisted_to"):
+            print(f"Persisted: {result['persisted_to']}")
 
+    return 0
+
+
+def cmd_state_path(args: argparse.Namespace) -> int:
+    """Print default trust-state file path for the given skill."""
+    path = args.root / args.skill / "assets" / "trust_history.json"
+    print(str(path))
     return 0
 
 
@@ -384,11 +429,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     # evaluate
     e = subparsers.add_parser("evaluate", help="Evaluate operation confirmation need")
-    e.add_argument("--trust-data", required=True, help="Path to trust history JSON")
+    e.add_argument("--trust-data", required=False, help="Path to trust history JSON (defaults to <root>/<skill>/assets/trust_history.json)")
+    e.add_argument("--root", type=Path, default=ROOT_DEFAULT, help="Repo root (used when --trust-data omitted)")
+    e.add_argument("--skill", default=None, help="Skill id (used when --trust-data omitted)")
     e.add_argument("--operation-type", required=True, help="Operation type (e.g., resize, delete)")
     e.add_argument("--risk", required=True, choices=["low", "medium", "high", "critical"])
     e.add_argument("--json", action="store_true", help="Output as JSON")
     e.set_defaults(func=cmd_evaluate)
+
+    # state-path — print default trust history file location
+    sp = subparsers.add_parser("state-path", help="Print default trust-state file path")
+    sp.add_argument("--root", type=Path, default=ROOT_DEFAULT, help="Repo root")
+    sp.add_argument("--skill", required=True, help="Skill id")
+    sp.set_defaults(func=cmd_state_path)
 
     # update
     u = subparsers.add_parser("update", help="Record operation outcome")

@@ -7,20 +7,6 @@ import (
 	"testing"
 )
 
-// skillcheckDir returns the skillcheck module root (parent of cmd/).
-// It is used to determine the skillcheck root for scaffolding files.
-func skillcheckDir() string {
-	// e.g. os.Args[0] = ".../cmd.test" → skillcheck module root = parent of parent
-	if len(os.Args) > 0 {
-		if dir := filepath.Dir(os.Args[0]); dir != "." && dir != "" {
-			return filepath.Dir(dir)
-		}
-	}
-	// Fallback: infer from cwd (test binary is in skillcheck/cmd/)
-	pwd, _ := os.Getwd()
-	return filepath.Dir(filepath.Dir(pwd))
-}
-
 // scaffoldGCLGoFiles writes minimal internal/gcl/*.go stubs into
 // <SKILLCHECK_ROOT>/internal/gcl/ so that checkSafetyClassCode and
 // checkResourceScopeCode (which read from SKILLCHECK_ROOT/internal/gcl/)

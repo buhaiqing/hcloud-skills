@@ -1,5 +1,14 @@
 ---
 name: huaweicloud-obs-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-smn-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei Cloud OBS (Object Storage Service) — bucket lifecycle, object operations, ACL permissions, CDN integration, lifecycle rules, versioning, encryption, lifecycle management, and data migration. User mentions OBS, Object Storage, 对象存储, bucket, S3-compatible storage, or describes object storage scenarios (e.g., upload/download files, CDN origin, static website hosting, lifecycle policies, cross-region replication, object versioning, bucket policy, storage class management) even without naming the product directly. Not for billing, IAM-only tasks, or ECS filesystem operations.
 license: MIT

@@ -90,6 +90,26 @@ def build_steps(root: Path | None = None) -> list[Step]:
             "Markdown local links",
             ("python3", str(root / "scripts/check_markdown_links.py")),
         ),
+        # SKILL.md frontmatter structural lint (catches dangling/orphan YAML lines)
+        Step(
+            "SKILL.md frontmatter lint",
+            ("python3", str(root / "scripts/check_skill_frontmatter.py"), "--root", str(root)),
+        ),
+        # Python unit tests (scripts/*_test.py) — hermetic, run unconditionally
+        Step(
+            "Python unit tests (scripts/*_test.py)",
+            (
+                "python3",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                str(root / "scripts"),
+                "-p",
+                "*_test.py",
+                "-v",
+            ),
+        ),
         # skillcheck equivalence test
         Step(
             "skillcheck smoke test (embedded fixtures)",

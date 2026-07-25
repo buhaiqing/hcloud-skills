@@ -220,7 +220,7 @@ func discoverEvalQueries(root string) ([]string, error) {
 // dispatching on its format and enforcing skill-name consistency with the
 // owning skill directory.
 func validateEvalQueriesFile(content, schemaData []byte, skillName string) []string {
-	def, parsed, err := detectEvalFormat(content, schemaData)
+	def, parsed, err := detectEvalFormat(content)
 	if err != nil {
 		return []string{err.Error()}
 	}

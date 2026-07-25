@@ -1,5 +1,16 @@
 ---
 name: huaweicloud-iam-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-functiongraph-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-kms-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to manage Huawei Cloud IAM (Identity and Access Management) —
   users, groups, policies, roles, agencies, credentials, projects, and federation.

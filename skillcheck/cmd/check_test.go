@@ -1,10 +1,29 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// captureStdout redirects stdout to a pipe, runs fn, restores stdout, and returns
+// what was printed. Uses t.Fatal on any pipe/setup error so tests abort cleanly.
+func captureStdout(t *testing.T, fn func()) string {
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	fn()
+	os.Stdout = old
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	return buf.String()
+}
 
 // --- check example-config ---
 
@@ -141,5 +160,58 @@ func TestCheckReferencesLinksJSON(t *testing.T) {
 	// JSON output must succeed and report ok.
 	if err := runCheck([]string{"references-links", "--root", root, "--json"}); err != nil {
 		t.Fatalf("references-links --json should pass, got: %v", err)
+	}
+}
+
+// TestCheckAdvancedCoverageJSON verifies that --json flag produces valid JSON
+// with expected top-level fields and a non-empty reports array.
+func TestCheckAdvancedCoverageJSON(t *testing.T) {
+	root := t.TempDir()
+	scaffoldSkillTree(t, root, "huaweicloud-ecs-ops",
+		map[string]string{"aiops-patterns.md": "finops content"},
+		map[string]string{"runbook.md": "some doc"})
+
+	err := runCheckAdvancedCoverage([]string{"--root", root, "--json"})
+	if err != nil {
+		t.Fatalf("advanced-coverage --json should not fail, got: %v", err)
+	}
+
+	output := captureStdout(t, func() {
+		_ = runCheckAdvancedCoverage([]string{"--root", root, "--json"})
+	})
+
+	for _, field := range []string{`"ok"`, `"skills_checked"`, `"skills_with_advanced"`, `"reports"`} {
+		if !strings.Contains(output, field) {
+			t.Errorf("JSON output missing field %q; got:\n%s", field, output)
+		}
+	}
+	if !strings.Contains(output, `"skill"`) {
+		t.Errorf("JSON output missing skill entry; got:\n%s", output)
+	}
+	output = strings.TrimSpace(output)
+	if !strings.HasPrefix(output, "{") {
+		t.Errorf("JSON output should start with '{{'; got: %s", output[:min(10, len(output))])
+	}
+}
+
+// TestCheckAdvancedCoverageJSONFail verifies that when a skill is missing
+// advanced/, the JSON still prints all required top-level fields (even though OK=true
+// due to warn-only suppressing all errors).
+func TestCheckAdvancedCoverageJSONFail(t *testing.T) {
+	root := t.TempDir()
+	scaffoldSkillTree(t, root, "huaweicloud-ecs-ops", nil,
+		map[string]string{"runbook.md": "some doc"})
+
+	output := captureStdout(t, func() {
+		_ = runCheckAdvancedCoverage([]string{"--root", root, "--json", "--warn-only"})
+	})
+
+	for _, field := range []string{`"ok"`, `"skills_checked"`, `"errors"`, `"warnings"`, `"reports"`} {
+		if !strings.Contains(output, field) {
+			t.Errorf("JSON output missing field %q; got:\n%s", field, output)
+		}
+	}
+	if !strings.Contains(output, `"skills_checked": 1`) {
+		t.Errorf("skills_checked should be 1; got:\n%s", output)
 	}
 }

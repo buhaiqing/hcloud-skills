@@ -493,3 +493,44 @@ When adding standalone operational intelligence scripts (`dynamic_orchestration.
 | All scripts share `ROOT_DEFAULT = Path(__file__).resolve().parents[1]` | Consistent repo-root resolution |
 | Use `UTC = timezone.utc  # noqa: UP017` (not `datetime.UTC`) | Python 3.10 compat (P0 gate) |
 | Smoke-test each subcommand after creation | Catches argparse wiring bugs (e.g. duplicate `set_defaults`) early |
+
+### 10. L4 Closed-Loop Orchestrator Pattern (CADL — 2026-07-25)
+
+Lessons from building `scripts/runtime_orchestrator.py` to chain 4 L4 engines + GCL into one CLI:
+
+| Rule | Why |
+|------|-----|
+| **Engine composition = function import, not subprocess** | `import dynamic_orchestration as do; do.match_fault_skills(...)` is ~10× faster and lets you share state. Reserve subprocess for true process boundaries. |
+| **Check engine function signatures BEFORE coding** | `evaluate_operation(trust_score, op_risk, op_type)` not `(... current_time=...)`; `build_execution_plan(fault, skills, strategy)` not `(..., transitive_skills=...)`; step key is `action` not `execute`. Wrong kwargs waste 30-50% of dev time. |
+| **`structural_critic()` returns `{"scores":..., "suggestions":..., "blocking":...}`** not just scores. Pass `.get("scores", {})` to `decide()`. |
+| **Generator payload must include `exit_code` + `result_excerpt`** for `structural_critic` to score `spec_compliance ≥ 0.5`. Empty/unset → RETRY regardless of safety. |
+| **JSON values: `null` in Python dict → `None`, not `null`** | `null` is JSON syntax; Python `null` is undefined. Linter catches this immediately. |
+| **Knowledge base bootstrap: write a generator script, not 80 hand-crafted JSON files** | `gen_skill_knowledge.py` produced RDS/VPC/ELB/CCE × (10 patterns + 4 playbooks) in one run. Re-run when OpenAPI error codes change. |
+| **Trust state persistence: default-load from `<root>/<skill>/assets/trust_history.json`** | Makes the tool chain-friendly. `--trust-data` becomes optional override, not required. |
+| **Topology dynamic discovery: parse `references/integration.md` delegation tables** | Hidden source of truth — every skill already documents cross-skill deps there. Static model + dynamic parse gives 3→13 affected resources on RDS blast radius. |
+| **Persisted trace lives in `audit-results/` (gitignored)**, not in skill assets | Keeps skills clean; trace files are operational state, not knowledge. |
+| **Critic v1 output schema must pass `validate_critic_payload()`** | The 5-dim scores must be `{0, 0.5, 1}` literal — booleans/percentages silently fail validation. |
+
+### 11. SearchReplace Tool Limitation: "partial success" silent failure
+
+The `SearchReplace` tool occasionally reports `save file ... failed, reason: unknown` yet still modifies the file content (verified by grep). On such failures:
+
+1. Always re-grep the file to confirm whether the edit actually landed.
+2. If not applied, fall back to `Bash` with `sed -i ''` for simple line replacements — it works where the structured tool doesn't.
+3. Never waste a retry round assuming the prior edit applied without verification.
+
+**Cost of ignoring**: silent partial state = 2-3 extra debugging iterations per file.
+
+### 12. Frontmatter Backfill Discipline (CADL — 2026-07-25)
+
+Lesson from `scripts/backfill_delegates_to.py` — backfilling SKILL.md `delegates_to:` for 24 skills:
+
+| Rule | Why |
+|------|-----|
+| **Insert in canonical position (after `name:`), not at end** | Most YAML frontmatter loaders expect fields in consistent positions; appending breaks generator diffs and PR review. |
+| **Parse YAML BEFORE and AFTER the change** | Pre-existing YAML bugs (like `huaweicloud-ecs-ops/SKILL.md` line 56 dangling line) will pass `yaml.safe_load()` after edit too — you must compare BEFORE/AFTER error to attribute blame correctly. |
+| **Idempotent regex: detect existing block AND insert-only path separately** | `re.sub(no_match, new_block)` is a silent no-op; you need explicit `search() == None` branch with insert logic. |
+| **Body extraction: skip frontmatter before scanning for `huaweicloud-X-ops` mentions** | Otherwise self-references in the YAML key would pollute the delegation list. |
+| **Convention: always include the key, even when empty (`delegates_to: []`)** | Makes generator output deterministic; downstream parsers don't need null-checks. |
+
+**Cost of ignoring**: silently broken backfill = "0 changes reported" success message, but source 1 stays inactive — silent failure that the user catches.

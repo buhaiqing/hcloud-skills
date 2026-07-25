@@ -1,5 +1,15 @@
 ---
 name: huaweicloud-cce-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-evs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-swr-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud Cloud Container Engine (CCE / 云容器引擎) — cluster, node, node pool,

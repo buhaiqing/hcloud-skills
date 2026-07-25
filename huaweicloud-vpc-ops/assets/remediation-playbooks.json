@@ -1,0 +1,174 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-vpc-ops",
+  "playbooks": [
+    {
+      "id": "VPC-R001",
+      "name": "Security Group Rule Stale Cleanup",
+      "trigger": {
+        "metric": "sg_unused_rules",
+        "condition": "> 5 rules unused for 30d",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC showSecurityGroup --id {{output.sg_id}}",
+          "hcloud CTS listTraces --resource_type security_group --limit 100"
+        ],
+        "confidence_factors": [
+          "rules_unused",
+          "no_recent_match",
+          "no_compliance_lock"
+        ]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud VPC showSecurityGroup --id {{output.sg_id}} | grep -q active"
+        ],
+        "dry_run": "hcloud VPC deleteSecurityGroupRule --sg_id {{output.sg_id}} --rule_id {{output.rule_id}} --dry-run",
+        "execute": "hcloud VPC deleteSecurityGroupRule --sg_id {{output.sg_id}} --rule_id {{output.rule_id}}",
+        "verification": "hcloud VPC showSecurityGroup --id {{output.sg_id}} | grep -q {{output.rule_id}} || true",
+        "rollback": "hcloud VPC createSecurityGroupRule --sg_id {{output.sg_id}} --rule {{output.rule_payload}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "rule still referenced by another SG or compliance flag set",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.99,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-07-25T16:50:25Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "VPC-R002",
+      "name": "Subnet CIDR Auto-Allocate",
+      "trigger": {
+        "metric": "subnet_available_ips",
+        "condition": "< 10 remaining",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC showSubnet --subnet_id {{output.subnet_id}}",
+          "hcloud VPC listSubnets --vpc_id {{output.vpc_id}}"
+        ],
+        "confidence_factors": [
+          "cidr_exhausted",
+          "vpc_cidr_room_available",
+          "no_overlap"
+        ]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "hcloud VPC listVpcs --vpc_id {{output.vpc_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud VPC createSubnet --vpc_id {{output.vpc_id}} --cidr {{output.next_cidr}} --dry-run",
+        "execute": "hcloud VPC createSubnet --vpc_id {{output.vpc_id}} --cidr {{output.next_cidr}}",
+        "verification": "hcloud VPC showSubnet --subnet_id {{output.new_subnet_id}} | grep -q ACTIVE",
+        "rollback": "hcloud VPC deleteSubnet --subnet_id {{output.new_subnet_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "VPC CIDR fully consumed; needs new VPC",
+        "channel": "notification+pagerduty"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-07-25T16:50:25Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "VPC-R003",
+      "name": "EIP Bandwidth Upgrade",
+      "trigger": {
+        "metric": "eip_bandwidth_util",
+        "condition": "> 85 for 5min",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.VPC --metric_name eip_bandwidth_util --period 60 --filter avg",
+          "hcloud VPC showEip --eip_id {{output.eip_id}}"
+        ],
+        "confidence_factors": [
+          "bw_sustained_high",
+          "quota_available",
+          "no_maintenance_window"
+        ]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "hcloud VPC showEip --eip_id {{output.eip_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud VPC updateEipBandwidth --eip_id {{output.eip_id}} --bandwidth {{output.bw_mbps}} --dry-run",
+        "execute": "hcloud VPC updateEipBandwidth --eip_id {{output.eip_id}} --bandwidth {{output.bw_mbps}}",
+        "verification": "hcloud VPC showEip --eip_id {{output.eip_id}} | grep -q {{output.bw_mbps}}",
+        "rollback": "hcloud VPC updateEipBandwidth --eip_id {{output.eip_id}} --bandwidth {{output.old_bw}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "bandwidth upgrade fails or quota exhausted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.99,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-07-25T16:50:25Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "VPC-R004",
+      "name": "ACL Route Drift Repair",
+      "trigger": {
+        "metric": "route_drift_count",
+        "condition": "> 0 missing routes for 5min",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC showRouteTable --route_table_id {{output.rt_id}}",
+          "hcloud VPC listVpcPeerings --status ACTIVE"
+        ],
+        "confidence_factors": [
+          "routes_missing",
+          "peering_active",
+          "config_known"
+        ]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "hcloud VPC showRouteTable --route_table_id {{output.rt_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud VPC createRoutes --route_table_id {{output.rt_id}} --routes {{output.routes_json}} --dry-run",
+        "execute": "hcloud VPC createRoutes --route_table_id {{output.rt_id}} --routes {{output.routes_json}}",
+        "verification": "hcloud VPC showRouteTable --route_table_id {{output.rt_id}} | grep -q {{output.expected_destination_cidr}}",
+        "rollback": "hcloud VPC deleteRoutes --route_table_id {{output.rt_id}} --routes {{output.routes_json}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "routes still missing after apply",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-07-25T16:50:25Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

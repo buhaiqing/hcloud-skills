@@ -1,5 +1,16 @@
 ---
 name: huaweicloud-ces-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-evs-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-smn-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud Cloud Eye Service (CES / 云监控服务) — alarm rules, metrics, dashboards,

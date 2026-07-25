@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-dcs-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-lts-ops
+  - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei Cloud DCS (Distributed Cache Service / Redis) — instance lifecycle, backup, restore, resize, password reset, whitelist management, and monitoring. User mentions DCS, Redis, distributed cache, 分布式缓存, or describes cache-related scenarios (e.g., connection drops, high latency, OOM, eviction, cache avalanche, Redis AUTH issues, key expiration) even without naming the product directly. Not for billing, IAM, or related products that have their own ops skills.
 license: MIT

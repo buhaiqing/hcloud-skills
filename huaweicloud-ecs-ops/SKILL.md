@@ -1,5 +1,16 @@
 ---
 name: huaweicloud-ecs-ops
+delegates_to:
+  - huaweicloud-aom-ops
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-hss-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-rds-ops
+  - huaweicloud-vpc-ops
+  - huaweicloud-waf-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud ECS (Elastic Cloud Server) — instance lifecycle, disks, security groups,
@@ -26,6 +37,7 @@ metadata:
   cli_support_evidence: >-
     Huawei Cloud ECS is supported via `hcloud ecs` CLI commands and
     huaweicloud-sdk-go-v3/services/ecs/v2 Go SDK package.
+    CloudShell remote execution via Cloud-Cell Agent (云主机助手) API and OpenStack remote-exec extension.
   gcl:
     enabled: true
     required: true
@@ -42,7 +54,6 @@ metadata:
       - version: "1.0.0"
         date: "2026-05-20"
         change: "Initial skill release."
-    CloudShell remote execution via Cloud-Cell Agent (云主机助手) API and OpenStack remote-exec extension.
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY

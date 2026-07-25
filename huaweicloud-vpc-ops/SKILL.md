@@ -1,5 +1,11 @@
 ---
 name: huaweicloud-vpc-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-elb-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-rds-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud Virtual Private Cloud (VPC / 虚拟私有云) — VPC lifecycle, subnets, security

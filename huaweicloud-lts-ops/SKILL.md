@@ -1,5 +1,14 @@
 ---
 name: huaweicloud-lts-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-cce-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-dms-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-obs-ops
 description: >-
   Use when the user needs to configure, query, transfer, or troubleshoot Huawei
   Cloud LTS (Log Tank Service / 云日志服务) — log group/stream lifecycle, log

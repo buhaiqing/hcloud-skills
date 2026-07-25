@@ -1,5 +1,13 @@
 ---
 name: huaweicloud-cbr-ops
+delegates_to:
+  - huaweicloud-billing-ops
+  - huaweicloud-ces-ops
+  - huaweicloud-cts-ops
+  - huaweicloud-dcs-ops
+  - huaweicloud-ecs-ops
+  - huaweicloud-iam-ops
+  - huaweicloud-rds-ops
 description: >-
   Use when the user needs to manage backups, backup policies, restore operations, or monitor Huawei Cloud CBR (Cloud Backup and Recovery / 云备份) — backup vault lifecycle, backup policy configuration, on-demand backup execution, cross-region replication, and restore operations. User mentions CBR, cloud backup, 云备份, 备份策略, 存储库, vault, backup policy, restore, or describes backup-related scenarios (e.g., backup failure, recovery point missing, vault capacity full, RPO/RTO concerns) even without naming the product directly. Not for billing, IAM, or related products that have their own ops skills.
 license: MIT

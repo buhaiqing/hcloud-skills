@@ -95,19 +95,6 @@ var requiredContractFiles = map[string]string{
 	"backbone":        "huaweicloud-skill-generator/references/gcl-prompt-backbone.md",
 }
 
-func readContractFile(root, scope string) string {
-	rel, ok := requiredContractFiles[scope]
-	if !ok {
-		return ""
-	}
-	path := filepath.Join(root, rel)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 func hasBarePlaceholdersContract(text string) bool {
 	text = stripComments(text)
 	allowed := regexp.MustCompile(`\{\{\s*(env|user|output)\.[^{}]+\}\}`).ReplaceAllString(text, "")
@@ -191,13 +178,6 @@ func checkGeneratorContract(root string) generatorContractReport {
 		Checks:   checks,
 		Failures: failures,
 	}
-}
-
-func mapGet(m map[string]string, key string) string {
-	if v, ok := m[key]; ok {
-		return v
-	}
-	return ""
 }
 
 func runValidateGeneratorContract(args []string) error {

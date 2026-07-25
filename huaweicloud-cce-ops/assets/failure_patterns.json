@@ -1,0 +1,161 @@
+{
+  "$schema": "failure-patterns/v1",
+  "skill_id": "huaweicloud-cce-ops",
+  "patterns": [
+    {
+      "id": "CCE-FP001",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "CCE.0140",
+        "error_message_regex": "cluster.*not found|ClusterNotFound",
+        "command_pattern": "*"
+      },
+      "root_cause": "Cluster ID invalid or cluster deleted",
+      "fix": {
+        "strategy": "retry",
+        "action": "hcloud CCE listClusters --region {{env.HW_REGION_ID}}"
+      },
+      "prevention": "Cache cluster ID at provisioning time"
+    },
+    {
+      "id": "CCE-FP002",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "CCE.0150",
+        "error_message_regex": "node.*not.*ready|NodeNotReady",
+        "command_pattern": "*"
+      },
+      "root_cause": "Worker node unreachable: kubelet down or network partition",
+      "fix": {
+        "strategy": "fallback",
+        "action": "Inspect node: hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}; check kubelet + network"
+      },
+      "prevention": "Monitor node_ready via CES; alarm at <0.8"
+    },
+    {
+      "id": "CCE-FP003",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "CCE.0200",
+        "error_message_regex": "pod.*Pending|PodSchedulingFailed",
+        "command_pattern": "*"
+      },
+      "root_cause": "Insufficient cluster resources or node selector mismatch",
+      "fix": {
+        "strategy": "fallback",
+        "action": "Describe pod events: hcloud CCE showPod --cluster_id {{output.cluster_id}} --namespace {{output.ns}} --name {{output.pod}}; check node capacity"
+      },
+      "prevention": "Set HPA + resource requests/limits on all deployments"
+    },
+    {
+      "id": "CCE-FP004",
+      "category": "permission",
+      "signature": {
+        "error_code": "CCE.0300",
+        "error_message_regex": "Quota exceeded|ClusterQuota",
+        "command_pattern": "*"
+      },
+      "root_cause": "Cluster / node / pod quota exhausted",
+      "fix": {
+        "strategy": "halt",
+        "action": "Delegate to huaweicloud-iam-ops for quota raise"
+      },
+      "prevention": "Check quota via showQuota before bulk node add"
+    },
+    {
+      "id": "CCE-FP005",
+      "category": "cross_skill",
+      "signature": {
+        "error_code": "CCE.0400",
+        "error_message_regex": "image.*not found|ImageNotFound",
+        "command_pattern": "*"
+      },
+      "root_cause": "SWR image tag missing or auth failed",
+      "fix": {
+        "strategy": "delegate",
+        "action": "Delegate to huaweicloud-swr-ops to verify/push image; verify pull secret"
+      },
+      "prevention": "Pre-pull images to local registry; cache tags"
+    },
+    {
+      "id": "CCE-FP006",
+      "category": "runtime",
+      "signature": {
+        "error_code": "",
+        "error_message_regex": "RequestLimitExceeded|Throttling",
+        "command_pattern": "*"
+      },
+      "root_cause": "API rate limit on CCE control plane",
+      "fix": {
+        "strategy": "retry",
+        "action": "Exponential backoff with jitter"
+      },
+      "prevention": "Throttle to <5 req/s"
+    },
+    {
+      "id": "CCE-FP007",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "CCE.0501",
+        "error_message_regex": "PersistentVolumeClaim.*Pending|PvcPending",
+        "command_pattern": "*"
+      },
+      "root_cause": "No available PV or storage class misconfigured",
+      "fix": {
+        "strategy": "fallback",
+        "action": "hcloud CCE listPvcs --cluster_id {{output.cluster_id}}; check storage class + CSI driver"
+      },
+      "prevention": "Validate storage class in deployment manifest"
+    },
+    {
+      "id": "CCE-FP008",
+      "category": "resource_state",
+      "signature": {
+        "error_code": "CCE.0601",
+        "error_message_regex": "addons.*install.*failed|AddonInstallFailed",
+        "command_pattern": "install-addon"
+      },
+      "root_cause": "CCE addon installation failed: chart repo unreachable or version mismatch",
+      "fix": {
+        "strategy": "retry",
+        "action": "Retry with explicit version: hcloud CCE installAddon --cluster_id {{output.id}} --addon {{output.name}} --version {{output.v}}"
+      },
+      "prevention": "Pin addon versions; mirror chart repos"
+    },
+    {
+      "id": "CCE-FP009",
+      "category": "network",
+      "signature": {
+        "error_code": "CCE.0700",
+        "error_message_regex": "NetworkPolicy.*conflict|NetworkPolicyInvalid",
+        "command_pattern": "*"
+      },
+      "root_cause": "Conflicting NetworkPolicy rules blocking pod-to-pod traffic",
+      "fix": {
+        "strategy": "fallback",
+        "action": "List NetworkPolicies: kubectl get networkpolicy -A; dedupe overlapping selectors"
+      },
+      "prevention": "Adopt deny-by-default + explicit allow model"
+    },
+    {
+      "id": "CCE-FP010",
+      "category": "runtime",
+      "signature": {
+        "error_code": "CCE.0800",
+        "error_message_regex": "etcd.*unhealthy|EtcdNotHealthy",
+        "command_pattern": "*"
+      },
+      "root_cause": "Control plane etcd unhealthy: disk pressure or quorum loss",
+      "fix": {
+        "strategy": "halt",
+        "action": "Escalate to CCE support; do not attempt repair (risk of data loss)"
+      },
+      "prevention": "Monitor etcd metrics; alarm on leader changes > 5/min"
+    }
+  ],
+  "meta": {
+    "total_patterns": 10,
+    "last_aggregation": "2026-07-25T16:50:25Z",
+    "source_traces_analyzed": 0
+  }
+}
