@@ -434,9 +434,9 @@ export HW_PROJECT_ID="your-project-id"
 
 > "生成 huaweicloud-ecs-ops Skill，核心功能：实例生命周期管理、磁盘、快照，包含 FinOps 成本优化和 SecOps 安全治理"
 
-## skillcheck — Skill 仓库校验器
+## hwcloud-skillcheck — Skill 仓库校验器
 
-`skillcheck` 是一个**独立的 CLI 二进制工具**，用于校验 hcloud-skills 仓库（或任何遵循相同布局的 Skill 集合）。它执行所有 A 类检查（Schema 校验、Frontmatter、YAML 配置、Markdown 链接、凭据扫描等），**零外部依赖**——不需要 Python、不需要 Go 工具链。
+`hwcloud-skillcheck` 是一个**独立的 CLI 二进制工具**，用于校验 hcloud-skills 仓库（或任何遵循相同布局的 Skill 集合）。它执行所有 A 类检查（Schema 校验、Frontmatter、YAML 配置、Markdown 链接、凭据扫描等），**零外部依赖**——不需要 Python、不需要 Go 工具链。
 
 ### 一键安装
 
@@ -444,37 +444,37 @@ export HW_PROJECT_ID="your-project-id"
 
 **Linux (amd64)：**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-amd64
-chmod +x skillcheck-linux-amd64
-sudo mv skillcheck-linux-amd64 /usr/local/bin/skillcheck
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/hwcloud-skillcheck-linux-amd64
+chmod +x hwcloud-skillcheck-linux-amd64
+sudo mv hwcloud-skillcheck-linux-amd64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **Linux (arm64)：**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-linux-arm64
-chmod +x skillcheck-linux-arm64
-sudo mv skillcheck-linux-arm64 /usr/local/bin/skillcheck
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/hwcloud-skillcheck-linux-arm64
+chmod +x hwcloud-skillcheck-linux-arm64
+sudo mv hwcloud-skillcheck-linux-arm64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **macOS (arm64，Apple Silicon)：**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-arm64
-chmod +x skillcheck-darwin-arm64
-sudo mv skillcheck-darwin-arm64 /usr/local/bin/skillcheck
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/hwcloud-skillcheck-darwin-arm64
+chmod +x hwcloud-skillcheck-darwin-arm64
+sudo mv hwcloud-skillcheck-darwin-arm64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **macOS (amd64，Intel)：**
 ```bash
-curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/skillcheck-darwin-amd64
-chmod +x skillcheck-darwin-amd64
-sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
+curl -sSLO https://github.com/buhaiqing/hcloud-skills/releases/download/VERSION/hwcloud-skillcheck-darwin-amd64
+chmod +x hwcloud-skillcheck-darwin-amd64
+sudo mv hwcloud-skillcheck-darwin-amd64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **Windows (amd64，PowerShell 管理员模式)：**
 ```powershell
 $version = "VERSION"
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
-$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-amd64"
+$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Invoke-WebRequest -Uri $url -OutFile $out
 # 若 PATH 中未包含 .local\bin 则自动添加
@@ -488,8 +488,8 @@ Write-Host "已安装到 $out — 重启终端或运行：`$env:Path += `";$env:
 **Windows (arm64，PowerShell 管理员模式)：**
 ```powershell
 $version = "VERSION"
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
-$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-arm64"
+$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Invoke-WebRequest -Uri $url -OutFile $out
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -502,22 +502,22 @@ Write-Host "已安装到 $out — 重启终端或运行：`$env:Path += `";$env:
 ### 验证安装
 
 ```bash
-skillcheck --help
-# 预期输出: skillcheck — cross-platform hcloud-skills validator
+hwcloud-skillcheck --help
+# 预期输出: hwcloud-skillcheck — cross-platform hcloud-skills validator
 ```
 
 ### 快速使用
 
 ```bash
 # 校验当前目录下的 Skill 仓库（--root 默认为当前目录）
-skillcheck validate
+hwcloud-skillcheck validate
 
 # 指向外部 Skill 仓库
-skillcheck validate --root ./my-skills
+hwcloud-skillcheck validate --root ./my-skills
 
 # 执行特定检查
-skillcheck check markdown-links --root .
-skillcheck scan secret trace --self-check
+hwcloud-skillcheck check markdown-links --root .
+hwcloud-skillcheck scan secret trace --self-check
 ```
 
 ### B 类校验命令（GCL 契约检查）
@@ -526,32 +526,32 @@ skillcheck scan secret trace --self-check
 
 ```bash
 # 校验 GCL Tier-A 合规性（rubric.md、prompt-templates.md、Quality Gate 章节）
-skillcheck validate gcl-conformance --root .
+hwcloud-skillcheck validate gcl-conformance --root .
 
 # 校验 Generator 模板契约（skill-generator GCL 产物）
-skillcheck validate generator-contract --root .
+hwcloud-skillcheck validate generator-contract --root .
 
 # 校验 safety_class 枚举在管线中的一致性
-skillcheck validate safety-class --root .
+hwcloud-skillcheck validate safety-class --root .
 
 # 校验 resource_scope PII 掩码契约
-skillcheck validate resource-scope --root .
+hwcloud-skillcheck validate resource-scope --root .
 
 # 校验 CES 告警连线契约（阈值一致性）
-skillcheck validate alarm-wire-contract --root .
+hwcloud-skillcheck validate alarm-wire-contract --root .
 
 # 校验 audit-results 目录保护（gitignore、权限）
-skillcheck check audit-results --root .
+hwcloud-skillcheck check audit-results --root .
 
 # 检查 skill-generator 规范副本与运行时副本的一致性
-skillcheck check skill-generator-drift
+hwcloud-skillcheck check skill-generator-drift
 ```
 
 ### GCL 运行时命令
 
 ```bash
 # 执行一轮 GCL 循环（Generator → Critic → 循环修复）
-skillcheck gcl run \
+hwcloud-skillcheck gcl run \
   --skill huaweicloud-billing-ops \
   --request "CI smoke test" \
   --operation-intent '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}' \
@@ -560,17 +560,17 @@ skillcheck gcl run \
   --structural-critic-only
 
 # 从 GCL 质量摘要生成 CES 告警计划
-skillcheck gcl alarm-wire plan \
+hwcloud-skillcheck gcl alarm-wire plan \
   --summary scripts/fixtures/gcl-quality-summary-healthy.json \
   --write-plan
 
 # 应用计划的 CES 告警规则（建议先用 --dry-run 验证）
-skillcheck gcl alarm-wire apply \
+hwcloud-skillcheck gcl alarm-wire apply \
   --summary scripts/fixtures/gcl-quality-summary-healthy.json \
   --dry-run
 ```
 
-详细命令参考见 [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md)。
+详细命令参考见 [hwcloud-skillcheck CLI Spec](docs/superpowers/specs/hwcloud-skillcheck-cli.md)。
 
 ## 可用 Skills
 

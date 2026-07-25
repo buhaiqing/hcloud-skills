@@ -44,10 +44,10 @@ When editing the generator, update the **root copy** only. The runtime copy
 MUST be brought back in sync via:
 
 ```bash
-skillcheck drift sync --apply --root .
+hwcloud-skillcheck drift sync --apply --root .
 ```
 
-The drift guard (`skillcheck drift check --root .`) is wired into
+The drift guard (`hwcloud-skillcheck drift check --root .`) is wired into
 `scripts/pre_commit_check.sh` and the CI workflow (`validate-skills.yml`), so a drifted runtime copy is
 a release-blocker. See also `docs/gcl-spec.md` §Dual-Copy Drift.
 
@@ -186,22 +186,22 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 **For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
 
 - A single shot gun covers everything: `bash scripts/pre_commit_check.sh`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
-- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_hook.go` (a thin Go wrapper, see `scripts/install_hook.go`). It auto-runs when `scripts/*.py` or `skillcheck/**/*.go` or `skillcheck/testdata/*.py` is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
+- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_hook.go` (a thin Go wrapper, see `scripts/install_hook.go`). It auto-runs when `scripts/*.py` or `hwcloud-skillcheck/**/*.go` or `hwcloud-skillcheck/testdata/*.py` is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.
   - Prefer `argparse` with explicit `--help` text for CLIs.
   - Keep functions short; favor pure helpers that are unit-testable.
 - Shared helpers (`json_schema_subset`, `gcl_security_scan`) MUST be reused instead of copy-pasted patterns — same rule as TE-6.
-- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`. Go tests in `skillcheck/` are run via `go test ./...`.
-- CI runs `skillcheck validate --root .` plus `go test ./...`; local dev MUST run the same suite before pushing.
+- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`. Go tests in `hwcloud-skillcheck/` are run via `go test ./...`.
+- CI runs `hwcloud-skillcheck validate --root .` plus `go test ./...`; local dev MUST run the same suite before pushing.
 
 ## Python 3.10 Syntax Compatibility (P0)
 
 > **As of 2026-07-26, only 1 Python script remains in `scripts/`:**
 > `gcl_runner.py`, kept as the human-readable cross-language spec for the GCL runner loop. The
 > 16 scripts previously listed here have all been migrated to Go: see §"Cross-Language
-> Migration Lessons (skillcheck Go Migration Retrospective)" below for the latest wave (L4
+> Migration Lessons (hwcloud-skillcheck Go Migration Retrospective)" below for the latest wave (L4
 > engines + learning + dead-code cleanup + drift guard + critic + GCL runner surface).
 ## Python 3.10 Syntax Compatibility (P0)
 
@@ -333,9 +333,9 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 |---|---|
 | `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md`, GCL scripts, or CES GCL monitoring wiring |
 | `scripts/gcl_runner.py` | runtime Orchestrator loop; external Critic required in production |
-| `skillcheck aggregate trace --root .` | trace → quality summary aggregation |
-| `skillcheck gcl alarm-wire --root .` | CES alarm plan/apply for GCL SLOs |
-| `skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation |
+| `hwcloud-skillcheck aggregate trace --root .` | trace → quality summary aggregation |
+| `hwcloud-skillcheck gcl alarm-wire --root .` | CES alarm plan/apply for GCL SLOs |
+| `hwcloud-skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation |
 
 ### GCL hard constraints
 
@@ -353,10 +353,10 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 ### Runtime scripts
 
 ```bash
-skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
-skillcheck aggregate trace --root . --since-hours 168
-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
+hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
+hwcloud-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
+hwcloud-skillcheck aggregate trace --root . --since-hours 168
+hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
 ```
 
 ### Relationship to build-time self-reflection
@@ -393,11 +393,11 @@ Full spec: `references/self-healing-spec.md`
 
 ```bash
 # Aggregate GCL traces → update failure_patterns.json
-`skillcheck learning trace aggregate --skill huaweicloud-ecs-ops [--since-hours 168] [--dry-run] --root .`
+`hwcloud-skillcheck learning trace aggregate --skill huaweicloud-ecs-ops [--since-hours 168] [--dry-run] --root .`
 # Learn from single trace
-`skillcheck learning trace learn --skill huaweicloud-ecs-ops --trace audit-results/gcl-trace-*.json --root .`
+`hwcloud-skillcheck learning trace learn --skill huaweicloud-ecs-ops --trace audit-results/gcl-trace-*.json --root .`
 # Knowledge base report
-`skillcheck learning trace report --skill huaweicloud-ecs-ops --root .`
+`hwcloud-skillcheck learning trace report --skill huaweicloud-ecs-ops --root .`
 ```
 
 ### GCL integration
@@ -408,7 +408,7 @@ Full spec: `references/self-healing-spec.md`
 
 - Playbooks with `risk_level: critical` MUST NOT auto-execute; always escalate.
 - `failure_patterns.json` is append-only during learning; manual curation required for deletion.
-- `skillcheck learning trace aggregate` MUST be run after any GCL campaign to close the learning loop.
+- `hwcloud-skillcheck learning trace aggregate` MUST be run after any GCL campaign to close the learning loop.
 
 ## CodeGraph Integration — 代码变动即时同步
 
@@ -430,9 +430,9 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 ---
 
-## Cross-Language Migration Lessons (skillcheck Go Migration Retrospective)
+## Cross-Language Migration Lessons (hwcloud-skillcheck Go Migration Retrospective)
 
-Lessons from migrating ~5000 lines of Python A-class validation scripts to a Go CLI binary (`skillcheck/`). Reusable for any future Go migration in this repo.
+Lessons from migrating ~5000 lines of Python A-class validation scripts to a Go CLI binary (`hwcloud-skillcheck/`). Reusable for any future Go migration in this repo.
 
 ### 1. Embed + .gitignore Trap
 
@@ -492,7 +492,7 @@ When adding standalone operational intelligence scripts (`dynamic_orchestration.
 
 ### 10. L4 Closed-Loop Orchestrator Pattern (CADL — 2026-07-25)
 
-Lessons from porting the L4 engines + GCL chaining logic to Go (`skillcheck/internal/l4/...`) and the `l4 handle` CLI subcommand:
+Lessons from porting the L4 engines + GCL chaining logic to Go (`hwcloud-skillcheck/internal/l4/...`) and the `l4 handle` CLI subcommand:
 
 | Rule | Why |
 |------|-----|
@@ -533,7 +533,7 @@ Lesson from backfilling SKILL.md `delegates_to:` for 24 skills (the original Pyt
 
 ### 13. L4 + Learning Migration Wave (CADL — 2026-07-26)
 
-Second wave of the skillcheck Go migration, porting the L4 runtime engines
+Second wave of the hwcloud-skillcheck Go migration, porting the L4 runtime engines
 and learning loop (4,200 LOC Python → 6,500 LOC Go) and deleting 12 dead
 Python scripts. Lessons learned — all of these would have saved 30-50%
 of dev time if applied upfront:
@@ -555,18 +555,18 @@ of dev time if applied upfront:
 
 | Deleted Python | New Go command |
 |----------------|----------------|
-| `gen_skill_knowledge.py` | `skillcheck learning gen --root .` |
-| `trace_learning.py aggregate` | `skillcheck learning trace aggregate --root . --skill huaweicloud-ecs-ops` |
-| `trace_learning.py learn`    | `skillcheck learning trace learn --root . --skill <s> --trace <path>` |
-| `trace_learning.py report`   | `skillcheck learning trace report --root . --skill <s>` |
-| `dynamic_orchestration.py plan` | (folded into `skillcheck l4 handle --fault <text>`) |
-| `topology_graph.py build/impact/query/criticality/discovery` | (folded into `skillcheck l4 handle`) |
-| `predictive_ops.py forecast/scan/recommend` | (folded into `skillcheck l4 handle --metric-values ... --metric-threshold ...`) |
-| `progressive_trust.py score/evaluate/update/report/state-path` | (folded into `skillcheck l4 handle --trust-data ...`) |
-| `runtime_orchestrator.py handle` | `skillcheck l4 handle --fault <text> [--risk low\|medium\|high\|critical]` |
-| `validate_local.py` | `skillcheck validate --root .` (Go total-entry) |
-| `check_skill_frontmatter.py` | `skillcheck validate frontmatter --root .` |
-| `check_markdown_links.py` | `skillcheck check markdown-links --root .` |
+| `gen_skill_knowledge.py` | `hwcloud-skillcheck learning gen --root .` |
+| `trace_learning.py aggregate` | `hwcloud-skillcheck learning trace aggregate --root . --skill huaweicloud-ecs-ops` |
+| `trace_learning.py learn`    | `hwcloud-skillcheck learning trace learn --root . --skill <s> --trace <path>` |
+| `trace_learning.py report`   | `hwcloud-skillcheck learning trace report --root . --skill <s>` |
+| `dynamic_orchestration.py plan` | (folded into `hwcloud-skillcheck l4 handle --fault <text>`) |
+| `topology_graph.py build/impact/query/criticality/discovery` | (folded into `hwcloud-skillcheck l4 handle`) |
+| `predictive_ops.py forecast/scan/recommend` | (folded into `hwcloud-skillcheck l4 handle --metric-values ... --metric-threshold ...`) |
+| `progressive_trust.py score/evaluate/update/report/state-path` | (folded into `hwcloud-skillcheck l4 handle --trust-data ...`) |
+| `runtime_orchestrator.py handle` | `hwcloud-skillcheck l4 handle --fault <text> [--risk low\|medium\|high\|critical]` |
+| `validate_local.py` | `hwcloud-skillcheck validate --root .` (Go total-entry) |
+| `check_skill_frontmatter.py` | `hwcloud-skillcheck validate frontmatter --root .` |
+| `check_markdown_links.py` | `hwcloud-skillcheck check markdown-links --root .` |
 | `backfill_delegates_to.py` | (one-shot, already executed; deleted) |
 
 **Python scripts intentionally kept** (per GCL spec / AGENTS.md invariant):

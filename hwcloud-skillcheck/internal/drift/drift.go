@@ -1,0 +1,254 @@
+// Package drift guards against silent drift between the canonical
+// huaweicloud-skill-generator copy and the agent runtime copy under
+// .agents/skills/. It mirrors scripts/check_skill_generator_drift.py 1:1 so
+// callers can swap the Python invocation for the Go binary with no behaviour
+// change.
+//
+// Two roots are tracked:
+//
+//	<root>/huaweicloud-skill-generator/         — canonical, git-tracked
+//	<root>/.agents/skills/huaweicloud-skill-generator/  — runtime, gitignored
+//
+// `Check` requires both copies exist and reports any drift. `Sync` reconciles
+// the runtime copy from the canonical root (creates the runtime root on
+// demand when missing, e.g. on fresh CI checkouts).
+package drift
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// CanonicalRel is the canonical skill-generator root, relative to repo root.
+const CanonicalRel = "huaweicloud-skill-generator"
+
+// RuntimeRel is the agent runtime copy, relative to repo root (gitignored).
+const RuntimeRel = ".agents/skills/huaweicloud-skill-generator"
+
+// skipNames are files we never compare (macOS noise).
+var skipNames = map[string]bool{".DS_Store": true}
+
+// Drift captures the three drift classes reported by `Check`.
+type Drift struct {
+	OnlyCanonical []string `json:"only_canonical"`
+	OnlyRuntime   []string `json:"only_runtime"`
+	Differing     []string `json:"differing"`
+}
+
+// Report is the result of Check or Sync.
+type Report struct {
+	OK      bool     `json:"ok"`
+	Errors  []string `json:"errors,omitempty"`
+	Actions []string `json:"actions,omitempty"`
+	Drift   Drift    `json:"drift"`
+	DryRun  bool     `json:"dry_run,omitempty"`
+}
+
+// Check verifies both copies exist and are byte-for-byte equal. Any drift
+// produces a non-OK Report with the offending files classified.
+func Check(root string) (*Report, error) {
+	canonical := filepath.Join(root, CanonicalRel)
+	runtime := filepath.Join(root, RuntimeRel)
+	r := &Report{}
+	if !isDir(canonical) {
+		r.Errors = append(r.Errors, fmt.Sprintf("%s: canonical skill root missing", canonical))
+	}
+	if !isDir(runtime) {
+		r.Errors = append(r.Errors, fmt.Sprintf("%s: runtime skill root missing (agent runtime will fail to load)", runtime))
+	}
+	if len(r.Errors) > 0 {
+		return r, nil
+	}
+	r.Drift = collectDrift(canonical, runtime)
+	r.appendDriftErrors(runtime)
+	r.OK = len(r.Errors) == 0
+	return r, nil
+}
+
+// Sync reconciles the runtime copy from the canonical root. When the runtime
+// directory is missing it is created on demand so Sync is self-healing on
+// fresh CI checkouts. When dryRun is true no filesystem mutations occur; the
+// report still lists what would have been done.
+func Sync(root string, dryRun bool) (*Report, error) {
+	canonical := filepath.Join(root, CanonicalRel)
+	runtime := filepath.Join(root, RuntimeRel)
+	r := &Report{DryRun: dryRun}
+	if !isDir(canonical) {
+		r.Errors = append(r.Errors, fmt.Sprintf("%s: missing", canonical))
+		return r, nil
+	}
+	if !isDir(runtime) {
+		r.Actions = append(r.Actions, fmt.Sprintf("create %s", runtime))
+		if !dryRun {
+			if err := os.MkdirAll(runtime, 0o755); err != nil {
+				return r, err
+			}
+		}
+	}
+	r.appendFileActions(canonical, runtime, dryRun)
+	r.OK = true
+	return r, nil
+}
+
+// collectDrift walks both trees and classifies each relative path.
+func collectDrift(canonical, runtime string) Drift {
+	canon := indexFiles(canonical)
+	runt := indexFiles(runtime)
+	var onlyCan, onlyRun, diff []string
+	for rel := range canon {
+		if _, ok := runt[rel]; !ok {
+			onlyCan = append(onlyCan, rel)
+		} else if !sameBytes(canon[rel], runt[rel]) {
+			diff = append(diff, rel)
+		}
+	}
+	for rel := range runt {
+		if _, ok := canon[rel]; !ok {
+			onlyRun = append(onlyRun, rel)
+		}
+	}
+	sort.Strings(onlyCan)
+	sort.Strings(onlyRun)
+	sort.Strings(diff)
+	return Drift{OnlyCanonical: onlyCan, OnlyRuntime: onlyRun, Differing: diff}
+}
+
+func (r *Report) appendDriftErrors(runtime string) {
+	if len(r.Drift.OnlyCanonical) > 0 {
+		r.Errors = append(r.Errors,
+			fmt.Sprintf("%s: missing files: %s%s",
+				runtime,
+				joinNames(r.Drift.OnlyCanonical, 5),
+				ellipsis(r.Drift.OnlyCanonical, 5)))
+	}
+	if len(r.Drift.OnlyRuntime) > 0 {
+		r.Errors = append(r.Errors,
+			fmt.Sprintf("%s: extra files not in canonical: %s%s",
+				runtime,
+				joinNames(r.Drift.OnlyRuntime, 5),
+				ellipsis(r.Drift.OnlyRuntime, 5)))
+	}
+	if len(r.Drift.Differing) > 0 {
+		r.Errors = append(r.Errors,
+			fmt.Sprintf("%s: %d file(s) drifted from canonical: %s%s",
+				runtime, len(r.Drift.Differing),
+				joinNames(r.Drift.Differing, 5),
+				ellipsis(r.Drift.Differing, 5)))
+	}
+}
+
+// appendFileActions emits the copy/overwrite/remove actions for drift
+// reconciliation and applies them when !dryRun.
+func (r *Report) appendFileActions(canonical, runtime string, dryRun bool) {
+	d := collectDrift(canonical, runtime)
+	for _, rel := range d.OnlyCanonical {
+		src := filepath.Join(canonical, rel)
+		dst := filepath.Join(runtime, rel)
+		r.Actions = append(r.Actions, fmt.Sprintf("copy %s -> %s", src, dst))
+		if !dryRun {
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				r.Errors = append(r.Errors, err.Error())
+				continue
+			}
+			if err := copyFile(src, dst); err != nil {
+				r.Errors = append(r.Errors, err.Error())
+			}
+		}
+	}
+	for _, rel := range d.Differing {
+		src := filepath.Join(canonical, rel)
+		dst := filepath.Join(runtime, rel)
+		r.Actions = append(r.Actions, fmt.Sprintf("overwrite %s from %s", dst, src))
+		if !dryRun {
+			if err := copyFile(src, dst); err != nil {
+				r.Errors = append(r.Errors, err.Error())
+			}
+		}
+	}
+	for _, rel := range d.OnlyRuntime {
+		dst := filepath.Join(runtime, rel)
+		r.Actions = append(r.Actions, fmt.Sprintf("remove %s (not in canonical)", dst))
+		if !dryRun {
+			if err := os.Remove(dst); err != nil && !os.IsNotExist(err) {
+				r.Errors = append(r.Errors, err.Error())
+			}
+		}
+	}
+}
+
+// indexFiles returns a map of relative path → absolute path for every regular
+// file under root (skipping skipNames).
+func indexFiles(root string) map[string]string {
+	out := map[string]string{}
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if skipNames[d.Name()] {
+			return nil
+		}
+		rel, rErr := filepath.Rel(root, path)
+		if rErr != nil {
+			return nil
+		}
+		out[filepath.ToSlash(rel)] = path
+		return nil
+	})
+	return out
+}
+
+func sameBytes(a, b string) bool {
+	ha, _ := hashFile(a)
+	hb, _ := hashFile(b)
+	return ha != "" && ha == hb
+}
+
+func hashFile(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, info.Mode().Perm())
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func joinNames(names []string, limit int) string {
+	n := len(names)
+	if n > limit {
+		n = limit
+	}
+	return strings.Join(names[:n], ", ")
+}
+
+func ellipsis(names []string, limit int) string {
+	if len(names) > limit {
+		return " ..."
+	}
+	return ""
+}

@@ -14,17 +14,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # --- Go: build the skillcheck binary (A-class validation surface) ---
+      # --- Go: build the hwcloud-skillcheck binary (A-class validation surface) ---
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
 
-      - name: Build skillcheck
-        working-directory: skillcheck
-        run: go build -trimpath -o ../bin/skillcheck .
+      - name: Build hwcloud-skillcheck
+        working-directory: hwcloud-skillcheck
+        run: go build -trimpath -o ../bin/hwcloud-skillcheck .
 
       - name: gofmt clean
-        working-directory: skillcheck
+        working-directory: hwcloud-skillcheck
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
@@ -32,66 +32,66 @@ jobs:
           fi
 
       - name: go vet
-        working-directory: skillcheck
+        working-directory: hwcloud-skillcheck
         run: go vet ./...
 
       - name: Go test
-        working-directory: skillcheck
+        working-directory: hwcloud-skillcheck
         run: go test ./... -count=1
 
       # --- Go: run the A-class total entry (replaces the prior Python per-check steps) ---
-      - name: skillcheck validate (A-class total entry)
-        run: ./bin/skillcheck validate --root .
+      - name: hwcloud-skillcheck validate (A-class total entry)
+        run: ./bin/hwcloud-skillcheck validate --root .
 
-      - name: skillcheck check markdown-links
-        run: ./bin/skillcheck check markdown-links --root .
+      - name: hwcloud-skillcheck check markdown-links
+        run: ./bin/hwcloud-skillcheck check markdown-links --root .
 
-      - name: skillcheck check references-links
-        run: ./bin/skillcheck check references-links --root .
+      - name: hwcloud-skillcheck check references-links
+        run: ./bin/hwcloud-skillcheck check references-links --root .
 
-      - name: skillcheck check example-config
-        run: ./bin/skillcheck check example-config --root .
+      - name: hwcloud-skillcheck check example-config
+        run: ./bin/hwcloud-skillcheck check example-config --root .
 
-      - name: skillcheck check advanced-coverage (TE-7)
-        run: ./bin/skillcheck check advanced-coverage --root .
+      - name: hwcloud-skillcheck check advanced-coverage (TE-7)
+        run: ./bin/hwcloud-skillcheck check advanced-coverage --root .
 
-      - name: skillcheck check audit-results
-        run: ./bin/skillcheck check audit-results --root .
+      - name: hwcloud-skillcheck check audit-results
+        run: ./bin/hwcloud-skillcheck check audit-results --root .
 
       # --- Go: GCL surface ---
-      - name: skillcheck aggregate trace
-        run: ./bin/skillcheck aggregate trace --root .
+      - name: hwcloud-skillcheck aggregate trace
+        run: ./bin/hwcloud-skillcheck aggregate trace --root .
 
-      - name: skillcheck gcl alarm-wire (no mutations)
+      - name: hwcloud-skillcheck gcl alarm-wire (no mutations)
         run: |
-          ./bin/skillcheck gcl alarm-wire --root . \
+          ./bin/hwcloud-skillcheck gcl alarm-wire --root . \
             --plan-file scripts/fixtures/gcl-quality-summary-healthy.json || true
 
       # --- Go: new learning + l4 subcommands ---
-      - name: skillcheck learning gen (idempotent)
-        run: ./bin/skillcheck learning gen --root .
+      - name: hwcloud-skillcheck learning gen (idempotent)
+        run: ./bin/hwcloud-skillcheck learning gen --root .
 
-      - name: skillcheck l4 handle smoke
-        run: ./bin/skillcheck l4 handle --fault "smoke" --risk low --root .
+      - name: hwcloud-skillcheck l4 handle smoke
+        run: ./bin/hwcloud-skillcheck l4 handle --fault "smoke" --risk low --root .
 
       # --- Go: drift guard (sync --apply self-heals on fresh CI checkouts) ---
-      - name: skillcheck drift sync (smoke)
+      - name: hwcloud-skillcheck drift sync (smoke)
         # Exercises the dry-run path so a wrong default flag can't ship.
-        run: ./bin/skillcheck drift sync --dry-run --root .
+        run: ./bin/hwcloud-skillcheck drift sync --dry-run --root .
 
       - name: skill_generator drift guard
         # The runtime copy under .agents/skills/ is gitignored, so a fresh CI
         # checkout has no runtime copy yet — sync --apply bootstraps it on
         # demand before check verifies byte-for-byte equality.
         run: |
-          ./bin/skillcheck drift sync --apply --root .
-          ./bin/skillcheck drift check --root .
+          ./bin/hwcloud-skillcheck drift sync --apply --root .
+          ./bin/hwcloud-skillcheck drift check --root .
 
       # --- Go: rule-based Critic scorer (smoke against an embedded fixture) ---
-      - name: skillcheck critic score (smoke)
+      - name: hwcloud-skillcheck critic score (smoke)
         # Reads the embedded trace fixture inside the binary and verifies the
         # 5-dimension scoring + blocking logic wires up end-to-end.
-        run: ./bin/skillcheck critic score --generator scripts/fixtures/gcl-quality-summary-healthy.json || true
+        run: ./bin/hwcloud-skillcheck critic score --generator scripts/fixtures/gcl-quality-summary-healthy.json || true
 
       # --- Python: 3 remaining GCL reference scripts (gcl_runner/alarm_wire/trace_aggregate) ---
       # Kept as the human-readable cross-language spec per AGENTS.md §13;

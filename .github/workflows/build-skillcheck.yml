@@ -1,10 +1,10 @@
-name: Build skillcheck
+name: Build hwcloud-skillcheck
 
-# Cross-platform build + release of the `skillcheck` Go binary.
-# The module lives in the `skillcheck/` subdirectory, so every Go step runs
-# with `working-directory: skillcheck`. On a `v*` tag push, the matrix
+# Cross-platform build + release of the `hwcloud-skillcheck` Go binary.
+# The module lives in the `hwcloud-skillcheck/` subdirectory, so every Go step runs
+# with `working-directory: hwcloud-skillcheck`. On a `v*` tag push, the matrix
 # artifacts are published as a GitHub Release so external users can download a
-# standalone binary with no Go toolchain (see docs/superpowers/specs/skillcheck-cli.md).
+# standalone binary with no Go toolchain (see docs/superpowers/specs/hwcloud-skillcheck-cli.md).
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
   contents: write # needed to publish release assets on tag push
 
 env:
-  MODULE_DIR: skillcheck
+  MODULE_DIR: hwcloud-skillcheck
   GO_VERSION: "1.26"
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: skillcheck
+        working-directory: hwcloud-skillcheck
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +63,7 @@ jobs:
           - { goos: windows, goarch: arm64 }
     defaults:
       run:
-        working-directory: skillcheck
+        working-directory: hwcloud-skillcheck
     steps:
       - uses: actions/checkout@v4
 
@@ -78,17 +78,17 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
-          bin="skillcheck"
-          if [ "${{ matrix.goos }}" = "windows" ]; then bin="skillcheck.exe"; fi
-          out="skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}"
+          bin="hwcloud-skillcheck"
+          if [ "${{ matrix.goos }}" = "windows" ]; then bin="hwcloud-skillcheck.exe"; fi
+          out="hwcloud-skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}"
           mkdir -p ../dist
           go build -trimpath -ldflags="-s -w" -o "../dist/${out}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}*
+          name: hwcloud-skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/hwcloud-skillcheck-${{ matrix.goos }}-${{ matrix.goarch }}*
 
   release:
     name: Release (tagged)
@@ -105,5 +105,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/skillcheck-*
+          files: dist/hwcloud-skillcheck-*
           generate_release_notes: true

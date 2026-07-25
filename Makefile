@@ -1,16 +1,16 @@
 # hcloud-skills — top-level Makefile.
-# Delegates Go commands into skillcheck/ so you can build/release from root.
+# Delegates Go commands into hwcloud-skillcheck/ so you can build/release from root.
 # Run `make help` to see available targets.
 
 GO ?= go
-MODULE_DIR := skillcheck
+MODULE_DIR := hwcloud-skillcheck
 
 .PHONY: all build test vet fmt lint self-check clean tidy release help
 
 all: fmt vet test build ## fmt + vet + test + build
 
-build: ## Build skillcheck/bin/skillcheck
-	$(GO) build -C $(MODULE_DIR) -trimpath -o bin/skillcheck .
+build: ## Build hwcloud-skillcheck/bin/hwcloud-skillcheck
+	$(GO) build -C $(MODULE_DIR) -trimpath -o bin/hwcloud-skillcheck .
 
 test: ## Run the full test suite
 	$(GO) test -C $(MODULE_DIR) ./... -count=1
@@ -26,10 +26,10 @@ lint: ## Run the bundled `lint go` subcommand (gofmt + go vet)
 	$(GO) run -C $(MODULE_DIR) . lint go --root $(MODULE_DIR)
 
 self-check: build ## Exercise the binary against its embedded healthy fixtures
-	./$(MODULE_DIR)/bin/skillcheck scan secret trace --self-check
-	./$(MODULE_DIR)/bin/skillcheck scan secret summary --self-check
-	./$(MODULE_DIR)/bin/skillcheck scan secret alarm-plan --self-check
-	./$(MODULE_DIR)/bin/skillcheck aggregate trace --self-check
+	./$(MODULE_DIR)/bin/hwcloud-skillcheck scan secret trace --self-check
+	./$(MODULE_DIR)/bin/hwcloud-skillcheck scan secret summary --self-check
+	./$(MODULE_DIR)/bin/hwcloud-skillcheck scan secret alarm-plan --self-check
+	./$(MODULE_DIR)/bin/hwcloud-skillcheck aggregate trace --self-check
 
 tidy: ## Tidy go.mod / go.sum
 	$(GO) mod -C $(MODULE_DIR) tidy

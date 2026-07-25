@@ -201,9 +201,9 @@ Load the generator meta-skill in your agent runtime, then prompt:
 
 See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md) and [AGENTS.md](AGENTS.md) for quality gates and workflow.
 
-## skillcheck — Skill Repository Validator
+## hwcloud-skillcheck — Skill Repository Validator
 
-`skillcheck` is a **standalone CLI binary** that validates a hcloud-skills repository (or any skill collection following the same layout). It runs all A-class checks (schema validation, frontmatter, YAML config, markdown links, secret scanning, etc.) with **zero external dependencies** — no Python, no Go toolchain required.
+`hwcloud-skillcheck` is a **standalone CLI binary** that validates a hcloud-skills repository (or any skill collection following the same layout). It runs all A-class checks (schema validation, frontmatter, YAML config, markdown links, secret scanning, etc.) with **zero external dependencies** — no Python, no Go toolchain required.
 
 ### One-Click Install
 
@@ -217,37 +217,37 @@ Then pick the binary for your platform:
 
 **Linux (amd64):**
 ```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-linux-amd64"
-chmod +x skillcheck-linux-amd64
-sudo mv skillcheck-linux-amd64 /usr/local/bin/skillcheck
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-linux-amd64"
+chmod +x hwcloud-skillcheck-linux-amd64
+sudo mv hwcloud-skillcheck-linux-amd64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **Linux (arm64):**
 ```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-linux-arm64"
-chmod +x skillcheck-linux-arm64
-sudo mv skillcheck-linux-arm64 /usr/local/bin/skillcheck
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-linux-arm64"
+chmod +x hwcloud-skillcheck-linux-arm64
+sudo mv hwcloud-skillcheck-linux-arm64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **macOS (arm64, Apple Silicon):**
 ```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-darwin-arm64"
-chmod +x skillcheck-darwin-arm64
-sudo mv skillcheck-darwin-arm64 /usr/local/bin/skillcheck
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-darwin-arm64"
+chmod +x hwcloud-skillcheck-darwin-arm64
+sudo mv hwcloud-skillcheck-darwin-arm64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **macOS (amd64, Intel):**
 ```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/skillcheck-darwin-amd64"
-chmod +x skillcheck-darwin-amd64
-sudo mv skillcheck-darwin-amd64 /usr/local/bin/skillcheck
+curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-darwin-amd64"
+chmod +x hwcloud-skillcheck-darwin-amd64
+sudo mv hwcloud-skillcheck-darwin-amd64 /usr/local/bin/hwcloud-skillcheck
 ```
 
 **Windows (amd64, PowerShell as Administrator):**
 ```powershell
 $version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-amd64"
-$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-amd64"
+$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Invoke-WebRequest -Uri $url -OutFile $out
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -260,8 +260,8 @@ Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env
 **Windows (arm64, PowerShell as Administrator):**
 ```powershell
 $version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/skillcheck-windows-arm64"
-$out = "$env:USERPROFILE\.local\bin\skillcheck.exe"
+$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-arm64"
+$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
 New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
 Invoke-WebRequest -Uri $url -OutFile $out
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -278,7 +278,7 @@ Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env
 ```bash
 git clone https://github.com/buhaiqing/hcloud-skills.git
 cd hcloud-skills
-make build          # writes ./bin/skillcheck
+make build          # writes ./bin/hwcloud-skillcheck
 make test           # full Go test suite
 make release VERSION=vX.Y.Z   # cut a release (pushes tag, triggers CI artifacts)
 ```
@@ -286,22 +286,22 @@ make release VERSION=vX.Y.Z   # cut a release (pushes tag, triggers CI artifacts
 ### Verify Installation
 
 ```bash
-skillcheck --help
-# Expected output: skillcheck — cross-platform hcloud-skills validator
+hwcloud-skillcheck --help
+# Expected output: hwcloud-skillcheck — cross-platform hcloud-skills validator
 ```
 
 ### Quick Usage
 
 ```bash
 # Validate your skill repository (default --root = current directory)
-skillcheck validate
+hwcloud-skillcheck validate
 
 # Point to an external skill repo
-skillcheck validate --root ./my-skills
+hwcloud-skillcheck validate --root ./my-skills
 
 # Run specific checks
-skillcheck check markdown-links --root .
-skillcheck scan secret trace --self-check
+hwcloud-skillcheck check markdown-links --root .
+hwcloud-skillcheck scan secret trace --self-check
 ```
 
 ### B-Class Validation Commands (GCL Contract Checks)
@@ -310,39 +310,39 @@ These commands validate Generator-Critic-Loop (GCL) artifacts and runtime contra
 
 ```bash
 # Validate GCL Tier-A conformance (rubric.md, prompt-templates.md, Quality Gate section)
-skillcheck validate gcl-conformance --root .
+hwcloud-skillcheck validate gcl-conformance --root .
 
 # Validate Generator template contract (skill-generator GCL artifacts)
-skillcheck validate generator-contract --root .
+hwcloud-skillcheck validate generator-contract --root .
 
 # Validate safety_class enum contract across the pipeline
-skillcheck validate safety-class --root .
+hwcloud-skillcheck validate safety-class --root .
 
 # Validate resource_scope PII masking contract
-skillcheck validate resource-scope --root .
+hwcloud-skillcheck validate resource-scope --root .
 
 # Validate CES alarm wiring contract (thresholds consistency)
-skillcheck validate alarm-wire-contract --root .
+hwcloud-skillcheck validate alarm-wire-contract --root .
 
 # Validate audit-results directory protection (gitignore, permissions)
-skillcheck check audit-results --root .
+hwcloud-skillcheck check audit-results --root .
 
 # Detect drift between canonical skill-generator and the agent runtime copy
 # (fails the gate if they diverge; sync first to repair)
-skillcheck drift check --root .
+hwcloud-skillcheck drift check --root .
 
 # Repair drift by copying the canonical skill-generator to the runtime location
-skillcheck drift sync --apply --root .
+hwcloud-skillcheck drift sync --apply --root .
 
 # Run the rule-based Critic scorer (5-dimension quality scoring for GCL)
-skillcheck critic score --generator /path/to/generator-trace.json
+hwcloud-skillcheck critic score --generator /path/to/generator-trace.json
 ```
 
 ### GCL Runtime Commands
 
 ```bash
 # Execute a GCL cycle (Generator → Critic → loop)
-skillcheck gcl run \
+hwcloud-skillcheck gcl run \
   --skill huaweicloud-billing-ops \
   --request "CI smoke test" \
   --operation-intent '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}' \
@@ -351,21 +351,21 @@ skillcheck gcl run \
   --structural-critic-only
 
 # Plan CES alarm rules from a GCL quality summary
-skillcheck gcl alarm-wire plan \
+hwcloud-skillcheck gcl alarm-wire plan \
   --summary scripts/fixtures/gcl-quality-summary-healthy.json \
   --write-plan
 
 # Apply planned CES alarm rules (requires --dry-run first)
-skillcheck gcl alarm-wire apply \
+hwcloud-skillcheck gcl alarm-wire apply \
   --summary scripts/fixtures/gcl-quality-summary-healthy.json \
   --dry-run
 ```
 
-See [skillcheck CLI Spec](docs/superpowers/specs/skillcheck-cli.md) for the full command reference.
+See [hwcloud-skillcheck CLI Spec](docs/superpowers/specs/hwcloud-skillcheck-cli.md) for the full command reference.
 
-## skillcheck CLI Reference
+## hwcloud-skillcheck CLI Reference
 
-Complete reference for all `skillcheck` subcommands added in Phase 2 and Phase 3 of the B-class migration.
+Complete reference for all `hwcloud-skillcheck` subcommands added in Phase 2 and Phase 3 of the B-class migration.
 
 ### validate
 
@@ -516,27 +516,27 @@ Tier-A skills also ship Generator-Critic-Loop artifacts: `references/rubric.md`,
 Before pushing changes:
 
 ```bash
-skillcheck validate
-skillcheck check audit-results --root .
-skillcheck check skill-generator-drift
+hwcloud-skillcheck validate
+hwcloud-skillcheck check audit-results --root .
+hwcloud-skillcheck check skill-generator-drift
 ```
 
-**Note**: A-class validation scripts have been migrated to the `skillcheck` Go binary.
-Run `cd skillcheck && go test ./...` for the full test suite.
+**Note**: A-class validation scripts have been migrated to the `hwcloud-skillcheck` Go binary.
+Run `cd hwcloud-skillcheck && go test ./...` for the full test suite.
 
-### Build & release (skillcheck)
+### Build & release (hwcloud-skillcheck)
 
 ```bash
-cd skillcheck
+cd hwcloud-skillcheck
 go build ./...
 go vet ./...
 go test ./...
 # Cross-compile releases
-GOOS=linux GOARCH=amd64 go build -o skillcheck-linux-amd64 .
-GOOS=linux GOARCH=arm64 go build -o skillcheck-linux-arm64 .
-GOOS=darwin GOARCH=arm64 go build -o skillcheck-darwin-arm64 .
-GOOS=darwin GOARCH=amd64 go build -o skillcheck-darwin-amd64 .
-GOOS=windows GOARCH=amd64 go build -o skillcheck-windows-amd64.exe .
+GOOS=linux GOARCH=amd64 go build -o hwcloud-skillcheck-linux-amd64 .
+GOOS=linux GOARCH=arm64 go build -o hwcloud-skillcheck-linux-arm64 .
+GOOS=darwin GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64 .
+GOOS=darwin GOARCH=amd64 go build -o hwcloud-skillcheck-darwin-amd64 .
+GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
 ```
 
 ## References
