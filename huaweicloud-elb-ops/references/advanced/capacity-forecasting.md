@@ -238,7 +238,7 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- ELB ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
-- ELB ↔ VPC: [`references/integration.md`](../../huaweicloud-elb-ops/references/integration.md) — subnet and AZ configuration
-- ELB ↔ ECS: [`references/integration.md`](../../huaweicloud-elb-ops/references/integration.md) — backend server management
-- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../huaweicloud-elb-ops/references/cli-usage.md)
+- ELB ↔ CES: [`references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
+- ELB ↔ VPC: [`references/integration.md`](../../../huaweicloud-elb-ops/references/integration.md) — subnet and AZ configuration
+- ELB ↔ ECS: [`references/integration.md`](../../../huaweicloud-elb-ops/references/integration.md) — backend server management
+- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../../huaweicloud-elb-ops/references/cli-usage.md)

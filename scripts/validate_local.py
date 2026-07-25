@@ -20,7 +20,7 @@ class Step:
 def build_steps(root: Path | None = None) -> list[Step]:
     if root is None:
         root = Path(__file__).resolve().parents[1]
-    skillcheck = str(root / "skillcheck")
+    skillcheck = str(root / "skillcheck" / "bin" / "skillcheck")
     return [
         # B-class checks (now in skillcheck CLI)
         Step(
@@ -49,7 +49,7 @@ def build_steps(root: Path | None = None) -> list[Step]:
         ),
         Step(
             "skill_generator drift guard",
-            (skillcheck, "check", "skill-generator-drift"),
+            ("python3", str(root / "scripts/check_skill_generator_drift.py"), "check"),
         ),
         # Runtime GCL components (skillcheck gcl subcommands)
         Step(
@@ -58,17 +58,19 @@ def build_steps(root: Path | None = None) -> list[Step]:
                 skillcheck,
                 "gcl",
                 "run",
-                "--skill",
-                "huaweicloud-billing-ops",
-                "--request",
-                "CI smoke test",
-                "--operation-intent",
-                '{"operation":"smoke","resource_scope":[],"expected_state":"no-op","safety_class":"read-only"}',
-                "--command",
-                'printf "{\\"Response\\":{\\"RequestId\\":\\"ci-smoke\\"}}"',
-                "--max-iter",
-                "1",
-                "--structural-critic-only",
+                "--root",
+                str(root / "huaweicloud-billing-ops"),
+                "--quiet",
+            ),
+        ),
+        Step(
+            "GCL trace aggregate",
+            (
+                "python3",
+                str(root / "scripts/gcl_trace_aggregate.py"),
+                "--all",
+                "--output",
+                "-",
             ),
         ),
         Step(
@@ -82,6 +84,11 @@ def build_steps(root: Path | None = None) -> list[Step]:
                 str(root / "scripts/fixtures/gcl-quality-summary-healthy.json"),
                 "--write-plan",
             ),
+        ),
+        # Markdown link integrity
+        Step(
+            "Markdown local links",
+            ("python3", str(root / "scripts/check_markdown_links.py")),
         ),
         # skillcheck equivalence test
         Step(

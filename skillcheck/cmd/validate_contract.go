@@ -266,9 +266,9 @@ func runValidateSafetyClass(args []string) error {
 	// Tests can override via SKILLCHECK_ROOT env var.
 	skillcheckRoot := os.Getenv("SKILLCHECK_ROOT")
 	if skillcheckRoot == "" {
-		skillcheckRoot = filepath.Dir(filepath.Dir(os.Args[0]))
-		if filepath.Base(os.Args[0]) == "skillcheck" {
-			skillcheckRoot = filepath.Dir(os.Args[0])
+		skillcheckRoot = filepath.Dir(os.Args[0])
+		if filepath.Base(skillcheckRoot) == "bin" {
+			skillcheckRoot = filepath.Dir(skillcheckRoot)
 		}
 	}
 
@@ -484,9 +484,9 @@ func runValidateResourceScope(args []string) error {
 	// Tests can override via SKILLCHECK_ROOT env var.
 	skillcheckRoot := os.Getenv("SKILLCHECK_ROOT")
 	if skillcheckRoot == "" {
-		skillcheckRoot = filepath.Dir(filepath.Dir(os.Args[0]))
-		if filepath.Base(os.Args[0]) == "skillcheck" {
-			skillcheckRoot = filepath.Dir(os.Args[0])
+		skillcheckRoot = filepath.Dir(os.Args[0])
+		if filepath.Base(skillcheckRoot) == "bin" {
+			skillcheckRoot = filepath.Dir(skillcheckRoot)
 		}
 	}
 

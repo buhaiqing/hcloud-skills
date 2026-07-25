@@ -446,7 +446,7 @@ its result is returned. Read-only are GCL-**exempt**.
 
 > The five-dimension rubric (Correctness / Safety / Idempotency / Traceability / Spec Compliance),
 > default thresholds, termination contract (PASS / MAX_ITER / SAFETY_FAIL), and trace-persistence
-> rules are defined in [`docs/gcl-spec.md`](../../docs/gcl-spec.md) and the repo root
+> rules are defined in [`docs/gcl-spec.md`](../docs/gcl-spec.md) and the repo root
 > [`AGENTS.md`](../AGENTS.md) §3, §5, §7, §8. This skill overrides only the items below.
 
 | # | Dimension | Threshold | Notes |

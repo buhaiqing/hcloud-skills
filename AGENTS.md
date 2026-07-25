@@ -336,6 +336,7 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 | `scripts/gcl_trace_aggregate.py` | trace → quality summary aggregation |
 | `scripts/gcl_alarm_wire.py` | CES alarm plan/apply for GCL SLOs |
 | `scripts/check_gcl_conformance.py` | Tier-A artifact conformance across all 20 skills |
+| `scripts/check_markdown_links.py` | validate relative links in all `.md` files |
 | `scripts/validate_local.py` | local validation suite for GCL-related gates |
 
 ### GCL hard constraints
@@ -355,6 +356,7 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 
 ```bash
 python3 scripts/check_gcl_conformance.py
+python3 scripts/check_markdown_links.py
 python3 scripts/gcl_runner.py run --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
 python3 scripts/gcl_trace_aggregate.py --since-hours 168
 python3 scripts/gcl_alarm_wire.py plan --summary scripts/fixtures/gcl-quality-summary-healthy.json
@@ -380,55 +382,55 @@ Build-time 2-round self-reflection and runtime GCL are independent gates. A clea
 - `huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json` — quality summary contract
 - `huaweicloud-ces-ops/references/gcl-monitoring.md` — CES monitoring design
 
+## Self-Healing Loop & Experience Learning (L4)
+
+Full spec: `references/self-healing-spec.md`
+
+### Artifacts per skill
+
+| File | Purpose |
+|------|---------|
+| `assets/remediation-playbooks.json` | Machine-readable fix playbooks (trigger→diagnose→execute→verify→rollback) |
+| `assets/failure_patterns.json` | Learned failure knowledge base (signature→fix→stats) |
+
+### Runtime scripts
+
+```bash
+# Aggregate GCL traces → update failure_patterns.json
+python3 scripts/trace_learning.py aggregate --skill huaweicloud-ecs-ops [--since-hours 168] [--dry-run]
+# Learn from single trace
+python3 scripts/trace_learning.py learn --skill huaweicloud-ecs-ops --trace audit-results/gcl-trace-*.json
+# Knowledge base report
+python3 scripts/trace_learning.py report --skill huaweicloud-ecs-ops
+```
+
+### GCL integration
+
+`gcl_runner.py` performs pre-execution risk check: before running the Generator command, it queries `failure_patterns.json` for known failure signatures matching the command. If matched, the trace includes `pre_execution_risk` with pattern_id, known_fix, and historical success rate.
+
+### Hard constraints
+
+- Playbooks with `risk_level: critical` MUST NOT auto-execute; always escalate.
+- `failure_patterns.json` is append-only during learning; manual curation required for deletion.
+- `trace_learning.py aggregate` MUST be run after any GCL campaign to close the learning loop.
+
 ## CodeGraph Integration — 代码变动即时同步
 
 CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Server（`.mcp.json`），Agent 启动时自动获得 `codegraph_explore` 工具。索引数据位于全局 `~/`.omo/codegraph/`（仓库内 `.codegraph` 为软链，已被 `.gitignore` 忽略）。
 
-### MANDATORY: 集成 CodeGraph 前先 sync
+#### MANDATORY: CodeGraph sync 纪律
 
-> **铁律 — 接入前置纪律。** 任何依赖 CodeGraph 的操作（启动 MCP server、`codegraph explore/impact/callees`、CI 索引检查、或任何把 codegraph 当作事实来源的步骤）**之前**，必须先跑一次 `codegraph sync --quiet`。
-
-**Why**: 本地索引可能落后于工作区（他人提交、自己未提交的改动、`.gitignore` 软链延迟）。在过期索引上做 `explore`/`impact` 会得到"查无此符号"或"调用方缺失"的假阴性，误导后续修改。先 sync 是把 CodeGraph 当可信源的前置条件，与"变更后 sync"互补：前者保证**读**的是最新，后者保证**写**后别人读到的是最新。
-
-**例外**: 仅当能确认索引新鲜（`codegraph status` 显示 `up-to-date` 且距上次变更 < 几分钟）时可跳过；其余情况一律先 sync 再集成。
-
-### MANDATORY: 每次代码变更后必须 sync
-
-> **铁律 — Agent 纪律，非 CI 门禁。** 每次 Go / Python 脚本变更提交前，**必须**执行 `codegraph sync --quiet` 确保索引最新。
-
-**Why**: 过期索引导致调用链分析和影响面判断错误。不 sync = 索引不可信 = 后续所有查询无效。注意：这是本地索引刷新的 Agent 纪律（类似 `git` 提交习惯），并非构建/测试/发布门禁；CI 不强制，但违反会让后续代码理解任务基于过期图谱。
-
-### MANDATORY: CodeGraph MCP 优先于 grep/read
-
-> **强规则：所有代码理解任务必须先用 `codegraph explore <symbol>`，再用 grep/read 补充。**
-
-CodeGraph 的 AST + 调用图覆盖了 grep 无法到达的跳转（接口实现、动态派送、跨包调用）。
-
-**执行顺序**：`codegraph explore <symbol>` → grep/read 交叉验证 → 修改代码前确认所有调用方已知
-
-**例外**：纯文本内容搜索（日志关键字、文档内容）除外。
-
-### 常用命令
+1. **读前 sync** — 任何 `codegraph explore/impact/callees` 前先 `codegraph sync --quiet`（过期索引产生假阴性）。例外：`codegraph status` 显示 up-to-date 且距变更 < 几分钟。
+2. **写后 sync** — 每次 Go/Python 变更提交前必须 sync。Agent 纪律，非 CI 门禁。
+3. **MCP 优先** — 代码理解任务先 `codegraph explore <symbol>`，再 grep/read 补充（AST+调用图覆盖接口实现、动态派送）。纯文本搜索除外。
 
 | 场景 | 命令 |
 |------|------|
-| 查符号定义+调用者 | `codegraph explore <pkg.Symbol>` |
-| 查影响面 | `codegraph impact <pkg.Symbol>` |
-| 查调用链（被调方） | `codegraph callees <pkg.Symbol>` |
-| 索引状态 | `codegraph status` |
+| 符号定义+调用者 | `codegraph explore <pkg.Symbol>` |
+| 影响面 / 调用链 | `codegraph impact` / `codegraph callees <pkg.Symbol>` |
 | 同步索引 | `codegraph sync --quiet` |
 
-**Agent 自动执行**（每次编码任务结束时）：sync → explore 核心符号 → 检查 blast radius
-
-### MCP 配置
-
-MCP Server 配置见仓库根 `.mcp.json`（stdio 启动 `codegraph serve --mcp`，已随本变更提交）：
-
-```json
-{ "mcpServers": { "codegraph": { "type": "stdio", "command": "codegraph", "args": ["serve", "--mcp"] } } }
-```
-
-> **前置条件**：`codegraph` 必须在 `PATH` 中（本机位于 `~/.local/bin/codegraph`，`which codegraph` 可验证），否则 stdio server 静默启动失败。若 Agent 运行时未自动加载该 MCP Server，确认 PATH，或在用户级配置（如 `~/.claude.json`）显式声明同一 server。额外 MCP 工具可按 CodeGraph 文档通过环境变量开启。
+MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegraph` 在 PATH 中（`which codegraph` 验证）。
 
 ---
 
@@ -473,3 +475,9 @@ Shared libraries (schema validator, security scanner) → Internal packages (YAM
 ### 7. Zero-External-Dependency Binary
 
 `schema/`, `security/`, `yaml/`, `coverage/` + Go stdlib + `gopkg.in/yaml.v3` = complete A-class coverage. No Python, no Node, no shell scripts needed at runtime.
+
+### 8. Orchestration Script ↔ CLI Flag Contract
+
+When migrating a Python CLI to Go binary, orchestration scripts (`validate_local.py`, CI workflows) that invoke the CLI **must** be updated to match the new Go flag interface. Go binaries often simplify flags (e.g., `--root <skill-dir>` replaces `--skill <name> --request <text> --command <cmd>`). Also: not every Python subcommand needs a Go equivalent — some (like `skill-generator-drift`) remain Python-only and should be called directly via `python3 scripts/...`.
+
+**Rule**: After any CLI migration, grep all callers (`validate_local.py`, `.github/workflows/`, `Makefile`) for the old invocation pattern and update them in the same PR.

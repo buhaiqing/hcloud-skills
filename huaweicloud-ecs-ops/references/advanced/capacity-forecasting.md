@@ -208,6 +208,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- ECS ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
-- ECS ↔ AS: [`references/integration.md`](../../huaweicloud-ecs-ops/references/integration.md) — auto-scaling configuration
-- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../huaweicloud-ecs-ops/references/cli-usage.md)
+- ECS ↔ CES: [`references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
+- ECS ↔ AS: [`references/integration.md`](../../../huaweicloud-ecs-ops/references/integration.md) — auto-scaling configuration
+- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../../huaweicloud-ecs-ops/references/cli-usage.md)

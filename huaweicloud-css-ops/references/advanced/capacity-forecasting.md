@@ -244,4 +244,4 @@ hcloud ces create-alarm-rule \
 
 - CSS ↔ CES: [`references/advanced/aiops-best-practices.md`](./aiops-best-practices.md) — anomaly patterns
 - CSS ↔ OBS: [`references/observability.md`](./observability.md) — snapshot and archival
-- Cluster management: [`references/troubleshooting.md`](../../huaweicloud-css-ops/references/troubleshooting.md)
+- Cluster management: [`references/troubleshooting.md`](../../../huaweicloud-css-ops/references/troubleshooting.md)

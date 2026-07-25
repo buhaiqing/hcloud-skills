@@ -87,15 +87,15 @@ func runValidate(args []string) error {
 	case "product-assessment":
 		return runValidateProductAssessment(args[1:])
 	case "gcl-conformance":
-		return runValidateGCL(args[1:])
+		return runValidateGCL(args)
 	case "generator-contract":
-		return runValidateContract(args[1:])
+		return runValidateContract(args)
 	case "safety-class":
-		return runValidateContract(args[1:])
+		return runValidateContract(args)
 	case "resource-scope":
-		return runValidateContract(args[1:])
+		return runValidateContract(args)
 	case "alarm-wire-contract":
-		return runValidateGCL(args[1:])
+		return runValidateGCL(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil

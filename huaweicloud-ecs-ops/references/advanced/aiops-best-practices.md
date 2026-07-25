@@ -4,7 +4,7 @@ Intelligent operations integration patterns for ECS, enabling ML-driven anomaly 
 
 ## Multi-Metric Correlation Patterns
 
-> **Canonical pattern registry**: see [`huaweicloud-ces-ops/references/advanced/anomaly-patterns.md`](../../huaweicloud-ces-ops/references/advanced/anomaly-patterns.md) — single source of truth for pattern names, thresholds, and severity.
+> **Canonical pattern registry**: see [`huaweicloud-ces-ops/references/advanced/anomaly-patterns.md`](../../../huaweicloud-ces-ops/references/advanced/anomaly-patterns.md) — single source of truth for pattern names, thresholds, and severity.
 
 ECS maps canonical patterns to product-specific metrics:
 
@@ -135,7 +135,7 @@ correlation_groups:
 
 ### Alarm Storm Detection
 
-> **Canonical implementation**: see [`huaweicloud-ces-ops/references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md#storm-detection-logic-cli) — the common storm detection pattern. ECS skill adds namespace filtering and instance-level grouping below.
+> **Canonical implementation**: see [`huaweicloud-ces-ops/references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md#storm-detection-logic-cli) — the common storm detection pattern. ECS skill adds namespace filtering and instance-level grouping below.
 
 #### ECS-Specific Detection Criteria
 

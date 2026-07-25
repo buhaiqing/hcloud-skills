@@ -219,6 +219,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- DMS ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
-- DMS ↔ ECS: [`references/integration.md`](../../huaweicloud-dms-ops/references/integration.md) — consumer application integration
-- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../huaweicloud-dms-ops/references/cli-usage.md)
+- DMS ↔ CES: [`references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
+- DMS ↔ ECS: [`references/integration.md`](../../../huaweicloud-dms-ops/references/integration.md) — consumer application integration
+- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../../huaweicloud-dms-ops/references/cli-usage.md)

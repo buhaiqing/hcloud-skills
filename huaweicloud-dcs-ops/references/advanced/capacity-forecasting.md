@@ -248,6 +248,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- DCS ↔ ECS: [`references/integration.md`](../../huaweicloud-dcs-ops/references/integration.md) — application caching patterns
+- DCS ↔ ECS: [`references/integration.md`](../../../huaweicloud-dcs-ops/references/integration.md) — application caching patterns
 - DCS FinOps: [`references/advanced/cost-optimization.md`](./cost-optimization.md) — idle detection, right-sizing
-- Cache troubleshooting: [`references/troubleshooting.md`](../../huaweicloud-dcs-ops/references/troubleshooting.md)
+- Cache troubleshooting: [`references/troubleshooting.md`](../../../huaweicloud-dcs-ops/references/troubleshooting.md)

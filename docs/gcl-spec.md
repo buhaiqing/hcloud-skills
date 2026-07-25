@@ -89,8 +89,10 @@ Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YY
 
 ```json
 {
-  "trace_schema_version": "v1",
+  "trace_schema_version": "v3",
+  "trace_id": "gcl-20260725-153623-a1b2c3d4",
   "skill": "huaweicloud-ecs-ops",
+  "skill_version": "1.1.0",
   "request": "<sanitized user request>",
   "operation_intent": {
     "operation": "stop-server",
@@ -100,18 +102,92 @@ Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YY
   },
   "rubric_version": "v1",
   "masked_fields": ["request", "operation_intent.resource_scope"],
+  "started_at": "2026-07-25T15:36:23Z",
+  "finished_at": "2026-07-25T15:36:24Z",
+  "duration_ms": 1234,
+  "environment": {
+    "runner_version": "2.0.0",
+    "python_version": "3.10.x",
+    "platform": "Linux",
+    "ci": false
+  },
+  "token_usage": {
+    "model": "model-id",
+    "input_tokens": 1500,
+    "output_tokens": 800,
+    "total_tokens": 2300,
+    "estimated_cost_usd": 0.0035,
+    "cache_hit_tokens": 200,
+    "by_phase": {
+      "generator": {"input_tokens": 1000, "output_tokens": 500},
+      "critic": {"input_tokens": 500, "output_tokens": 300}
+    },
+    "retry_waste_tokens": 1150,
+    "retry_waste_cost_usd": 0.00175,
+    "cost_per_iteration_usd": 0.00175
+  },
+  "resource_context": {
+    "resource_id": "ecs-***",
+    "resource_type": "ecs",
+    "region": "cn-north-4",
+    "billing_model": "on-demand",
+    "monthly_cost_usd": 150.0,
+    "utilization_pct": 35.2
+  },
+  "cost_attribution": {
+    "cloud_api_calls": 2,
+    "ai_cost_usd": 0.0035,
+    "resource_cost_usd": 0.0000071,
+    "total_cost_usd": 0.003507,
+    "cost_per_api_call_usd": 0.00175
+  },
+  "incident": {
+    "incident_id": "INC-2026-0042",
+    "severity": "P2",
+    "alert_fingerprint": "ces-alarm-ecs-cpu-high",
+    "triggered_at": "2026-07-25T15:30:00Z",
+    "mttr_target_minutes": 30
+  },
+  "slo_context": {
+    "slo_id": "slo-ecs-availability",
+    "target": 0.999,
+    "current": 0.9995,
+    "error_budget_remaining_pct": 85.0,
+    "burn_rate_1h": 1.2
+  },
+  "change_impact": {
+    "blast_radius": "single-resource",
+    "affected_services": ["web-frontend"],
+    "rollback_plan": "start-server",
+    "change_window": "maintenance"
+  },
+  "anomaly_baseline": {
+    "metric": "cpu_utilization",
+    "normal_range": [10.0, 60.0],
+    "current_value": 95.3,
+    "deviation_sigma": 3.2,
+    "detection_method": "3-sigma"
+  },
+  "ops_efficiency": {
+    "retry_count": 1,
+    "wasted_time_ms": 900,
+    "first_success_iter": 2,
+    "total_api_calls": 2,
+    "automation_level": "assisted",
+    "total_duration_ms": 1234
+  },
+  "pre_execution_risk": {
+    "pattern_id": "ECS-FP001",
+    "category": "resource_state",
+    "known_fix": "...",
+    "historical_success_rate": 0.85
+  },
   "iterations": [
     {
       "iter": 1,
-      "generator": { "command": "...", "args": {}, "exit_code": 0, "result_excerpt": "..." },
+      "generator": { "command": "...", "args": {}, "exit_code": 0, "result_excerpt": "...", "duration_ms": 900 },
       "critic": {
-        "scores": {
-          "correctness": 1,
-          "safety": 1,
-          "idempotency": 0.5,
-          "traceability": 1,
-          "spec_compliance": 1
-        },
+        "scores": { "correctness": 1, "safety": 1, "idempotency": 0.5, "traceability": 1, "spec_compliance": 1 },
         "suggestions": ["..."],
         "blocking": false
       },
@@ -126,6 +202,235 @@ Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YY
   }
 }
 ```
+
+### v2 additions (backward-compatible, all new fields optional)
+
+| Field | Purpose |
+|---|---|
+| `trace_id` | Unique correlation ID (format: `gcl-YYYYMMDD-HHMMSS-<hex8>`) |
+| `skill_version` | Extracted from `SKILL.md` frontmatter `metadata.version` |
+| `started_at` / `finished_at` / `duration_ms` | Wall-clock timing for SLA analysis |
+| `environment` | Runner version, Python version, platform, CI flag |
+| `token_usage` | Token cost analysis: model, per-phase breakdown, estimated cost |
+| `pre_execution_risk` | Matched failure pattern from knowledge base (see Self-Healing spec) |
+| `generator.duration_ms` | Per-command execution time |
+
+### v3 additions — FinOps + AIOps factual data (all optional, backward-compatible)
+
+| Field | Category | Purpose |
+|---|---|---|
+| `resource_context` | FinOps | Cloud resource cost context for right-sizing and idle detection |
+| `cost_attribution` | FinOps | Operation-level cost breakdown (AI + cloud resource) |
+| `token_usage.retry_waste_tokens` | FinOps | Tokens wasted on retry iterations |
+| `token_usage.retry_waste_cost_usd` | FinOps | Monetary cost of retry waste |
+| `token_usage.cost_per_iteration_usd` | FinOps | Average token cost per GCL iteration |
+| `incident` | AIOps | Incident correlation for MTTR tracking |
+| `slo_context` | AIOps | SLO error budget and burn rate at execution time |
+| `change_impact` | AIOps | Blast radius and rollback plan for change management |
+| `anomaly_baseline` | AIOps | Anomaly detection baseline with sigma deviation |
+| `ops_efficiency` | AIOps | Derived operational efficiency metrics |
+
+---
+
+## 6A. FinOps Data Contract
+
+FinOps fields enable **operation-level cost visibility** — every GCL run captures the true cost of AI-assisted cloud operations.
+
+### `resource_context` (injected via `--context-json`)
+
+Describes the target cloud resource's cost profile. Enables idle detection, right-sizing analysis, and billing model optimization.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `resource_id` | string | yes | Masked resource identifier (e.g. `ecs-***`) |
+| `resource_type` | string | yes | Huawei Cloud service type (`ecs`, `rds`, `dcs`, etc.) |
+| `region` | string | yes | Deployment region (e.g. `cn-north-4`) |
+| `billing_model` | string | no | `on-demand` \| `yearly` \| `monthly` \| `spot` |
+| `monthly_cost_usd` | float | no | Estimated monthly cost in USD (from BSS API) |
+| `utilization_pct` | float | no | Current resource utilization percentage (0–100) |
+
+**Use cases:**
+- FinOps idle detection: `utilization_pct < 5` + `billing_model == on-demand` → right-sizing candidate
+- Cost trend: aggregate `monthly_cost_usd` across traces per resource_type
+- Billing model comparison: on-demand vs yearly savings calculation
+
+### `cost_attribution` (auto-computed)
+
+Derived by the runner at trace finalization. Attributes total operation cost to AI inference and cloud resource time-slice.
+
+| Key | Type | Computed from | Description |
+|---|---|---|---|
+| `cloud_api_calls` | int | `iterations[].generator.exit_code` count | Number of cloud API invocations |
+| `ai_cost_usd` | float | `token_usage.estimated_cost_usd` | Total AI inference cost |
+| `resource_cost_usd` | float | `resource_context.monthly_cost_usd / 720 * duration_hours` | Pro-rated resource cost during operation |
+| `total_cost_usd` | float | `ai_cost_usd + resource_cost_usd` | Combined operation cost |
+| `cost_per_api_call_usd` | float | `ai_cost_usd / cloud_api_calls` | Average AI cost per API call |
+
+**Use cases:**
+- Unit economics: cost per operation type / skill
+- Waste detection: high `cost_per_api_call_usd` indicates retry-heavy operations
+- Budget forecasting: aggregate `total_cost_usd` by skill/region/time window
+
+### `token_usage` enhanced fields (auto-computed)
+
+Extends the base token contract with retry waste analysis:
+
+| Key | Type | Computed from | Description |
+|---|---|---|---|
+| `retry_waste_tokens` | int | `total_tokens * (iters-1) / iters` | Tokens consumed by failed retry iterations |
+| `retry_waste_cost_usd` | float | `estimated_cost_usd * (iters-1) / iters` | Monetary cost of retry waste |
+| `cost_per_iteration_usd` | float | `estimated_cost_usd / iters` | Average cost per GCL iteration |
+
+**Use cases:**
+- Retry ROI: if `retry_waste_cost_usd` consistently high → improve first-pass success rate
+- Model comparison: `cost_per_iteration_usd` across different models
+- Budget alert: cumulative retry waste exceeding threshold
+
+---
+
+## 6B. AIOps Data Contract
+
+AIOps fields enable **intelligent operations correlation** — connecting GCL executions to incidents, SLOs, anomalies, and change management.
+
+### `incident` (injected via `--context-json`)
+
+Links the GCL run to an active incident for MTTR tracking and root-cause correlation.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `incident_id` | string | yes | External incident identifier (e.g. `INC-2026-0042`) |
+| `severity` | string | yes | `P1` \| `P2` \| `P3` \| `P4` |
+| `alert_fingerprint` | string | no | CES alarm rule fingerprint that triggered the incident |
+| `triggered_at` | string (ISO 8601) | no | When the incident was first detected |
+| `mttr_target_minutes` | int | no | Target Mean-Time-To-Resolve for this severity level |
+
+**Use cases:**
+- MTTR calculation: `trace.finished_at - incident.triggered_at` vs `mttr_target_minutes`
+- Incident frequency: aggregate by `alert_fingerprint` to identify recurring issues
+- Severity-based routing: P1 incidents trigger stricter safety gates
+
+### `slo_context` (injected via `--context-json`)
+
+Captures SLO state at execution time for error-budget-aware decision making.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `slo_id` | string | yes | SLO identifier (e.g. `slo-ecs-availability`) |
+| `target` | float | yes | SLO target (e.g. 0.999 for 99.9% availability) |
+| `current` | float | yes | Current SLO achievement value |
+| `error_budget_remaining_pct` | float | no | Percentage of error budget remaining (0–100) |
+| `burn_rate_1h` | float | no | Error budget burn rate over last hour (1.0 = on-track) |
+
+**Use cases:**
+- Change freeze: `error_budget_remaining_pct < 10` → block non-critical mutations
+- Burn rate alert: `burn_rate_1h > 5` → escalate to on-call
+- Risk-adjusted execution: low budget → prefer read-only diagnostics over mutations
+
+### `change_impact` (injected via `--context-json`)
+
+Documents the expected blast radius and rollback strategy for change management integration.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `blast_radius` | string | yes | `single-resource` \| `multi-resource` \| `service-wide` \| `region-wide` |
+| `affected_services` | list[string] | no | Downstream service names impacted by this change |
+| `rollback_plan` | string | no | One-line rollback command or strategy |
+| `change_window` | string | no | `maintenance` \| `business-hours` \| `off-peak` |
+
+**Use cases:**
+- Approval routing: `blast_radius >= service-wide` → require manual approval
+- Rollback automation: `rollback_plan` feeds into auto-recovery playbook
+- Change calendar: correlate `change_window` with incident frequency
+
+### `anomaly_baseline` (injected via `--context-json`)
+
+Records the anomaly detection context that triggered (or relates to) this GCL execution.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `metric` | string | yes | CES metric name (e.g. `cpu_utilization`, `memory_used_percent`) |
+| `normal_range` | [float, float] | yes | Baseline [min, max] under normal conditions |
+| `current_value` | float | yes | Observed metric value at execution time |
+| `deviation_sigma` | float | no | Number of standard deviations from mean |
+| `detection_method` | string | no | `3-sigma` \| `ewma` \| `percentile-p99` \| `static-threshold` |
+
+**Use cases:**
+- Auto-remediation trigger: `deviation_sigma > 3` → auto-invoke healing playbook
+- Baseline drift: track `normal_range` shifts over time for capacity planning
+- False-positive analysis: correlate `detection_method` with actual incident outcomes
+
+### `ops_efficiency` (auto-computed)
+
+Derived by the runner at trace finalization. Quantifies operational efficiency for continuous improvement.
+
+| Key | Type | Computed from | Description |
+|---|---|---|---|
+| `retry_count` | int | `len(iterations) - 1` | Number of retry iterations before terminal state |
+| `wasted_time_ms` | int | Sum of non-final `generator.duration_ms` | Time spent on failed attempts |
+| `first_success_iter` | int \| null | First iteration with `decision == PASS` | Which iteration first succeeded (null = never passed) |
+| `total_api_calls` | int | `len(iterations)` | Total cloud API invocations |
+| `automation_level` | string | `full` if 1 iter + PASS, else `assisted` | Degree of automation achieved |
+| `total_duration_ms` | int | `trace.duration_ms` | End-to-end wall-clock time |
+
+**Use cases:**
+- Automation rate: aggregate `automation_level == full` percentage across all traces
+- Efficiency trend: track `retry_count` and `wasted_time_ms` over time per skill
+- Skill quality signal: high `retry_count` for a skill → skill runbook needs improvement
+- MTTR contribution: `total_duration_ms` feeds into mean-time-to-resolve calculations
+
+---
+
+## 6C. Runtime Context Injection Contract
+
+All FinOps/AIOps context fields are injected via `--context-json <path>` at runtime. The file is a flat JSON object; the runner extracts known keys and ignores unknown ones.
+
+```bash
+python3 scripts/gcl_runner.py run \
+  --skill huaweicloud-ecs-ops \
+  --request "Stop ECS instance" \
+  --command 'hcloud ecs stop-server --server-id xxx' \
+  --context-json /tmp/ops-context.json \
+  --token-json /tmp/token-usage.json \
+  --structural-critic-only
+```
+
+### `--context-json` schema (all keys optional)
+
+```json
+{
+  "resource_context": { "resource_id": "...", "resource_type": "ecs", "region": "cn-north-4", "billing_model": "on-demand", "monthly_cost_usd": 150.0, "utilization_pct": 35.2 },
+  "incident": { "incident_id": "INC-...", "severity": "P2", "alert_fingerprint": "...", "triggered_at": "...", "mttr_target_minutes": 30 },
+  "slo_context": { "slo_id": "...", "target": 0.999, "current": 0.9995, "error_budget_remaining_pct": 85.0, "burn_rate_1h": 1.2 },
+  "change_impact": { "blast_radius": "single-resource", "affected_services": ["web"], "rollback_plan": "start-server", "change_window": "maintenance" },
+  "anomaly_baseline": { "metric": "cpu_utilization", "normal_range": [10, 60], "current_value": 95.3, "deviation_sigma": 3.2, "detection_method": "3-sigma" }
+}
+```
+
+### Injection rules
+
+| Rule | Description |
+|---|---|
+| Optional | Missing `--context-json` → no context fields in trace (backward-compatible) |
+| Partial | Only provided keys are injected; absent keys are omitted from trace |
+| Read-only | Runner never modifies context values; passes through as-is |
+| Masking | `resource_id` values SHOULD be pre-masked by the caller (runner applies no additional masking to context) |
+| Unknown keys | Silently ignored (forward-compatible with future schema extensions) |
+
+### Token Usage Contract
+
+`token_usage` is injected via `--token-json <path>` at runtime. Base schema:
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `model` | string | yes | Model identifier used for generation |
+| `input_tokens` | int | yes | Total prompt tokens consumed |
+| `output_tokens` | int | yes | Total completion tokens produced |
+| `total_tokens` | int | yes | `input_tokens + output_tokens` |
+| `estimated_cost_usd` | float | no | Estimated monetary cost |
+| `cache_hit_tokens` | int | no | Tokens served from prompt cache |
+| `by_phase` | object | no | Breakdown by GCL phase (`generator`, `critic`) |
+
+Enhanced fields (`retry_waste_tokens`, `retry_waste_cost_usd`, `cost_per_iteration_usd`) are **auto-computed** by the runner — callers MUST NOT provide them in `--token-json`.
 
 Trace files are append-only; do not overwrite/delete in place. `audit-results/` and `gcl-trace-*.json` are gitignored.
 
@@ -236,6 +541,8 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 | 1.4.0 | 2026-06-04 | CES monitoring design |
 | 1.5.0 | 2026-06-05 | Moved detailed spec to `docs/gcl-spec.md` |
 | 1.6.0 | 2026-06-19 | Added qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES quality-summary contract |
+| 1.7.0 | 2026-07-25 | Trace schema v2: added `trace_id`, `skill_version`, timing, `environment`, `token_usage` contract, `pre_execution_risk`, per-iteration `duration_ms` |
+| 1.8.0 | 2026-07-25 | Trace schema v3: FinOps (`resource_context`, `cost_attribution`, token retry-waste) + AIOps (`incident`, `slo_context`, `change_impact`, `anomaly_baseline`, `ops_efficiency`) full data contract; `--context-json` injection |
 
 ## 13. See also
 

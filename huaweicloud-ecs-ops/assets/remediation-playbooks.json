@@ -1,0 +1,238 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-ecs-ops",
+  "playbooks": [
+    {
+      "id": "ECS-R001",
+      "name": "Alarm Re-Enable after Deployment",
+      "trigger": {
+        "metric": "alarm_status",
+        "condition": "status == DISABLED after deployment",
+        "namespace": "SYS.ECS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES listAlarms --alarm-name \"*ecs-*\" --status DISABLED",
+          "hcloud CTS listTraces --resource_type alarm --action updateAlarm --limit 5"
+        ],
+        "confidence_factors": ["alarm_disabled_by_deployment", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud CES getAlarm --alarm_id {{output.alarm_id}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud CES listAlarms --alarm-name \"*ecs-*\" --status ENABLED --dry-run",
+        "execute": "hcloud CES enableAlarm --alarm_id {{output.alarm_id}}",
+        "verification": "hcloud CES getAlarm --alarm_id {{output.alarm_id}} | grep -q ENABLED",
+        "rollback": "hcloud CES disableAlarm --alarm_id {{output.alarm_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "alarm re-enable fails or alarm was intentionally disabled",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.98,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "ECS-R002",
+      "name": "CPU High Scale-Up via AS",
+      "trigger": {
+        "metric": "cpu_util",
+        "condition": "> 80 for 5min",
+        "namespace": "SYS.ECS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.ECS --metric_name cpu_util --period 60 --filter avg --dim instance_id={{output.instance_id}}",
+          "hcloud AS listScalingGroups --instance_id {{output.instance_id}}"
+        ],
+        "confidence_factors": ["cpu_sustained_high", "as_group_exists", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud AS showScalingGroup --scaling_group_id {{output.sg_id}} | grep -q ACTIVE",
+          "hcloud ECS showQuota --region {{env.HW_REGION_ID}} | grep -q available"
+        ],
+        "dry_run": "hcloud AS scalingInstances --scaling_group_id {{output.sg_id}} --dry-run",
+        "execute": "hcloud AS executeScalingAction --scaling_group_id {{output.sg_id}} --action_type ADD --instance_number 1",
+        "verification": "hcloud CES getMetricData --namespace SYS.ECS --metric_name cpu_util --period 60 --filter avg --dim instance_id={{output.instance_id}} | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if d[-1]['average']<80 else 1)\"",
+        "rollback": "hcloud AS removeInstances --scaling_group_id {{output.sg_id}} --instance_ids {{output.new_instance_id}}",
+        "timeout_seconds": 180
+      },
+      "escalation": {
+        "condition": "AS group not found or quota exhausted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 120,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "ECS-R003",
+      "name": "Auto-Scaling Policy Trigger",
+      "trigger": {
+        "metric": "scaling_policy_status",
+        "condition": "policy triggered but instance not added within 10min",
+        "namespace": "SYS.AS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud AS listScalingPolicies --scaling_group_id {{output.sg_id}}",
+          "hcloud AS listScalingActivityLogs --scaling_group_id {{output.sg_id}} --limit 5"
+        ],
+        "confidence_factors": ["policy_triggered", "no_activity_log", "group_healthy"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud AS showScalingGroup --scaling_group_id {{output.sg_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud AS executeScalingPolicy --scaling_policy_id {{output.policy_id}} --dry-run",
+        "execute": "hcloud AS executeScalingPolicy --scaling_policy_id {{output.policy_id}}",
+        "verification": "hcloud AS listScalingActivityLogs --scaling_group_id {{output.sg_id}} --limit 1 | grep -q SUCCESS",
+        "rollback": null,
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "scaling group INSUFFICIENT_CAPACITY or policy config error",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 150,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "ECS-R004",
+      "name": "Memory High Process Restart",
+      "trigger": {
+        "metric": "mem_util",
+        "condition": "> 85 for 5min",
+        "namespace": "SYS.ECS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.ECS --metric_name mem_util --period 60 --filter avg --dim instance_id={{output.instance_id}}",
+          "hcloud ECS runCommand --instance_id {{output.instance_id}} --command \"ps aux --sort=-%mem | head -5\""
+        ],
+        "confidence_factors": ["mem_sustained_high", "process_identified", "health_check_defined"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud ECS showServerDetail --server_id {{output.instance_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud ECS runCommand --instance_id {{output.instance_id}} --command \"systemctl status {{output.process_name}}\" --dry-run",
+        "execute": "hcloud ECS runCommand --instance_id {{output.instance_id}} --command \"systemctl restart {{output.process_name}}\"",
+        "verification": "hcloud ECS runCommand --instance_id {{output.instance_id}} --command \"systemctl is-active {{output.process_name}}\"",
+        "rollback": "hcloud ECS runCommand --instance_id {{output.instance_id}} --command \"systemctl stop {{output.process_name}}\"",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "process not identified or restart causes service disruption",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "ECS-R005",
+      "name": "Disk Usage High Volume Expand",
+      "trigger": {
+        "metric": "disk_util_inband",
+        "condition": "> 90 for 5min",
+        "namespace": "SYS.ECS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.ECS --metric_name disk_util_inband --period 60 --filter avg --dim instance_id={{output.instance_id}}",
+          "hcloud EVS listVolumes --server_id {{output.instance_id}}"
+        ],
+        "confidence_factors": ["disk_sustained_high", "volume_supports_expand", "quota_available", "backup_exists"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud EVS showVolume --volume_id {{output.volume_id}} | grep -q available",
+          "hcloud CBR listBackups --resource_id {{output.volume_id}} --limit 1"
+        ],
+        "dry_run": "hcloud EVS expandVolume --volume_id {{output.volume_id}} --new_size {{output.new_size_gb}} --dry-run",
+        "execute": "hcloud EVS expandVolume --volume_id {{output.volume_id}} --new_size {{output.new_size_gb}}",
+        "verification": "hcloud EVS showVolume --volume_id {{output.volume_id}} | grep -q {{output.new_size_gb}}",
+        "rollback": null,
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "volume type does not support expand or size increase > 500GB",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.99,
+        "avg_execution_seconds": 180,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "ECS-R006",
+      "name": "Unhealthy Instance Replace",
+      "trigger": {
+        "metric": "instance_health",
+        "condition": "status == ERROR or health_check failed 3 consecutive times",
+        "namespace": "SYS.ECS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud ECS showServerDetail --server_id {{output.instance_id}}",
+          "hcloud AS listScalingGroups --instance_id {{output.instance_id}}",
+          "hcloud CBR listBackups --resource_id {{output.instance_id}} --limit 1"
+        ],
+        "confidence_factors": ["instance_unhealthy", "as_group_or_manual_replace", "backup_available"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.95,
+        "preconditions": [
+          "hcloud ECS showServerDetail --server_id {{output.instance_id}} | grep -qE 'ERROR|SHUTOFF'",
+          "hcloud CBR listBackups --resource_id {{output.instance_id}} --limit 1 | grep -q available"
+        ],
+        "dry_run": "hcloud AS removeInstances --scaling_group_id {{output.sg_id}} --instance_ids {{output.instance_id}} --dry-run",
+        "execute": "hcloud AS removeInstances --scaling_group_id {{output.sg_id}} --instance_ids {{output.instance_id}} --instance_delete yes",
+        "verification": "hcloud AS listScalingInstances --scaling_group_id {{output.sg_id}} | grep -q ACTIVE",
+        "rollback": null,
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "no AS group, no backup, or last instance in group",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 300,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

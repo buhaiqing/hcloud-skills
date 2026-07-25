@@ -198,6 +198,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- CCE ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — custom metric emission
+- CCE ↔ CES: [`references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md) — custom metric emission
 - CCE node pool management: [`references/observability.md`](./observability.md) — LTS log linkage
-- Pod scheduling: [`references/troubleshooting.md`](../../huaweicloud-cce-ops/references/troubleshooting.md)
+- Pod scheduling: [`references/troubleshooting.md`](../../../huaweicloud-cce-ops/references/troubleshooting.md)

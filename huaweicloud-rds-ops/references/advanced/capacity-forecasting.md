@@ -212,6 +212,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- RDS ↔ ECS: [`references/integration.md`](../../huaweicloud-rds-ops/references/integration.md) — application connection patterns
-- Slow query analysis: [`references/troubleshooting.md`](../../huaweicloud-rds-ops/references/troubleshooting.md)
-- Cost anomaly: [`references/well-architected-assessment.md`](../../huaweicloud-rds-ops/references/well-architected-assessment.md) — FinOps
+- RDS ↔ ECS: [`references/integration.md`](../../../huaweicloud-rds-ops/references/integration.md) — application connection patterns
+- Slow query analysis: [`references/troubleshooting.md`](../../../huaweicloud-rds-ops/references/troubleshooting.md)
+- Cost anomaly: [`references/well-architected-assessment.md`](../../../huaweicloud-rds-ops/references/well-architected-assessment.md) — FinOps

@@ -23,17 +23,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import platform
 import re
 import subprocess
 import sys
+import time
+import uuid
 from datetime import datetime, timezone
 
 # `datetime.UTC` is a 3.11+ alias; the agent runtime is still on Python 3.10
 # (see AGENTS.md §Python 3.10 Syntax Compatibility). Use `timezone.utc` and
 # expose it under the name `UTC` so call sites stay short.
 UTC = timezone.utc  # noqa: UP017
-from pathlib import Path
-from typing import Any
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 
 SKILL_MAX_ITER: dict[str, int] = {
     "huaweicloud-ecs-ops": 2,
@@ -73,6 +77,24 @@ SECRET_PATTERNS = [
     re.compile(r"SecretAccessKey\s*[=:]\s*[^\s\"']+", re.I),
     re.compile(r"SK\s*[=:]\s*[A-Za-z0-9/+]{20,}", re.I),
 ]
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def resolve_skill_version(root: Path, skill: str) -> str:
+    """Extract metadata.version from SKILL.md YAML frontmatter (best-effort)."""
+    skill_md = root / skill / "SKILL.md"
+    if not skill_md.exists():
+        return "unknown"
+    try:
+        text = skill_md.read_text(encoding="utf-8")
+        # Lightweight regex parse — avoids PyYAML dependency
+        m = re.search(r'^\s*version:\s*["\']?([^"\'\n]+)["\']?', text, re.M)
+        return m.group(1).strip() if m else "unknown"
+    except OSError:
+        return "unknown"
 
 
 def mask_secrets(text: str) -> str:
@@ -195,6 +217,7 @@ def _mask_json(value: Any) -> Any:
 
 
 def run_command(command: str, timeout: int = 120) -> dict[str, Any]:
+    t0 = time.monotonic()
     try:
         proc = subprocess.run(
             command,
@@ -203,6 +226,7 @@ def run_command(command: str, timeout: int = 120) -> dict[str, Any]:
             text=True,
             timeout=timeout,
         )
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
         combined = (proc.stdout or "") + (proc.stderr or "")
         masked = mask_secrets(combined)
         excerpt = masked[:2000] + ("..." if len(masked) > 2000 else "")
@@ -212,14 +236,17 @@ def run_command(command: str, timeout: int = 120) -> dict[str, Any]:
             "result_excerpt": excerpt,
             "stdout_len": len(proc.stdout or ""),
             "stderr_len": len(proc.stderr or ""),
+            "duration_ms": elapsed_ms,
         }
     except subprocess.TimeoutExpired:
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
         return {
             "command": mask_secrets(command),
             "exit_code": -1,
             "result_excerpt": f"TIMEOUT after {timeout}s",
             "stdout_len": 0,
             "stderr_len": 0,
+            "duration_ms": elapsed_ms,
         }
 
 
@@ -329,6 +356,120 @@ def extract_failure_pattern(
     return None
 
 
+def load_failure_patterns(root: Path, skill: str) -> list[dict[str, Any]]:
+    """Load failure_patterns.json for a skill (empty list if absent)."""
+    path = root / skill / "assets" / "failure_patterns.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("patterns", [])
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def match_pre_execution_risk(command: str, patterns: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Check if command matches a known failure pattern signature."""
+    for p in patterns:
+        sig = p.get("signature", {})
+        cmd_pattern = sig.get("command_pattern", "")
+        if cmd_pattern and cmd_pattern in command:
+            return p
+        err_regex = sig.get("error_message_regex", "")
+        if err_regex and re.search(err_regex, command, re.I):
+            return p
+    return None
+
+
+def compute_ops_efficiency(trace: dict[str, Any]) -> dict[str, Any]:
+    """Derive AIOps efficiency metrics from completed iterations."""
+    iterations = trace.get("iterations", [])
+    total_iters = len(iterations)
+    retry_count = max(0, total_iters - 1)
+
+    # Wasted time = duration of all non-final iterations (retries that didn't pass)
+    wasted_time_ms = 0
+    first_success_iter = None
+    total_api_calls = 0
+    for it in iterations:
+        gen = it.get("generator", {})
+        dur = gen.get("duration_ms", 0)
+        total_api_calls += 1
+        if it.get("decision") == "PASS":
+            first_success_iter = it.get("iter")
+            break
+        wasted_time_ms += dur
+
+    final_status = (trace.get("final") or {}).get("status", "UNKNOWN")
+    automation_level = "full" if total_iters == 1 and final_status == "PASS" else "assisted"
+
+    return {
+        "retry_count": retry_count,
+        "wasted_time_ms": wasted_time_ms,
+        "first_success_iter": first_success_iter,
+        "total_api_calls": total_api_calls,
+        "automation_level": automation_level,
+        "total_duration_ms": trace.get("duration_ms", 0),
+    }
+
+
+def compute_cost_attribution(trace: dict[str, Any]) -> dict[str, Any]:
+    """Derive FinOps cost attribution from iterations + token_usage."""
+    iterations = trace.get("iterations", [])
+    cloud_api_calls = sum(1 for it in iterations if it.get("generator", {}).get("exit_code") is not None)
+
+    token_usage = trace.get("token_usage", {})
+    ai_cost_usd = token_usage.get("estimated_cost_usd", 0.0)
+
+    # Resource cost from context (if provided)
+    resource_ctx = trace.get("resource_context", {})
+    resource_hourly_cost = resource_ctx.get("monthly_cost_usd", 0.0) / 720.0 if resource_ctx.get("monthly_cost_usd") else 0.0
+    duration_hours = trace.get("duration_ms", 0) / 3_600_000.0
+    resource_cost_usd = round(resource_hourly_cost * duration_hours, 8)
+
+    total_cost_usd = round(ai_cost_usd + resource_cost_usd, 6)
+
+    return {
+        "cloud_api_calls": cloud_api_calls,
+        "ai_cost_usd": ai_cost_usd,
+        "resource_cost_usd": resource_cost_usd,
+        "total_cost_usd": total_cost_usd,
+        "cost_per_api_call_usd": round(ai_cost_usd / max(cloud_api_calls, 1), 6),
+    }
+
+
+def enhance_token_usage(trace: dict[str, Any]) -> None:
+    """Add retry_waste and per-iteration cost to token_usage (mutates in place)."""
+    token_usage = trace.get("token_usage")
+    if not token_usage:
+        return
+    iterations = trace.get("iterations", [])
+    total_iters = len(iterations)
+    total_tokens = token_usage.get("total_tokens", 0)
+    est_cost = token_usage.get("estimated_cost_usd", 0.0)
+
+    if total_iters > 1:
+        # Approximate retry waste: tokens attributed to failed iterations
+        retry_waste_tokens = int(total_tokens * (total_iters - 1) / total_iters)
+        token_usage["retry_waste_tokens"] = retry_waste_tokens
+        token_usage["retry_waste_cost_usd"] = round(est_cost * (total_iters - 1) / total_iters, 6)
+    else:
+        token_usage["retry_waste_tokens"] = 0
+        token_usage["retry_waste_cost_usd"] = 0.0
+
+    token_usage["cost_per_iteration_usd"] = round(est_cost / max(total_iters, 1), 6)
+
+
+CONTEXT_INJECT_KEYS = ("resource_context", "incident", "slo_context", "change_impact", "anomaly_baseline")
+
+
+def _finalize_finops_aiops(trace: dict[str, Any]) -> None:
+    """Compute and inject FinOps + AIOps derived fields before trace persistence."""
+    enhance_token_usage(trace)
+    trace["ops_efficiency"] = compute_ops_efficiency(trace)
+    trace["cost_attribution"] = compute_cost_attribution(trace)
+
+
 def persist_trace(root: Path, trace: dict[str, Any]) -> Path:
     out_dir = root / "audit-results"
     # Mode 0700 (owner-only) is required by `check_audit_results_guard`; a
@@ -349,18 +490,61 @@ def cmd_run(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    trace_id = f"gcl-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    started_at = _now_iso()
+    t0_wall = time.monotonic()
+
     trace: dict[str, Any] = {
-        "trace_schema_version": "v1",
+        "trace_schema_version": "v3",
+        "trace_id": trace_id,
         "skill": args.skill,
+        "skill_version": resolve_skill_version(root, args.skill),
         "request": mask_secrets(args.request),
         "operation_intent": operation_intent,
         "rubric_version": "v1",
         "masked_fields": ["request", "operation_intent", "generator.command", "generator.result_excerpt"],
+        "started_at": started_at,
+        "environment": {
+            "runner_version": "2.0.0",
+            "python_version": platform.python_version(),
+            "platform": platform.system(),
+            "ci": bool(os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS")),
+        },
         "iterations": [],
     }
 
-    critic_feedback = ""
+    # Token usage injection (for cost analysis)
+    if args.token_json:
+        try:
+            token_data = json.loads(Path(args.token_json).read_text(encoding="utf-8"))
+            trace["token_usage"] = token_data
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"WARN: --token-json unreadable: {exc}", file=sys.stderr)
+
+    # FinOps + AIOps runtime context injection
+    if args.context_json:
+        try:
+            ctx = json.loads(Path(args.context_json).read_text(encoding="utf-8"))
+            for key in CONTEXT_INJECT_KEYS:
+                if key in ctx:
+                    trace[key] = ctx[key]
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"WARN: --context-json unreadable: {exc}", file=sys.stderr)
+
     command = args.command
+
+    # Pre-execution risk check against failure knowledge base
+    patterns = load_failure_patterns(root, args.skill)
+    risk = match_pre_execution_risk(command, patterns)
+    if risk:
+        trace["pre_execution_risk"] = {
+            "pattern_id": risk.get("id", ""),
+            "category": risk.get("category", ""),
+            "known_fix": risk.get("fix", {}).get("action", ""),
+            "historical_success_rate": risk.get("stats", {}).get("success_rate", 0.0),
+        }
+
+    critic_feedback = ""
 
     for iteration in range(1, max_iter + 1):
         generator = run_command(command, timeout=args.timeout)
@@ -403,23 +587,29 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
 
         if decision == "SAFETY_FAIL":
+            trace["finished_at"] = _now_iso()
+            trace["duration_ms"] = int((time.monotonic() - t0_wall) * 1000)
             trace["final"] = {
                 "status": "SAFETY_FAIL",
                 "iter": iteration,
                 "output": None,
                 "failure_pattern": extract_failure_pattern(args.skill, command, generator, critic),
             }
+            _finalize_finops_aiops(trace)
             path = persist_trace(root, trace)
             print(f"SAFETY_FAIL — trace: {path}", file=sys.stderr)
             return 3
 
         if decision == "PASS":
+            trace["finished_at"] = _now_iso()
+            trace["duration_ms"] = int((time.monotonic() - t0_wall) * 1000)
             trace["final"] = {
                 "status": "PASS",
                 "iter": iteration,
                 "output": generator.get("result_excerpt", ""),
                 "failure_pattern": None,
             }
+            _finalize_finops_aiops(trace)
             path = persist_trace(root, trace)
             print(f"PASS (iter {iteration}) — trace: {path}")
             return 0
@@ -427,6 +617,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         critic_feedback = "; ".join(critic.get("suggestions", [])[:3])
 
     last_iteration = trace["iterations"][-1]
+    trace["finished_at"] = _now_iso()
+    trace["duration_ms"] = int((time.monotonic() - t0_wall) * 1000)
     trace["final"] = {
         "status": "MAX_ITER",
         "iter": max_iter,
@@ -443,6 +635,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             last_iteration["critic"],
         ),
     }
+    _finalize_finops_aiops(trace)
     path = persist_trace(root, trace)
     print(f"MAX_ITER — trace: {path}", file=sys.stderr)
     return 1
@@ -470,6 +663,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--structural-critic-only",
         action="store_true",
         help="Use rule-based structural critic (CI/local smoke only; not production mutations)",
+    )
+    run.add_argument(
+        "--token-json",
+        default=None,
+        help="Path to JSON file with token usage data for cost analysis",
+    )
+    run.add_argument(
+        "--context-json",
+        default=None,
+        help="Path to JSON with FinOps/AIOps runtime context (resource_context, incident, slo_context, change_impact, anomaly_baseline)",
     )
     run.set_defaults(func=cmd_run)
     return parser

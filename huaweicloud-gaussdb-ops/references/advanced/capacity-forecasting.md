@@ -216,6 +216,6 @@ hcloud ces create-alarm-rule \
 
 ## Knowledge Base Anchors
 
-- GaussDB ↔ CES: [`references/monitoring.md`](../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
-- GaussDB ↔ Backup: [`references/backup.md`](../../huaweicloud-cbr-ops/references/backup.md) — backup and restore integration
-- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../huaweicloud-gaussdb-ops/references/cli-usage.md)
+- GaussDB ↔ CES: [`references/monitoring.md`](../../../huaweicloud-ces-ops/references/monitoring.md) — metric aggregation and alarm rules
+- GaussDB ↔ Backup: [`references/backup.md`](../../../huaweicloud-cbr-ops/references/core-concepts.md) — backup and restore integration
+- Capacity forecast CLI patterns: [`references/cli-usage.md`](../../../huaweicloud-gaussdb-ops/references/cli-syntax-reference.md)
