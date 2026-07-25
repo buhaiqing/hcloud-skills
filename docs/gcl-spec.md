@@ -385,7 +385,7 @@ Derived by the runner at trace finalization. Quantifies operational efficiency f
 All FinOps/AIOps context fields are injected via `--context-json <path>` at runtime. The file is a flat JSON object; the runner extracts known keys and ignores unknown ones.
 
 ```bash
-python3 scripts/gcl_runner.py run \
+skillcheck gcl run --root . \
   --skill huaweicloud-ecs-ops \
   --request "Stop ECS instance" \
   --command 'hcloud ecs stop-server --server-id xxx' \
@@ -476,16 +476,16 @@ Placeholder syntax MUST follow `{{env.*}}` / `{{user.*}}` / `{{output.*}}`; bare
 
 ## 9. Runtime Scripts
 
-| Script | Purpose |
+| Command | Purpose |
 |---|---|
-| `scripts/gcl_runner.py` | Orchestrator loop; external Critic required in production |
-| `scripts/gcl_trace_aggregate.py` | Aggregate traces into quality summary |
-| `scripts/gcl_alarm_wire.py` | Plan/apply CES alarms from summary |
-| `skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results (replaces the deleted Python scripts) |
+| `skillcheck gcl run --root .` | Orchestrator loop; external Critic required in production |
+| `skillcheck aggregate trace --root .` | Aggregate traces into quality summary |
+| `skillcheck gcl alarm-wire --root .` | Plan/apply CES alarms from summary |
+| `skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results |
 
 ### Phase 4 CES Alarm Wiring Contract
 
-`scripts/gcl_alarm_wire.py` reads the `gcl_quality:` block from
+`skillcheck gcl alarm-wire --root .` reads the `gcl_quality:` block from
 `huaweicloud-ces-ops/assets/example-config.yaml`. The block MUST define:
 
 | Key | Type | Default | Purpose |
@@ -501,7 +501,7 @@ Wiring contract rules:
 - Numeric thresholds MUST match `gcl_alarm_wire.DEFAULT_THRESHOLDS` exactly
   (drift is caught by `skillcheck validate --root .` under the product-assessment gate).
 - `audit-results/gcl-alarm-plan-*.json` files MUST agree with the wiring
-  config; rerun `gcl_alarm_wire.py plan --write-plan` after edits.
+  config; rerun `skillcheck gcl alarm-wire --root . --write-plan` after edits.
 - `docs/gcl-spec.md` MUST keep the four threshold names documented.
 
 Production GCL MUST use externally supplied isolated Critic scores via `--critic-json` or stdin. `--structural-critic-only` is only for CI/local smoke tests and cannot approve production or human acceptance gates.
@@ -525,7 +525,7 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 - Schema: `huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json`
 - Design: `huaweicloud-ces-ops/references/gcl-monitoring.md`
 - Namespace: `CUSTOM.GCL`
-- Alarm plan: `scripts/gcl_alarm_wire.py plan --summary <summary.json>`
+- Alarm plan: `skillcheck gcl alarm-wire --root . --plan-file <summary.json>`
 
 ## 12. Changelog
 

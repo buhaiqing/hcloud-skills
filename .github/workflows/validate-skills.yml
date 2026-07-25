@@ -58,7 +58,7 @@ jobs:
       - name: skillcheck check audit-results
         run: ./bin/skillcheck check audit-results --root .
 
-      # --- Go: GCL surface (replaces prior gcl_runner.py / gcl_alarm_wire.py / gcl_trace_aggregate.py) ---
+      # --- Go: GCL surface ---
       - name: skillcheck aggregate trace
         run: ./bin/skillcheck aggregate trace --root .
 
@@ -108,4 +108,6 @@ jobs:
           args: check --output-format=github scripts/
 
       - name: py_compile Python 3.10 compat
-        run: python3 -m py_compile scripts/gcl_runner.py scripts/gcl_alarm_wire.py scripts/gcl_trace_aggregate.py
+        # Remaining Python scripts are loaded by the agent runtime under 3.10.
+        # Syntax drift between 3.10 and 3.11 is a release-blocker.
+        run: python3 -m py_compile scripts/*.py

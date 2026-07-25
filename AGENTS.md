@@ -198,12 +198,11 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ## Python 3.10 Syntax Compatibility (P0)
 
-> **As of 2026-07-26, only 3 Python scripts remain in `scripts/`:**
-> the 3 GCL runtime scripts (`gcl_runner.py`, `gcl_alarm_wire.py`, `gcl_trace_aggregate.py`) which
-> are kept as reference implementations of the GCL spec (see `docs/gcl-spec.md`). The 14 scripts
-> previously listed here have all been migrated to Go: see §"Cross-Language Migration Lessons
-> (skillcheck Go Migration Retrospective)" below for the latest wave (L4 engines + learning +
-> dead-code cleanup + drift guard + critic).
+> **As of 2026-07-26, only 1 Python script remains in `scripts/`:**
+> `gcl_runner.py`, kept as the human-readable cross-language spec for the GCL runner loop. The
+> 16 scripts previously listed here have all been migrated to Go: see §"Cross-Language
+> Migration Lessons (skillcheck Go Migration Retrospective)" below for the latest wave (L4
+> engines + learning + dead-code cleanup + drift guard + critic + GCL runner surface).
 ## Python 3.10 Syntax Compatibility (P0)
 
 - Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only symbol silently breaks the agent.
@@ -334,9 +333,9 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 |---|---|
 | `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md`, GCL scripts, or CES GCL monitoring wiring |
 | `scripts/gcl_runner.py` | runtime Orchestrator loop; external Critic required in production |
-| `scripts/gcl_trace_aggregate.py` | trace → quality summary aggregation |
-| `scripts/gcl_alarm_wire.py` | CES alarm plan/apply for GCL SLOs |
-| `skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation (replaces the deleted Python scripts) |
+| `skillcheck aggregate trace --root .` | trace → quality summary aggregation |
+| `skillcheck gcl alarm-wire --root .` | CES alarm plan/apply for GCL SLOs |
+| `skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation |
 
 ### GCL hard constraints
 
@@ -355,9 +354,9 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 
 ```bash
 skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
-python3 scripts/gcl_runner.py run --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
-python3 scripts/gcl_trace_aggregate.py --since-hours 168
-python3 scripts/gcl_alarm_wire.py plan --summary scripts/fixtures/gcl-quality-summary-healthy.json
+skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
+skillcheck aggregate trace --root . --since-hours 168
+skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
 ```
 
 ### Relationship to build-time self-reflection
@@ -574,7 +573,7 @@ of dev time if applied upfront:
 
 | Script | Why kept |
 |--------|----------|
-| `gcl_runner.py`, `gcl_alarm_wire.py`, `gcl_trace_aggregate.py` | The Go versions (`internal/gcl/*.go`) are the *implementation*; these Python files are the *reference spec* cited by `docs/gcl-spec.md` and `references/self-healing-spec.md`. Deleting them would break the spec citations. The Go versions are now the canonical runtime path; the Python versions serve as human-readable cross-language documentation. |
+| `gcl_runner.py` | The Go version (`internal/gcl/runner.go`) is the *implementation*; this Python file is the *reference spec* cited by `docs/gcl-spec.md` and `references/self-healing-spec.md`. Deleting it would break the spec citations. The Go version is now the canonical runtime path; the Python version serves as human-readable cross-language documentation. |
 
 ### 14. Self-Reflection: This Migration (2026-07-26)
 

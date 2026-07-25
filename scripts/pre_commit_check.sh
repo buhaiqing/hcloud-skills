@@ -75,7 +75,7 @@ run_gate "skillcheck check example-config"    "$SKILLCHECK_BIN" check example-co
 run_gate "skillcheck check advanced-coverage" "$SKILLCHECK_BIN" check advanced-coverage --root "$ROOT"
 run_gate "skillcheck check audit-results"     "$SKILLCHECK_BIN" check audit-results --root "$ROOT"
 
-# ── 6. Go: GCL surface (replaces gcl_trace_aggregate.py + gcl_alarm_wire.py) ──
+# ── 6. Go: GCL surface ──
 run_gate "skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --root "$ROOT"
 
 # ── 7. Go: new learning + l4 subcommands (replaces Python counterparts) ──
