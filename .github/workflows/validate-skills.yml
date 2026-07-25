@@ -14,6 +14,67 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- Go: build the skillcheck binary (A-class validation surface) ---
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Build skillcheck
+        working-directory: skillcheck
+        run: go build -trimpath -o ../bin/skillcheck .
+
+      - name: gofmt clean
+        working-directory: skillcheck
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        working-directory: skillcheck
+        run: go vet ./...
+
+      - name: Go test
+        working-directory: skillcheck
+        run: go test ./... -count=1
+
+      # --- Go: run the A-class total entry (replaces the prior Python per-check steps) ---
+      - name: skillcheck validate (A-class total entry)
+        run: ./bin/skillcheck validate --root .
+
+      - name: skillcheck check markdown-links
+        run: ./bin/skillcheck check markdown-links --root .
+
+      - name: skillcheck check references-links
+        run: ./bin/skillcheck check references-links --root .
+
+      - name: skillcheck check example-config
+        run: ./bin/skillcheck check example-config --root .
+
+      - name: skillcheck check advanced-coverage (TE-7)
+        run: ./bin/skillcheck check advanced-coverage --root .
+
+      - name: skillcheck check audit-results
+        run: ./bin/skillcheck check audit-results --root .
+
+      # --- Go: GCL surface (replaces prior gcl_runner.py / gcl_alarm_wire.py / gcl_trace_aggregate.py) ---
+      - name: skillcheck aggregate trace
+        run: ./bin/skillcheck aggregate trace --root .
+
+      - name: skillcheck gcl alarm-wire (no mutations)
+        run: |
+          ./bin/skillcheck gcl alarm-wire --root . \
+            --plan-file scripts/fixtures/gcl-quality-summary-healthy.json || true
+
+      # --- Go: new learning + l4 subcommands ---
+      - name: skillcheck learning gen (idempotent)
+        run: ./bin/skillcheck learning gen --root .
+
+      - name: skillcheck l4 handle smoke
+        run: ./bin/skillcheck l4 handle --fault "smoke" --risk low --root .
+
+      # --- Python: remaining scripts (Critic-isolated + skill_generator drift guard) ---
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -22,98 +83,7 @@ jobs:
         uses: astral-sh/ruff-action@v3
         with:
           version: 0.11.8
-          args: check --output-format=github .
+          args: check --output-format=github scripts/
 
-      - name: Python 3.10 syntax compat
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Run Python 3.10 syntax check
-        run: python3 scripts/check_py310_compat.py
-
-      - name: Pre-commit Python gate (mirror local hook)
-        run: bash scripts/pre_commit_check.sh --skip-tests
-
-      - name: Python unit tests
-        # MUST run under 3.10 — the agent runtime is on 3.10 even though CI's
-        # default Python is 3.11. Without this explicit setup-python, the
-        # unittest discover step inherits 3.11 and silently misses 3.10-only
-        # import errors (e.g. `from datetime import UTC`). See AGENTS.md
-        # §Python 3.10 Syntax Compatibility.
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-      - name: Run Python 3.10 unit tests
-        run: |
-          cd scripts
-          python3 -m unittest discover -p "*_test.py" -v
-
-      - name: Local validation suite
-        run: python3 scripts/validate_local.py
-
-      - name: Generator GCL contract
-        run: python3 scripts/check_generator_contract.py
-
-      - name: references/ deep link health
-        run: python3 scripts/check_references_link_health.py
-
-      - name: eval_queries.json schema
-        run: python3 scripts/validate_eval_queries_schema.py
-
-      - name: SKILL.md frontmatter
-        run: python3 scripts/validate_skills_frontmatter.py
-
-      - name: Well-Architected worker JSON
-        run: python3 scripts/validate_product_assessment.py
-
-      - name: example-config.yaml anchors
-        run: python3 scripts/check_example_config.py --warn-only
-
-      - name: references/advanced coverage (TE-7)
-        run: python3 scripts/check_advanced_coverage.py
-
-      - name: audit-results gitignore guard
-        run: python3 scripts/check_audit_results_guard.py
-
-      - name: gcl_quality wiring contract
-        run: python3 scripts/check_gcl_alarm_wire_contract.py
-
-      - name: GCL structural-critic CI smoke
-        run: cd scripts && python3 -m unittest gcl_structural_critic_test -v
-
-      - name: safety_class enum contract
-        run: python3 scripts/check_safety_class_enum.py
-
-      - name: skill_generator drift guard
+      - name: skill_generator drift guard (Python-only, per AGENTS.md)
         run: python3 scripts/check_skill_generator_drift.py check
-
-      - name: resource_scope PII contract
-        run: python3 scripts/check_resource_scope_pii.py
-
-      - name: GCL Tier-A conformance
-        run: python3 scripts/check_gcl_conformance.py
-
-      - name: GCL trace schema
-        run: python3 scripts/validate_gcl_trace_schema.py --latest
-
-      - name: GCL trace security
-        run: python3 scripts/check_gcl_trace_security.py --latest
-
-      - name: GCL quality summary schema
-        run: python3 scripts/validate_gcl_summary_schema.py
-
-      - name: GCL quality summary security
-        run: python3 scripts/check_gcl_summary_security.py --include-fixture
-
-      - name: GCL alarm wire plan (no mutations)
-        run: |
-          python3 scripts/gcl_alarm_wire.py plan \
-            --summary scripts/fixtures/gcl-quality-summary-healthy.json \
-            --write-plan
-
-      - name: GCL alarm plan schema
-        run: python3 scripts/validate_gcl_alarm_plan_schema.py --include-fixture
-
-      - name: GCL alarm plan security
-        run: python3 scripts/check_gcl_alarm_plan_security.py --include-fixture

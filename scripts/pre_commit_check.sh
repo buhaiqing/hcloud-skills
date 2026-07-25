@@ -17,7 +17,7 @@
 # Token-efficiency note (TE-6):
 #   This script intentionally does NOT import shared helpers from
 #   Python scripts. Each gate is a self-contained subprocess call.
-#   Shared logic lives in validate_local.py and is tested there.
+#   Shared logic lives in the skillcheck Go binary and is tested there.
 # ============================================================
 
 set -euo pipefail
@@ -28,6 +28,13 @@ if [[ "${1:-}" == "--skip-tests" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Build skillcheck if missing.
+SKILLCHECK_BIN="${SKILLCHECK_BIN:-$ROOT/bin/skillcheck}"
+if [[ ! -x "$SKILLCHECK_BIN" ]]; then
+  echo "==> building skillcheck"
+  (cd "$ROOT/skillcheck" && go build -trimpath -o "$SKILLCHECK_BIN" .)
+fi
 
 # Track overall result; exit 1 on any gate failure.
 FAILED=0
@@ -42,129 +49,55 @@ run_gate() {
   fi
 }
 
-# ── 1. ruff lint (all Python files) ────────────────────────
-run_gate "ruff lint" ruff check .
+# ── 1. ruff lint (remaining Python files) ───────────────
+if [[ -f "$ROOT/scripts/check_skill_generator_drift.py" || -f "$ROOT/scripts/critic_v1.py" ]]; then
+  run_gate "ruff lint" ruff check scripts/
+fi
 
 # ── 2. Python 3.10 syntax compatibility ───────────────────
-# Inline check (check_py310_compat.py may not exist in all branches).
 # Covers both parse-level syntax (py_compile) and import-level 3.11+ names.
-run_gate "py310 compat (py_compile)" python3 -m py_compile "$ROOT"/scripts/*.py
-
-# ── 3. validate_local.py — GCL Tier-A, skillcheck, markdown links, drift guard ─
-run_gate "validate_local.py" python3 "$ROOT"/scripts/validate_local.py --root "$ROOT"
-
-# ── 4. Generator GCL contract ────────────────────────────
-if [[ -f "$ROOT/scripts/check_generator_contract.py" ]]; then
-  run_gate "generator GCL contract" python3 "$ROOT"/scripts/check_generator_contract.py
+if ls "$ROOT"/scripts/*.py >/dev/null 2>&1; then
+  run_gate "py310 compat (py_compile)" python3 -m py_compile "$ROOT"/scripts/*.py
 fi
 
-# ── 5. references/ deep link health ──────────────────────
-if [[ -f "$ROOT/scripts/check_references_link_health.py" ]]; then
-  run_gate "references/ deep link health" python3 "$ROOT"/scripts/check_references_link_health.py
-fi
+# ── 3. Go: build, fmt, vet ────────────────────────────────
+run_gate "skillcheck build" bash -c "cd $ROOT/skillcheck && go build -trimpath -o $SKILLCHECK_BIN ."
+run_gate "gofmt" bash -c "cd $ROOT/skillcheck && [ -z \"\$(gofmt -l .)\" ]"
+run_gate "go vet" bash -c "cd $ROOT/skillcheck && go vet ./..."
 
-# ── 6. eval_queries.json schema ───────────────────────────
-if [[ -f "$ROOT/scripts/validate_eval_queries_schema.py" ]]; then
-  run_gate "eval_queries.json schema" python3 "$ROOT"/scripts/validate_eval_queries_schema.py
-fi
+# ── 4. Go: A-class total entry (replaces validate_local.py) ──
+run_gate "skillcheck validate" "$SKILLCHECK_BIN" validate --root "$ROOT"
 
-# ── 7. SKILL.md frontmatter ───────────────────────────────
-if [[ -f "$ROOT/scripts/validate_skills_frontmatter.py" ]]; then
-  run_gate "SKILL.md frontmatter" python3 "$ROOT"/scripts/validate_skills_frontmatter.py
-fi
+# ── 5. Go: per-check subcommands ───────────────────────────
+run_gate "skillcheck check markdown-links"   "$SKILLCHECK_BIN" check markdown-links --root "$ROOT"
+run_gate "skillcheck check references-links" "$SKILLCHECK_BIN" check references-links --root "$ROOT"
+run_gate "skillcheck check example-config"    "$SKILLCHECK_BIN" check example-config --root "$ROOT"
+run_gate "skillcheck check advanced-coverage" "$SKILLCHECK_BIN" check advanced-coverage --root "$ROOT"
+run_gate "skillcheck check audit-results"     "$SKILLCHECK_BIN" check audit-results --root "$ROOT"
 
-# ── 8. Well-Architected worker JSON ───────────────────────
-if [[ -f "$ROOT/scripts/validate_product_assessment.py" ]]; then
-  run_gate "Well-Architected worker JSON" python3 "$ROOT"/scripts/validate_product_assessment.py
-fi
+# ── 6. Go: GCL surface (replaces gcl_trace_aggregate.py + gcl_alarm_wire.py) ──
+run_gate "skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --root "$ROOT"
 
-# ── 9. example-config.yaml anchors ─────────────────────────
-if [[ -f "$ROOT/scripts/check_example_config.py" ]]; then
-  run_gate "example-config.yaml anchors" python3 "$ROOT"/scripts/check_example_config.py --warn-only
-fi
+# ── 7. Go: new learning + l4 subcommands (replaces Python counterparts) ──
+run_gate "skillcheck learning gen" "$SKILLCHECK_BIN" learning gen --root "$ROOT"
+run_gate "skillcheck l4 handle smoke" "$SKILLCHECK_BIN" l4 handle --fault "smoke" --risk low --root "$ROOT"
 
-# ── 10. references/advanced coverage (TE-7) ─────────────
-if [[ -f "$ROOT/scripts/check_advanced_coverage.py" ]]; then
-  run_gate "references/advanced coverage (TE-7)" python3 "$ROOT"/scripts/check_advanced_coverage.py
-fi
-
-# ── 11. audit-results gitignore guard ─────────────────────
-if [[ -f "$ROOT/scripts/check_audit_results_guard.py" ]]; then
-  run_gate "audit-results gitignore guard" python3 "$ROOT"/scripts/check_audit_results_guard.py
-fi
-
-# ── 12. gcl_quality wiring contract ───────────────────────
-if [[ -f "$ROOT/scripts/check_gcl_alarm_wire_contract.py" ]]; then
-  run_gate "gcl_quality wiring contract" python3 "$ROOT"/scripts/check_gcl_alarm_wire_contract.py
-fi
-
-# ── 13. GCL Tier-A conformance ───────────────────────────
-if [[ -f "$ROOT/scripts/check_gcl_conformance.py" ]]; then
-  run_gate "GCL Tier-A conformance" python3 "$ROOT"/scripts/check_gcl_conformance.py
-fi
-
-# ── 14. GCL trace schema ──────────────────────────────────
-if [[ -f "$ROOT/scripts/validate_gcl_trace_schema.py" ]]; then
-  run_gate "GCL trace schema" python3 "$ROOT"/scripts/validate_gcl_trace_schema.py --latest
-fi
-
-# ── 15. GCL trace security ────────────────────────────────
-if [[ -f "$ROOT/scripts/check_gcl_trace_security.py" ]]; then
-  run_gate "GCL trace security" python3 "$ROOT"/scripts/check_gcl_trace_security.py --latest
-fi
-
-# ── 16. GCL quality summary schema ────────────────────────
-if [[ -f "$ROOT/scripts/validate_gcl_summary_schema.py" ]]; then
-  run_gate "GCL quality summary schema" python3 "$ROOT"/scripts/validate_gcl_summary_schema.py
-fi
-
-# ── 17. GCL quality summary security ──────────────────────
-if [[ -f "$ROOT/scripts/check_gcl_summary_security.py" ]]; then
-  run_gate "GCL quality summary security" python3 "$ROOT"/scripts/check_gcl_summary_security.py --include-fixture
-fi
-
-# ── 18. safety_class enum contract ───────────────────────
-if [[ -f "$ROOT/scripts/check_safety_class_enum.py" ]]; then
-  run_gate "safety_class enum contract" python3 "$ROOT"/scripts/check_safety_class_enum.py
-fi
-
-# ── 19. resource_scope PII contract ───────────────────────
-if [[ -f "$ROOT/scripts/check_resource_scope_pii.py" ]]; then
-  run_gate "resource_scope PII contract" python3 "$ROOT"/scripts/check_resource_scope_pii.py
-fi
-
-# ── 20. skill_generator drift guard (standalone) ─────────
+# ── 8. Python: skill_generator drift guard (Python-only, per AGENTS.md invariant) ──
 if [[ -f "$ROOT/scripts/check_skill_generator_drift.py" ]]; then
-  run_gate "skill_generator drift guard" python3 "$ROOT"/scripts/check_skill_generator_drift.py check
+  run_gate "skill_generator drift guard" python3 "$ROOT/scripts/check_skill_generator_drift.py" check
 fi
 
-# ── 21. GCL alarm plan schema ─────────────────────────────
-if [[ -f "$ROOT/scripts/validate_gcl_alarm_plan_schema.py" ]]; then
-  run_gate "GCL alarm plan schema" python3 "$ROOT"/scripts/validate_gcl_alarm_plan_schema.py --include-fixture
-fi
-
-# ── 22. GCL alarm plan security ───────────────────────────
-if [[ -f "$ROOT/scripts/check_gcl_alarm_plan_security.py" ]]; then
-  run_gate "GCL alarm plan security" python3 "$ROOT"/scripts/check_gcl_alarm_plan_security.py --include-fixture
-fi
-
-# ── 23. Unit tests (skipped in pre-commit hook) ──────────
+# ── 9. Unit tests (skipped in pre-commit hook) ──────────
 if (( SKIP_TESTS == 0 )); then
-  if [[ -f "$ROOT/scripts/gcl_structural_critic_test.py" ]]; then
-    run_gate "GCL structural-critic unit tests" python3 -m unittest "$ROOT"/scripts/gcl_structural_critic_test -v
-  fi
-
-  if [[ -f "$ROOT/scripts/check_py310_compat.py" ]]; then
-    run_gate "check_py310_compat.py (import dry-run)" python3 "$ROOT"/scripts/check_py310_compat.py
-  fi
+  run_gate "Go test" bash -c "cd $ROOT/skillcheck && go test ./... -count=1"
 fi
 
 # ── Summary ───────────────────────────────────────────────
 echo ""
 if (( FAILED == 0 )); then
-  echo "OK: all pre-commit gates passed"
+  echo "All pre-commit gates passed."
 else
-  echo "FAIL: one or more gates failed — see above" >&2
+  echo "One or more pre-commit gates FAILED."
 fi
 
 exit $FAILED

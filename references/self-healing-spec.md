@@ -197,8 +197,8 @@ def self_heal(alarm_event, skill_id):
 ### 5.1 触发条件
 
 - GCL trace 写入后（`gcl_runner.py` 自动触发）
-- 定期聚合（`scripts/trace_learning.py aggregate`）
-- 手动触发（`scripts/trace_learning.py learn --skill <skill_id>`）
+- 定期聚合（`skillcheck learning trace aggregate --skill <skill_id> --root .`）
+- 手动触发（`skillcheck learning trace learn --skill <skill_id> --trace <trace-path> --root .`）
 
 ### 5.2 学习流程
 
@@ -207,7 +207,7 @@ audit-results/gcl-trace-*.json
         │
         ▼
 ┌─────────────────────┐
-│  trace_learning.py  │
+│  skillcheck learning trace  │
 │  aggregate          │
 └─────────────────────┘
         │
@@ -255,5 +255,5 @@ if risk:
 - [ ] 每个 required GCL skill 有 `assets/failure_patterns.json`
 - [ ] Playbook 覆盖 troubleshooting.md 中 ≥ 60% 的错误码
 - [ ] 每个 playbook 有 dry_run + verification + rollback
-- [ ] `trace_learning.py` 可成功聚合现有 traces
+- [ ] `skillcheck learning trace` 可成功聚合现有 traces
 - [ ] GCL runner 输出包含 `pre_execution_risk` 字段（当匹配到已知模式时）
