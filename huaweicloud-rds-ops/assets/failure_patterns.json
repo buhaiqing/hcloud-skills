@@ -154,8 +154,8 @@
     }
   ],
   "meta": {
-    "total_patterns": 10,
-    "last_aggregation": "2026-07-25T16:50:25Z",
-    "source_traces_analyzed": 0
+    "last_aggregation": "2026-07-25T23:02:32Z",
+    "source_traces_analyzed": 0,
+    "total_patterns": 10
   }
 }

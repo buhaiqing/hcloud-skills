@@ -6,168 +6,120 @@
       "id": "CCE-R001",
       "name": "NotReady Node Cordon + Drain",
       "trigger": {
-        "metric": "node_ready",
         "condition": "== 0 (NotReady) for 3min",
+        "metric": "node_ready",
         "namespace": "SYS.CCE"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}",
-          "hcloud CES getMetricData --namespace SYS.CCE --metric_name node_ready --period 60"
-        ],
         "confidence_factors": [
           "node_notready_confirmed",
           "as_group_available",
           "no_etcd_pressure"
+        ],
+        "steps": [
+          "hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}",
+          "hcloud CES getMetricData --namespace SYS.CCE --metric_name node_ready --period 60"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.9,
+        "dry_run": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} --dry-run",
+        "execute": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}",
         "preconditions": [
           "hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} | grep -q NotReady"
         ],
-        "dry_run": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} --dry-run",
-        "execute": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} && hcloud CCE drainNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} --ignore-daemonsets",
-        "verification": "hcloud CCE listPods --cluster_id {{output.cluster_id}} --node {{output.node_id}} | wc -l | grep -q '^0$'",
-        "rollback": "hcloud CCE uncordonNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}",
-        "timeout_seconds": 600
-      },
-      "escalation": {
-        "condition": "drain fails or pods cannot reschedule (PDB violation)",
-        "channel": "notification+pagerduty"
-      },
-      "metadata": {
-        "success_rate": 0.95,
-        "avg_execution_seconds": 300,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}} | grep -q SchedulingDisabled"
       }
     },
     {
       "id": "CCE-R002",
       "name": "Pending Pod Auto-Scale",
       "trigger": {
+        "condition": "\u003e 5 pending for 5min",
         "metric": "pending_pods",
-        "condition": "> 5 pending for 5min",
         "namespace": "SYS.CCE"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Pending",
-          "hcloud CCE showNode --cluster_id {{output.cluster_id}} --limit 50"
-        ],
         "confidence_factors": [
           "resources_exhausted",
           "as_group_healthy",
           "quota_available"
+        ],
+        "steps": [
+          "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Pending",
+          "hcloud CCE showNode --cluster_id {{output.cluster_id}} --limit 50"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.85,
+        "dry_run": "hcloud AS scalingInstances --scaling_group_id {{output.sg_id}} --dry-run",
+        "execute": "hcloud AS executeScalingAction --scaling_group_id {{output.sg_id}} --action ADD --instance_number 1",
         "preconditions": [
           "hcloud AS showScalingGroup --scaling_group_id {{output.sg_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud AS scalingInstances --scaling_group_id {{output.sg_id}} --dry-run",
-        "execute": "hcloud AS executeScalingAction --scaling_group_id {{output.sg_id}} --action_type ADD --instance_number 1",
-        "verification": "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Pending | wc -l | python3 -c \"import sys; sys.exit(0 if int(sys.stdin.read().strip())<3 else 1)\"",
-        "rollback": "hcloud AS removeInstances --scaling_group_id {{output.sg_id}} --instance_ids {{output.new_node_id}}",
-        "timeout_seconds": 300
-      },
-      "escalation": {
-        "condition": "AS group unavailable or quota exhausted",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.93,
-        "avg_execution_seconds": 180,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Pending"
       }
     },
     {
       "id": "CCE-R003",
       "name": "Addon Restart",
       "trigger": {
-        "metric": "addon_health",
         "condition": "== Abnormal for 5min",
+        "metric": "addon_health",
         "namespace": "SYS.CCE"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CCE listAddons --cluster_id {{output.cluster_id}}",
-          "hcloud CES getMetricData --namespace SYS.CCE --metric_name addon_status --period 60"
-        ],
         "confidence_factors": [
           "addon_abnormal",
           "version_pinned",
           "no_active_upgrade"
+        ],
+        "steps": [
+          "hcloud CCE listAddons --cluster_id {{output.cluster_id}}",
+          "hcloud CES getMetricData --namespace SYS.CCE --metric_name addon_status --period 60"
         ]
       },
       "remediation": {
-        "risk_level": "low",
         "auto_execute_threshold": 0.85,
+        "dry_run": "hcloud CCE restartAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}} --dry-run",
+        "execute": "hcloud CCE restartAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}}",
         "preconditions": [
           "hcloud CCE showAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}} | grep -q Abnormal"
         ],
-        "dry_run": "hcloud CCE restartAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}} --dry-run",
-        "execute": "hcloud CCE restartAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}}",
-        "verification": "hcloud CCE showAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}} | grep -q Running",
-        "rollback": null,
-        "timeout_seconds": 120
-      },
-      "escalation": {
-        "condition": "restart fails or addon version mismatch",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.96,
-        "avg_execution_seconds": 60,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "low",
+        "verification": "hcloud CCE showAddon --cluster_id {{output.cluster_id}} --addon_name {{output.name}} | grep -q Running"
       }
     },
     {
       "id": "CCE-R004",
       "name": "Evicted Pod Workload Restart",
       "trigger": {
+        "condition": "\u003e 3 in 5min",
         "metric": "evicted_pods",
-        "condition": "> 3 in 5min",
         "namespace": "SYS.CCE"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Failed",
-          "hcloud CCE showEvents --cluster_id {{output.cluster_id}} --reason Evicted --limit 20"
-        ],
         "confidence_factors": [
           "disk_pressure_confirmed",
           "node_drainable",
           "quota_available"
+        ],
+        "steps": [
+          "hcloud CCE listPods --cluster_id {{output.cluster_id}} --phase Failed",
+          "hcloud CCE showEvents --cluster_id {{output.cluster_id}} --reason Evicted --limit 20"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.9,
+        "dry_run": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} --dry-run",
+        "execute": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}}",
         "preconditions": [
           "hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} | grep -q MemoryPressure\\|DiskPressure"
         ],
-        "dry_run": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} --dry-run",
-        "execute": "hcloud CCE cordonNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} && hcloud CCE drainNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} --ignore-daemonsets --delete-local-data",
-        "verification": "hcloud CCE listPods --cluster_id {{output.cluster_id}} --node {{output.evictor_node_id}} | wc -l | grep -q '^0$'",
-        "rollback": "hcloud CCE uncordonNode --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}}",
-        "timeout_seconds": 600
-      },
-      "escalation": {
-        "condition": "evictions continue on multiple nodes (cluster-wide pressure)",
-        "channel": "notification+pagerduty"
-      },
-      "metadata": {
-        "success_rate": 0.92,
-        "avg_execution_seconds": 300,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud CCE listPods --cluster_id {{output.cluster_id}} --node_id {{output.evictor_node_id}} --phase Failed"
       }
     }
   ]

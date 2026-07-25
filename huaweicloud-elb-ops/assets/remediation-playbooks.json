@@ -6,168 +6,120 @@
       "id": "ELB-R001",
       "name": "Unhealthy Backend Replace",
       "trigger": {
-        "metric": "lb_member_unhealthy",
         "condition": "1+ backend unhealthy for 3min",
+        "metric": "lb_member_unhealthy",
         "namespace": "SYS.ELB"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud ELB listMembers --lb_id {{output.lb_id}}",
-          "hcloud CES getMetricData --namespace SYS.ELB --metric_name health_check_status --period 60"
-        ],
         "confidence_factors": [
           "unhealthy_confirmed",
           "as_group_available",
           "backup_in_cbr"
+        ],
+        "steps": [
+          "hcloud ELB listMembers --lb_id {{output.lb_id}}",
+          "hcloud CES getMetricData --namespace SYS.ELB --metric_name health_check_status --period 60"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.9,
+        "dry_run": "hcloud ELB batchRemoveMembers --lb_id {{output.lb_id}} --members {{output.unhealthy_ids}} --dry-run",
+        "execute": "hcloud ELB batchRemoveMembers --lb_id {{output.lb_id}} --members {{output.unhealthy_ids}}",
         "preconditions": [
           "hcloud ELB showLoadBalancer --lb_id {{output.lb_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud ELB batchRemoveMembers --lb_id {{output.lb_id}} --members {{output.unhealthy_ids}} --dry-run",
-        "execute": "hcloud ELB batchRemoveMembers --lb_id {{output.lb_id}} --members {{output.unhealthy_ids}}",
-        "verification": "hcloud ELB listMembers --lb_id {{output.lb_id}} | grep -qv {{output.unhealthy_ids}}",
-        "rollback": "hcloud ELB batchAddMembers --lb_id {{output.lb_id}} --members {{output.unhealthy_ids}}",
-        "timeout_seconds": 60
-      },
-      "escalation": {
-        "condition": "all backends unhealthy or AS group unavailable",
-        "channel": "notification+pagerduty"
-      },
-      "metadata": {
-        "success_rate": 0.97,
-        "avg_execution_seconds": 30,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud CES getMetricData --namespace SYS.ELB --metric_name health_check_status --period 60"
       }
     },
     {
       "id": "ELB-R002",
       "name": "Backend Weight Drain",
       "trigger": {
+        "condition": "\u003e 50% errors for 5min",
         "metric": "lb_member_error_rate",
-        "condition": "> 50% errors for 5min",
         "namespace": "SYS.ELB"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CES getMetricData --namespace SYS.ELB --metric_name 4xx_rate --period 60",
-          "hcloud ELB listMembers --lb_id {{output.lb_id}}"
-        ],
         "confidence_factors": [
           "errors_sustained",
           "instance_isolated",
           "no_other_traffic_drop"
+        ],
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.ELB --metric_name 4xx_rate --period 60",
+          "hcloud ELB listMembers --lb_id {{output.lb_id}}"
         ]
       },
       "remediation": {
-        "risk_level": "low",
         "auto_execute_threshold": 0.85,
+        "dry_run": "hcloud ELB updateMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} --weight 0 --dry-run",
+        "execute": "hcloud ELB updateMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} --weight 0",
         "preconditions": [
           "hcloud ELB listMembers --lb_id {{output.lb_id}} | grep -q {{output.member_id}}"
         ],
-        "dry_run": "hcloud ELB updateMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} --weight 0 --dry-run",
-        "execute": "hcloud ELB updateMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} --weight 0",
-        "verification": "hcloud ELB showMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} | grep -q weight.*0",
-        "rollback": "hcloud ELB updateMember --lb_id {{output.lb_id}} --member_id {{output.member_id}} --weight {{output.old_weight}}",
-        "timeout_seconds": 30
-      },
-      "escalation": {
-        "condition": "errors persist after drain (multiple members affected)",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.98,
-        "avg_execution_seconds": 10,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "low",
+        "verification": "hcloud CES getMetricData --namespace SYS.ELB --metric_name 4xx_rate --period 60"
       }
     },
     {
       "id": "ELB-R003",
       "name": "HTTPS Cert Rotation",
       "trigger": {
+        "condition": "\u003c 30 days",
         "metric": "cert_expires_in_days",
-        "condition": "< 30 days",
         "namespace": "SYS.ELB"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud KMS listCertificates --status ACTIVE",
-          "hcloud ELB listListeners --lb_id {{output.lb_id}} --protocol HTTPS"
-        ],
         "confidence_factors": [
           "cert_expiring",
           "new_cert_uploaded",
           "old_cert_archived"
+        ],
+        "steps": [
+          "hcloud KMS listCertificates --status ACTIVE",
+          "hcloud ELB listListeners --lb_id {{output.lb_id}} --protocol HTTPS"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.95,
+        "dry_run": "hcloud ELB updateListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} --cert_id {{output.new_cert_id}} --dry-run",
+        "execute": "hcloud ELB updateListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} --cert_id {{output.new_cert_id}}",
         "preconditions": [
           "hcloud KMS showCertificate --cert_id {{output.new_cert_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud ELB updateListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} --cert_id {{output.new_cert_id}} --dry-run",
-        "execute": "hcloud ELB updateListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} --cert_id {{output.new_cert_id}}",
-        "verification": "hcloud ELB showListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} | grep -q {{output.new_cert_id}}",
-        "rollback": "hcloud ELB updateListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}} --cert_id {{output.old_cert_id}}",
-        "timeout_seconds": 60
-      },
-      "escalation": {
-        "condition": "new cert not yet uploaded or rotation causes 5xx spike",
-        "channel": "notification+pagerduty"
-      },
-      "metadata": {
-        "success_rate": 0.99,
-        "avg_execution_seconds": 30,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud ELB showListener --lb_id {{output.lb_id}} --listener_id {{output.listener_id}}"
       }
     },
     {
       "id": "ELB-R004",
       "name": "Listener Rule Auto-Scale Out",
       "trigger": {
+        "condition": "\u003e 80% of capacity",
         "metric": "lb_active_connections",
-        "condition": "> 80% of capacity",
         "namespace": "SYS.ELB"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CES getMetricData --namespace SYS.ELB --metric_name active_connections --period 60",
-          "hcloud AS listScalingGroups --lb_id {{output.lb_id}}"
-        ],
         "confidence_factors": [
           "connections_saturated",
           "as_group_healthy",
           "quota_available"
+        ],
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.ELB --metric_name active_connections --period 60",
+          "hcloud AS listScalingGroups --lb_id {{output.lb_id}}"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.85,
+        "dry_run": "hcloud AS scalingInstances --scaling_group_id {{output.sg_id}} --dry-run",
+        "execute": "hcloud AS executeScalingAction --scaling_group_id {{output.sg_id}} --action ADD --instance_number 1",
         "preconditions": [
           "hcloud AS showScalingGroup --scaling_group_id {{output.sg_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud AS scalingInstances --scaling_group_id {{output.sg_id}} --dry-run",
-        "execute": "hcloud AS executeScalingAction --scaling_group_id {{output.sg_id}} --action_type ADD --instance_number 2",
-        "verification": "hcloud CES getMetricData --namespace SYS.ELB --metric_name active_connections --period 60 | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if d[-1]['average']<70 else 1)\"",
-        "rollback": "hcloud AS removeInstances --scaling_group_id {{output.sg_id}} --instance_ids {{output.new_instance_ids}}",
-        "timeout_seconds": 300
-      },
-      "escalation": {
-        "condition": "AS group not configured or quota exhausted",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.94,
-        "avg_execution_seconds": 180,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud AS showScalingGroup --scaling_group_id {{output.sg_id}}"
       }
     }
   ]

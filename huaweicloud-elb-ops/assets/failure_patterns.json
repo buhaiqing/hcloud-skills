@@ -28,7 +28,7 @@
       "root_cause": "Backend instance health check failing: port blocked, app down, or SG mismatch",
       "fix": {
         "strategy": "fallback",
-        "action": "Inspect backend: hcloud ELB listMembers --lb_id {{output.lb_id}}; check SG allows LB->backend traffic on health-check port"
+        "action": "Inspect backend: hcloud ELB listMembers --lb_id {{output.lb_id}}; check SG allows LB-\u003ebackend traffic on health-check port"
       },
       "prevention": "Validate SG rules + health-check port at LB add time"
     },
@@ -90,7 +90,7 @@
         "strategy": "retry",
         "action": "Exponential backoff with jitter; respect Retry-After"
       },
-      "prevention": "Throttle to <10 req/s for ELB API"
+      "prevention": "Throttle to \u003c10 req/s for ELB API"
     },
     {
       "id": "ELB-FP007",
@@ -150,12 +150,12 @@
         "strategy": "fallback",
         "action": "Force remove after drain timeout: hcloud ELB batchRemoveMembers --lb_id {{output.lb_id}} --members {{output.member_ids}} --force"
       },
-      "prevention": "Tune connection-drain timeout to <300s; reduce stuck connections"
+      "prevention": "Tune connection-drain timeout to \u003c300s; reduce stuck connections"
     }
   ],
   "meta": {
-    "total_patterns": 10,
-    "last_aggregation": "2026-07-25T16:50:25Z",
-    "source_traces_analyzed": 0
+    "last_aggregation": "2026-07-25T23:02:32Z",
+    "source_traces_analyzed": 0,
+    "total_patterns": 10
   }
 }

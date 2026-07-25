@@ -471,7 +471,7 @@ func looksLikeRepoPath(text string) bool {
 func mdTargetExists(root, source, target string) bool {
 	candidate := target
 	if filepath.IsAbs(candidate) {
-		return fileExists(candidate)
+		return fileExists(candidate) || dirExists(candidate)
 	}
 	var resolve string
 	if hasPrefixAny(target, mdPathPrefixes) {
@@ -484,7 +484,7 @@ func mdTargetExists(root, source, target string) bool {
 			return true
 		}
 	}
-	return fileExists(resolve)
+	return fileExists(resolve) || dirExists(resolve)
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +492,7 @@ func mdTargetExists(root, source, target string) bool {
 // ---------------------------------------------------------------------------
 
 var refLinkRe = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
-var refHeadingRe = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*#*\s*$`)
+var refHeadingRe = regexp.MustCompile(`(?m)^(#{1,6})\s+(.+?)\s*#*\s*$`)
 
 // runCheckAdvancedCoverage validates TE-7 advanced/ stratification and
 // Security-Sensitive markers across every huaweicloud-*-ops skill. It
@@ -656,8 +656,10 @@ func inventoryHeadings(path string) []string {
 }
 
 // slugifyAnchor implements GitHub's anchor slugifier: lowercase, whitespace ->
-// '-', drop non [\w-]. Leading digits are intentionally kept (GitHub keeps
-// them), matching check_references_link_health.py.
+// '-', drop punctuation. Leading digits are intentionally kept (GitHub keeps
+// them). Non-ASCII letters/digits (e.g. CJK) are preserved to match GitHub's
+// actual behavior — `check_references_link_health.py` keeps \w which is Unicode
+// by default in Python.
 func slugifyAnchor(text string) string {
 	text = strings.ReplaceAll(text, "`", "")
 	text = strings.ToLower(text)
@@ -668,6 +670,12 @@ func slugifyAnchor(text string) string {
 			continue
 		}
 		if r == '_' || r == '-' || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			continue
+		}
+		// Keep any non-ASCII rune (CJK and other scripts) — matches GitHub's
+		// slugifier and the prior Python implementation.
+		if r > 127 {
 			b.WriteRune(r)
 		}
 	}

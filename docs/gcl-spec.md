@@ -481,10 +481,7 @@ Placeholder syntax MUST follow `{{env.*}}` / `{{user.*}}` / `{{output.*}}`; bare
 | `scripts/gcl_runner.py` | Orchestrator loop; external Critic required in production |
 | `scripts/gcl_trace_aggregate.py` | Aggregate traces into quality summary |
 | `scripts/gcl_alarm_wire.py` | Plan/apply CES alarms from summary |
-| `scripts/check_gcl_conformance.py` | Verify per-skill GCL artifacts |
-| `scripts/check_markdown_links.py` | Validate top-level local path references |
-| `scripts/validate_local.py` | One-command local validation suite |
-| `scripts/check_gcl_alarm_wire_contract.py` | Verify `gcl_quality` block in `huaweicloud-ces-ops/assets/example-config.yaml` matches `gcl_alarm_wire.DEFAULT_THRESHOLDS` and persisted alarm plans |
+| `skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results (replaces the deleted Python scripts) |
 
 ### Phase 4 CES Alarm Wiring Contract
 
@@ -502,7 +499,7 @@ Wiring contract rules:
 
 - `pass_rate_critical ≤ pass_rate_warn ≤ 1.0` and both `≥ 0.0`.
 - Numeric thresholds MUST match `gcl_alarm_wire.DEFAULT_THRESHOLDS` exactly
-  (drift fails `scripts/check_gcl_alarm_wire_contract.py`).
+  (drift is caught by `skillcheck validate --root .` under the product-assessment gate).
 - `audit-results/gcl-alarm-plan-*.json` files MUST agree with the wiring
   config; rerun `gcl_alarm_wire.py plan --write-plan` after edits.
 - `docs/gcl-spec.md` MUST keep the four threshold names documented.

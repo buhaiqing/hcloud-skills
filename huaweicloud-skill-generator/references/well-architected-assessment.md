@@ -999,4 +999,78 @@ verify:
 
 ---
 
+## 13. Worker Output Contract (Read-Only Assessment Mode)
+
+> Invoked when Well-Architected review sets `{{user.mode}}=well-architected-readonly`.
+> Return **`{{output.product_assessment}}`** — field names MUST match the canonical schema.
+> Generated skills MUST inherit the example below and substitute `skill_id`/`product`/finding-id pattern per the target product.
+
+**Canonical schema:** [worker-output-schema.md](./worker-output-schema.md)
+
+| Constant | Value (this meta-skill) | Value (generated product skill) |
+|----------|--------------------------|--------------------------------|
+| `skill_id` | `huaweicloud-skill-generator` | `huaweicloud-<product>-ops` |
+| `product` | `skill-generator` (meta) | `<product short name>` (e.g. `ecs`, `rds`, `obs`) |
+| Finding `id` pattern | n/a (meta) | `<product>-{rel|sec|cost|eff}-NNN` |
+
+### Pillar → checklist map (template)
+
+| `pillars` key | Checklist source in this document |
+|---------------|-------------------------------------|
+| `reliability` | Stability / DR / backup sections (§2.2) |
+| `security` | IAM / network / encryption sections (§2.1, §4) |
+| `cost` | FinOps / billing / idle detection sections (§3) |
+| `efficiency` | Automation / batch / CI/CD sections (§2.4, §10) |
+
+### Example `{{output.product_assessment}}` (this meta-skill)
+
+```json
+{
+  "skill_id": "huaweicloud-skill-generator",
+  "product": "skill-generator",
+  "region": "cn-north-4",
+  "scope": "account-wide",
+  "assessment_date": "2026-07-26T10:00:00+08:00",
+  "status": "OK",
+  "partial": false,
+  "resource_count": 1,
+  "pillars": {
+    "cost": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "efficiency": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "reliability": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    },
+    "security": {
+      "score": 80,
+      "status": "assessed",
+      "findings": []
+    }
+  },
+  "recommendations": [],
+  "trace": {
+    "commands": [
+      "hcloud skill-generator read-only-list --region cn-north-4 (HW_SECRET_ACCESS_KEY=<masked>)"
+    ],
+    "request_ids": [
+      "0123456789abcdef0123456789abcdef"
+    ]
+  },
+  "errors": []
+}
+```
+
+> Generated product skills MUST replace `skill_id` with the matching directory name (e.g. `huaweicloud-ecs-ops`) and `product` with the product short name (e.g. `ecs`).
+
+---
+
 *This assessment specification is mandatory. All generated skills MUST pass P0 checklists for their applicable pillars. Integration depth depends on the skill's primary purpose.*

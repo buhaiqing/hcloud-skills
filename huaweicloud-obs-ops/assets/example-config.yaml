@@ -109,5 +109,10 @@ security:
     target_bucket: "{{user.logging_bucket_name}}" # Separate bucket for access logs
     target_prefix: "obs-access-logs/"
   iam:
-    minimum_policy: "obs:*List*,obs:*Get*,obs:*Put*,obs:*Delete*"
+    minimum_policy:
+      allowed_actions:
+        - obs:bucket:list
+        - obs:bucket:get
+        - obs:object:put
+        - obs:object:delete
     ak_sk_rotation_days: 90

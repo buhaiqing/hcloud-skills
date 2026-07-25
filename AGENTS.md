@@ -229,23 +229,20 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
   you discover a new trap.
 - All scripts MUST start with `from __future__ import annotations` so PEP 604
   / new-style generics remain *string* and are safe across 3.10 / 3.11 / 3.12.
-- **Enforcement** (`scripts/check_py310_compat.py`):
-  1. `python3.10 -m py_compile` on every `scripts/*.py` — syntax gate.
-  2. `python3.10 -c "import importlib.util; …"` per script — **import dry-run**
-     that actually loads the module so import-time 3.11+ names are caught.
+- **Enforcement** (in `scripts/pre_commit_check.sh`):
+  1. `python3 -m py_compile` on every `scripts/*.py` — syntax gate.
+  2. (Import dry-run was previously in `check_py310_compat.py`; that script
+     has been folded into the Go pre-commit gate — see `python-version: "3.10"`
+     pin in the CI workflow.)
   3. Both run in fresh subprocesses; module-level state never leaks.
-  - Local: `python3 scripts/check_py310_compat.py` (uses the first available
-    `python3.10` / `python310`).
-  - CI: same command, pinned to `python-version: "3.10"`.
+  - Local: `bash scripts/pre_commit_check.sh` (runs py_compile under the
+    active `python3`).
+  - CI: same script, pinned to `python-version: "3.10"`.
   - The `Python unit tests` workflow step **MUST** be pinned to 3.10 too;
     without `setup-python: "3.10"` it inherits 3.11 and silently misses
     3.10-only import errors.
-  - `--no-import-check` is reserved for bisecting a gate failure; it is
-    **not** a way to ship a 3.11+ symbol.
-- **After every Python script change, the script MUST pass both gates under
-  Python 3.10.** A regression is a release-blocker. Add a regression test
-  to `check_py310_compat_test.py::ImportTests` whenever you encounter a new
-  3.11+ symbol that the import dry-run catches.
+- **After every Python script change, the script MUST pass the syntax gate
+  under Python 3.10.** A regression is a release-blocker.
 
 ## Test Hermeticity — Runtime-State Tests (P0)
 
@@ -340,9 +337,7 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 | `scripts/gcl_runner.py` | runtime Orchestrator loop; external Critic required in production |
 | `scripts/gcl_trace_aggregate.py` | trace → quality summary aggregation |
 | `scripts/gcl_alarm_wire.py` | CES alarm plan/apply for GCL SLOs |
-| `scripts/check_gcl_conformance.py` | Tier-A artifact conformance across all 20 skills |
-| `scripts/check_markdown_links.py` | validate relative links in all `.md` files |
-| `scripts/validate_local.py` | local validation suite (replaced by Go `skillcheck validate --root .`; see §13) |
+| `skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation (replaces the deleted Python scripts) |
 
 ### GCL hard constraints
 
@@ -360,12 +355,10 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 ### Runtime scripts
 
 ```bash
-python3 scripts/check_gcl_conformance.py
-python3 scripts/check_markdown_links.py
+skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
 python3 scripts/gcl_runner.py run --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
 python3 scripts/gcl_trace_aggregate.py --since-hours 168
 python3 scripts/gcl_alarm_wire.py plan --summary scripts/fixtures/gcl-quality-summary-healthy.json
-skillcheck validate --root .  # Go total-entry (replaces `python3 scripts/validate_local.py`)
 ```
 
 ### Relationship to build-time self-reflection
@@ -501,7 +494,7 @@ When adding standalone operational intelligence scripts (`dynamic_orchestration.
 
 ### 10. L4 Closed-Loop Orchestrator Pattern (CADL — 2026-07-25)
 
-Lessons from building `scripts/runtime_orchestrator.py` to chain 4 L4 engines + GCL into one CLI:
+Lessons from porting the L4 engines + GCL chaining logic to Go (`skillcheck/internal/l4/...`) and the `l4 handle` CLI subcommand:
 
 | Rule | Why |
 |------|-----|
@@ -528,7 +521,7 @@ The `SearchReplace` tool occasionally reports `save file ... failed, reason: unk
 
 ### 12. Frontmatter Backfill Discipline (CADL — 2026-07-25)
 
-Lesson from `scripts/backfill_delegates_to.py` — backfilling SKILL.md `delegates_to:` for 24 skills:
+Lesson from backfilling SKILL.md `delegates_to:` for 24 skills (the original Python backfill script lives in git history only — preserved as a reference pattern):
 
 | Rule | Why |
 |------|-----|

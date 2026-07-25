@@ -6,169 +6,121 @@
       "id": "RDS-R001",
       "name": "DB CPU High Restart Process",
       "trigger": {
+        "condition": "\u003e 90 for 5min",
         "metric": "rds_cpu_util",
-        "condition": "> 90 for 5min",
         "namespace": "SYS.RDS"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CES getMetricData --namespace SYS.RDS --metric_name cpu_util --period 60 --filter avg --dim instance_id={{output.instance_id}}",
-          "hcloud RDS listSlowLogs --instance_id {{output.instance_id}} --top 20"
-        ],
         "confidence_factors": [
           "cpu_sustained_high",
           "slow_queries_present",
           "no_long_running_txn"
+        ],
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.RDS --metric_name cpu_util --period 60 --filter avg --dim instance_id={{output.instance_id}}",
+          "hcloud RDS listSlowLogs --instance_id {{output.instance_id}} --top 20"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.85,
+        "dry_run": "hcloud RDS restartInstance --instance_id {{output.instance_id}} --dry-run",
+        "execute": "hcloud RDS restartInstance --instance_id {{output.instance_id}}",
         "preconditions": [
           "hcloud RDS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud RDS restartInstance --instance_id {{output.instance_id}} --dry-run",
-        "execute": "hcloud RDS restartInstance --instance_id {{output.instance_id}}",
-        "verification": "hcloud CES getMetricData --namespace SYS.RDS --metric_name cpu_util --period 60 --filter avg --dim instance_id={{output.instance_id}} | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if d[-1]['average']<90 else 1)\"",
-        "rollback": null,
-        "timeout_seconds": 180
-      },
-      "escalation": {
-        "condition": "restart fails twice or instance in HA failover",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.95,
-        "avg_execution_seconds": 120,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud RDS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
       }
     },
     {
       "id": "RDS-R002",
       "name": "Disk Space Low Volume Expand",
       "trigger": {
+        "condition": "\u003e 85 for 5min",
         "metric": "rds_disk_util",
-        "condition": "> 85 for 5min",
         "namespace": "SYS.RDS"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud RDS showInstance --instance_id {{output.instance_id}}",
-          "hcloud CES getMetricData --namespace SYS.RDS --metric_name disk_util --period 300 --filter avg --dim instance_id={{output.instance_id}}"
-        ],
         "confidence_factors": [
           "disk_growing",
           "no_recent_expand",
           "quota_available"
+        ],
+        "steps": [
+          "hcloud RDS showInstance --instance_id {{output.instance_id}}",
+          "hcloud CES getMetricData --namespace SYS.RDS --metric_name disk_util --period 300 --filter avg --dim instance_id={{output.instance_id}}"
         ]
       },
       "remediation": {
-        "risk_level": "medium",
         "auto_execute_threshold": 0.9,
+        "dry_run": "hcloud RDS enlargeInstanceVolume --instance_id {{output.instance_id}} --size {{output.new_size}} --dry-run",
+        "execute": "hcloud RDS enlargeInstanceVolume --instance_id {{output.instance_id}} --size {{output.new_size}}",
         "preconditions": [
           "hcloud RDS showInstanceVolume --instance_id {{output.instance_id}} | grep -q available"
         ],
-        "dry_run": "hcloud RDS enlargeInstanceVolume --instance_id {{output.instance_id}} --size {{output.new_size}} --dry-run",
-        "execute": "hcloud RDS enlargeInstanceVolume --instance_id {{output.instance_id}} --size {{output.new_size}}",
-        "verification": "hcloud RDS showInstanceVolume --instance_id {{output.instance_id}} | grep -q {{output.new_size}}",
-        "rollback": null,
-        "timeout_seconds": 600
-      },
-      "escalation": {
-        "condition": "expand fails or storage type does not support online expand",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.98,
-        "avg_execution_seconds": 300,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "medium",
+        "verification": "hcloud RDS showInstanceVolume --instance_id {{output.instance_id}}"
       }
     },
     {
       "id": "RDS-R003",
       "name": "Connection Count High Failover",
       "trigger": {
+        "condition": "\u003e 90% of max_connections",
         "metric": "rds_connections",
-        "condition": "> 90% of max_connections",
         "namespace": "SYS.RDS"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud CES getMetricData --namespace SYS.RDS --metric_name connections --period 60 --filter avg --dim instance_id={{output.instance_id}}",
-          "hcloud RDS listSessions --instance_id {{output.instance_id}} --limit 50"
-        ],
         "confidence_factors": [
           "connections_saturated",
           "long_idle_sessions",
           "pool_misconfigured"
+        ],
+        "steps": [
+          "hcloud CES getMetricData --namespace SYS.RDS --metric_name connections --period 60 --filter avg --dim instance_id={{output.instance_id}}",
+          "hcloud RDS listSessions --instance_id {{output.instance_id}} --limit 50"
         ]
       },
       "remediation": {
-        "risk_level": "low",
         "auto_execute_threshold": 0.8,
+        "dry_run": "hcloud RDS killSessions --instance_id {{output.instance_id}} --session_ids {{output.session_ids}} --dry-run",
+        "execute": "hcloud RDS killSessions --instance_id {{output.instance_id}} --session_ids {{output.session_ids}}",
         "preconditions": [
           "hcloud RDS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
         ],
-        "dry_run": "hcloud RDS killSessions --instance_id {{output.instance_id}} --session_ids {{output.idle_session_ids}} --dry-run",
-        "execute": "hcloud RDS killSessions --instance_id {{output.instance_id}} --session_ids {{output.idle_session_ids}}",
-        "verification": "hcloud CES getMetricData --namespace SYS.RDS --metric_name connections --period 60 --filter avg --dim instance_id={{output.instance_id}} | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if d[-1]['average']<80 else 1)\"",
-        "rollback": null,
-        "timeout_seconds": 60
-      },
-      "escalation": {
-        "condition": "kill sessions insufficient or instance needs restart",
-        "channel": "notification"
-      },
-      "metadata": {
-        "success_rate": 0.94,
-        "avg_execution_seconds": 30,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "low",
+        "verification": "hcloud CES getMetricData --namespace SYS.RDS --metric_name connections --period 60 --filter avg --dim instance_id={{output.instance_id}}"
       }
     },
     {
       "id": "RDS-R004",
       "name": "Primary Failover Promote Standby",
       "trigger": {
-        "metric": "rds_ha_role",
         "condition": "primary unreachable for 60s, standby healthy",
+        "metric": "rds_ha_role",
         "namespace": "SYS.RDS"
       },
       "diagnosis": {
-        "steps": [
-          "hcloud RDS listInstances --status ACTIVE --ha_mode HA --limit 50",
-          "hcloud CES getMetricData --namespace SYS.RDS --metric_name ha_role --period 30 --filter avg"
-        ],
         "confidence_factors": [
           "primary_down_confirmed",
           "standby_healthy",
           "network_partition_or_hw_failure"
+        ],
+        "steps": [
+          "hcloud RDS listInstances --status ACTIVE --ha_mode HA --limit 50",
+          "hcloud CES getMetricData --namespace SYS.RDS --metric_name ha_role --period 30 --filter avg"
         ]
       },
       "remediation": {
-        "risk_level": "high",
         "auto_execute_threshold": 0.95,
+        "dry_run": "hcloud RDS failoverInstance --instance_id {{output.standby_id}} --dry-run",
+        "execute": "hcloud RDS failoverInstance --instance_id {{output.standby_id}}",
         "preconditions": [
           "hcloud RDS showInstance --instance_id {{output.standby_id}} | grep -q ACTIVE",
           "hcloud RDS showInstance --instance_id {{output.primary_id}} | grep -qE 'FAILED|ERROR'"
         ],
-        "dry_run": "hcloud RDS failoverInstance --instance_id {{output.primary_id}} --dry-run",
-        "execute": "hcloud RDS failoverInstance --instance_id {{output.primary_id}}",
-        "verification": "hcloud CES getMetricData --namespace SYS.RDS --metric_name ha_role --period 30 --filter avg --dim instance_id={{output.standby_id}} | grep -q primary",
-        "rollback": null,
-        "timeout_seconds": 300
-      },
-      "escalation": {
-        "condition": "both nodes unhealthy or data divergence detected",
-        "channel": "notification+pagerduty"
-      },
-      "metadata": {
-        "success_rate": 0.97,
-        "avg_execution_seconds": 90,
-        "last_updated": "2026-07-25T16:50:25Z",
-        "learned_from": []
+        "risk_level": "high",
+        "verification": "hcloud RDS showInstance --instance_id {{output.standby_id}} | grep -q ACTIVE"
       }
     }
   ]

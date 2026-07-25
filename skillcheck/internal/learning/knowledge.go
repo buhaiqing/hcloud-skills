@@ -28,9 +28,9 @@ type Pattern struct {
 
 // PatternSig is the signature block.
 type PatternSig struct {
-	ErrorCode        string `json:"error_code"`
+	ErrorCode         string `json:"error_code"`
 	ErrorMessageRegex string `json:"error_message_regex"`
-	CommandPattern   string `json:"command_pattern"`
+	CommandPattern    string `json:"command_pattern"`
 }
 
 // PatternFix is the fix block. (playbook_ref intentionally absent — see above.)
@@ -50,7 +50,7 @@ type Playbook struct {
 
 // SkillPayload is the per-skill PRODUCTS entry shape.
 type SkillPayload struct {
-	Patterns  []Pattern `json:"patterns"`
+	Patterns  []Pattern  `json:"patterns"`
 	Playbooks []Playbook `json:"playbooks"`
 }
 
@@ -150,8 +150,9 @@ func NowISO() string {
 // for one product under <root>/huaweicloud-<short>-ops/assets/.
 //
 // Field order matches scripts/gen_skill_knowledge.py output exactly:
-//   failure_patterns.json: $schema, skill_id, patterns, meta  (meta last)
-//   remediation-playbooks.json: $schema, skill_id, playbooks
+//
+//	failure_patterns.json: $schema, skill_id, patterns, meta  (meta last)
+//	remediation-playbooks.json: $schema, skill_id, playbooks
 func WriteSkillAssets(root, short string) error {
 	skillID := "huaweicloud-" + short + "-ops"
 	targetDir := filepath.Join(root, skillID, "assets")
@@ -165,10 +166,10 @@ func WriteSkillAssets(root, short string) error {
 	now := NowISO()
 	// failure-patterns/v1 — meta goes LAST, no playbook_ref in fix block
 	fp := struct {
-		Schema   string   `json:"$schema"`
-		SkillID  string   `json:"skill_id"`
+		Schema   string    `json:"$schema"`
+		SkillID  string    `json:"skill_id"`
 		Patterns []Pattern `json:"patterns"`
-		Meta     any      `json:"meta"`
+		Meta     any       `json:"meta"`
 	}{
 		Schema:   "failure-patterns/v1",
 		SkillID:  skillID,

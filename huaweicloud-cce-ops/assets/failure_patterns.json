@@ -30,7 +30,7 @@
         "strategy": "fallback",
         "action": "Inspect node: hcloud CCE showNode --cluster_id {{output.cluster_id}} --node_id {{output.node_id}}; check kubelet + network"
       },
-      "prevention": "Monitor node_ready via CES; alarm at <0.8"
+      "prevention": "Monitor node_ready via CES; alarm at \u003c0.8"
     },
     {
       "id": "CCE-FP003",
@@ -90,7 +90,7 @@
         "strategy": "retry",
         "action": "Exponential backoff with jitter"
       },
-      "prevention": "Throttle to <5 req/s"
+      "prevention": "Throttle to \u003c5 req/s"
     },
     {
       "id": "CCE-FP007",
@@ -150,12 +150,12 @@
         "strategy": "halt",
         "action": "Escalate to CCE support; do not attempt repair (risk of data loss)"
       },
-      "prevention": "Monitor etcd metrics; alarm on leader changes > 5/min"
+      "prevention": "Monitor etcd metrics; alarm on leader changes \u003e 5/min"
     }
   ],
   "meta": {
-    "total_patterns": 10,
-    "last_aggregation": "2026-07-25T16:50:25Z",
-    "source_traces_analyzed": 0
+    "last_aggregation": "2026-07-25T23:02:32Z",
+    "source_traces_analyzed": 0,
+    "total_patterns": 10
   }
 }
