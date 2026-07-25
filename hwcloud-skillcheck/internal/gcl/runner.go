@@ -69,35 +69,41 @@ var SKILL_MAX_ITER = map[string]int{
 // GeneratorOutput is the result of running a Generator command.
 // Mirrors the "generator" dict in a GCL trace iteration.
 type GeneratorOutput struct {
-	Command       string
-	ExitCode      int
-	ResultExcerpt string // masked, max 2000 chars
-	StdoutLen     int
-	StderrLen     int
-	HasLeak       bool // true if raw output contained a credential leak (before masking)
+	Command       string `json:"command"`
+	ExitCode      int    `json:"exit_code"`
+	ResultExcerpt string `json:"result_excerpt"` // masked, max 2000 chars
+	StdoutLen     int    `json:"stdout_len"`
+	StderrLen     int    `json:"stderr_len"`
+	DurationMs    int    `json:"duration_ms"`
+	HasLeak       bool   `json:"has_leak"` // true if raw output contained a credential leak (before masking)
 }
 
 // CriticResult holds the Critic's quality assessment of a Generator output.
 type CriticResult struct {
-	Scores      map[string]float64
-	Suggestions []string
-	Blocking    bool
-	Mode        string // e.g. "structural-only"
-	Model       string // LLM model used for scoring (optional; "unknown" if unavailable)
+	Scores      map[string]float64 `json:"scores"`
+	Suggestions []string           `json:"suggestions"`
+	Blocking    bool               `json:"blocking"`
+	Mode        string             `json:"mode,omitempty"`  // e.g. "structural-only"
+	Model       string             `json:"model,omitempty"` // LLM model used for scoring (optional; "unknown" if unavailable)
 }
 
 // GCLTrace is the full record of a GCL loop execution.
 // Mirrors the trace schema in gcl_runner.py.
 type GCLTrace struct {
-	TraceSchemaVersion string         `json:"trace_schema_version"`
-	Skill              string         `json:"skill"`
-	Model              string         `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
-	Request            string         `json:"request"`
-	OperationIntent    map[string]any `json:"operation_intent,omitempty"`
-	RubricVersion      string         `json:"rubric_version"`
-	MaskedFields       []string       `json:"masked_fields"`
-	Iterations         []Iteration    `json:"iterations"`
-	Final              *FinalResult   `json:"final,omitempty"`
+	TraceSchemaVersion string           `json:"trace_schema_version"`
+	Skill              string           `json:"skill"`
+	Model              string           `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
+	Request            string           `json:"request"`
+	OperationIntent    map[string]any   `json:"operation_intent,omitempty"`
+	RubricVersion      string           `json:"rubric_version"`
+	MaskedFields       []string         `json:"masked_fields"`
+	DurationMs         int              `json:"duration_ms"`
+	TokenUsage         map[string]any   `json:"token_usage,omitempty"`
+	ResourceContext    map[string]any   `json:"resource_context,omitempty"`
+	OpsEfficiency      *OpsEfficiency   `json:"ops_efficiency,omitempty"`
+	CostAttribution    *CostAttribution `json:"cost_attribution,omitempty"`
+	Iterations         []Iteration      `json:"iterations"`
+	Final              *FinalResult     `json:"final,omitempty"`
 }
 
 // Iteration records one pass through the GCL loop.
@@ -164,6 +170,8 @@ type RunResult struct {
 // If Root is empty, PersistTrace writes to process cwd — which is
 // correct for tests but incorrect in production.
 func Run(cfg RunConfig) RunResult {
+	startTime := time.Now()
+
 	// Determine max iterations.
 	maxIter := cfg.MaxIter
 	if maxIter == 0 {
@@ -205,7 +213,9 @@ func Run(cfg RunConfig) RunResult {
 	}
 
 	for iteration := 1; iteration <= maxIter; iteration++ {
+		generatorStart := time.Now()
 		generator := runCommand(cfg.Command, timeout)
+		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
 
 		// Structural critic (rule-based, not production-quality).
 		critic := StructuralCritic(generator)
@@ -227,6 +237,8 @@ func Run(cfg RunConfig) RunResult {
 				Output:         "",
 				FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, generator, critic),
 			}
+			trace.DurationMs = int(time.Since(startTime).Milliseconds())
+			FinalizeFinopsAiops(&trace)
 			path, err := PersistTrace(&trace, cfg.Root)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
@@ -240,6 +252,8 @@ func Run(cfg RunConfig) RunResult {
 				Iter:   iteration,
 				Output: generator.ResultExcerpt,
 			}
+			trace.DurationMs = int(time.Since(startTime).Milliseconds())
+			FinalizeFinopsAiops(&trace)
 			path, err := PersistTrace(&trace, cfg.Root)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
@@ -258,13 +272,8 @@ func Run(cfg RunConfig) RunResult {
 			unresolved = append(unresolved, dim)
 		}
 	}
-	trace.Final = &FinalResult{
-		Status:         "MAX_ITER",
-		Iter:           maxIter,
-		Output:         last.Generator.ResultExcerpt,
-		Unresolved:     unresolved,
-		FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, last.Generator, last.Critic),
-	}
+	trace.DurationMs = int(time.Since(startTime).Milliseconds())
+	FinalizeFinopsAiops(&trace)
 	path, err := PersistTrace(&trace, cfg.Root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
