@@ -42,6 +42,8 @@ func runGCLRun(args []string) error {
 	jsonOut := fs.Bool("json", false, "emit JSON report")
 	quiet := fs.Bool("quiet", false, "suppress stdout except final result")
 	model := fs.String("model", "", "LLM model name for the Generator (e.g. 'anthropic/claude-3-5-sonnet'). Stored in trace. If empty, 'unknown' is recorded.")
+	command := fs.String("command", "", "shell command for the Generator to run (e.g. 'hcloud ecs list-servers --region cn-north-4'). When empty, a smoke 'echo ok' is run so the structural critic path can still be exercised.")
+	request := fs.String("request", "smoke test", "natural-language request the Generator is responding to; recorded in trace.iterations[*].request.")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil // help was shown; exit cleanly
@@ -68,12 +70,18 @@ func runGCLRun(args []string) error {
 		}
 	}
 
-	// Run GCL with a smoke command (echo ok) to test the structural critic path.
-	// Root is set to skillDir so audit-results/ is created there.
+	// When --command is empty, fall back to the historical smoke default
+	// ('echo ok') so callers running `gcl run` purely to validate the
+	// structural critic loop continue to work unchanged.
+	resolvedCommand := *command
+	if resolvedCommand == "" {
+		resolvedCommand = "echo ok"
+	}
+
 	cfg := gcl.RunConfig{
 		Skill:   skillName,
-		Request: "smoke test",
-		Command: "echo ok",
+		Request: *request,
+		Command: resolvedCommand,
 		Root:    skillDir,
 		Model:   *model,
 	}

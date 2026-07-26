@@ -16,12 +16,21 @@ import (
 // runGCLAlarmWire implements `hwcloud-skillcheck gcl alarm-wire`.
 // It evaluates GCL trace quality against SLO thresholds and optionally
 // generates and applies a CES alarm plan.
+//
+// Apply is GATED to prevent accidental production mutations:
+//
+//	--apply changes dry-run to real hcloud calls (still per-rule 60s)
+//	--yes  bypasses the interactive confirmation prompt for CI
+//	--target env  refuses the call unless HW_REGION_ID matches (CI safety)
 func runGCLAlarmWire(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck gcl alarm-wire")
 	root := fs.String("root", ".", "repository root")
 	jsonOut := fs.Bool("json", false, "emit JSON report")
 	quiet := fs.Bool("quiet", false, "suppress stdout except summary")
 	planFile := fs.String("plan-file", "", "write alarm plan JSON to path (implies --write-plan)")
+	apply := fs.Bool("apply", false, "execute the alarm plan via `hcloud ces create-alarm-rule` instead of dry-run. Requires --yes if running interactively.")
+	yes := fs.Bool("yes", false, "skip the interactive 'apply N alarm rules?' confirmation; mandatory for non-TTY CI usage with --apply.")
+	applyRegion := fs.String("apply-target-region", os.Getenv("HW_REGION_ID"), "refuse --apply unless HW_REGION_ID matches this value. Defaults to $HW_REGION_ID.")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil // help was shown; exit cleanly
@@ -78,6 +87,27 @@ func runGCLAlarmWire(args []string) error {
 		thresholds.MaxIterWarnCount,
 	)
 
+	// Apply safety gate. Without --apply, ApplyAlarmPlan is invoked
+	// dryRun=true regardless of any other state. With --apply, we
+	// require an explicit env-target match + non-TTY acknowledgement.
+	if *apply {
+		envRegion := os.Getenv("HW_REGION_ID")
+		if envRegion == "" || *applyRegion == "" || envRegion != *applyRegion {
+			return fmt.Errorf("--apply refused: HW_REGION_ID=%q does not match --apply-target-region=%q (set both to the same region to acknowledge the production blast radius)", envRegion, *applyRegion)
+		}
+		if !*yes && !isInteractive(os.Stdin) {
+			return fmt.Errorf("--apply refuses to run non-interactively without --yes (would make `hcloud ces create-alarm-rule` calls against %s)", envRegion)
+		}
+		if !*quiet {
+			fmt.Fprintf(os.Stderr, "APPLY: about to create %d alarm rule(s) against region %s via `hcloud ces create-alarm-rule`. Ctrl-C within 5s to abort.\n", len(alarmPlan), envRegion)
+		}
+		if !*yes {
+			// Best-effort grace period; not safety-critical, just
+			// gives the operator a moment.
+			time.Sleep(5 * time.Second)
+		}
+	}
+
 	var alarmPlanPath string
 	if *planFile != "" {
 		report := &gcl.AlarmPlanReport{
@@ -97,8 +127,9 @@ func runGCLAlarmWire(args []string) error {
 			fmt.Printf("Wrote alarm plan to %s\n", alarmPlanPath)
 		}
 
-		// Apply the alarm plan (dry-run by default; remove --dry-run to apply for real).
-		if err := gcl.ApplyAlarmPlan(alarmPlan, true); err != nil {
+		// Apply the alarm plan. dryRun=false iff --apply was passed
+		// (and survived the safety gate above).
+		if err := gcl.ApplyAlarmPlan(alarmPlan, !*apply); err != nil {
 			return fmt.Errorf("apply alarm plan: %w", err)
 		}
 	}
@@ -119,6 +150,18 @@ func runGCLAlarmWire(args []string) error {
 	}
 	os.Exit(1)
 	return nil // unreachable
+}
+
+// isInteractive reports whether the given file descriptor is connected
+// to a real terminal. Used to decide whether --apply's confirmation
+// gate can wait for a human keypress. CI is non-TTY → isInteractive
+// returns false → --apply demands --yes regardless of stdin mode.
+func isInteractive(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 // loadQualitySummaryFromTrace parses a single gcl-trace-*.json file and

@@ -394,7 +394,7 @@ Full spec: `references/self-healing-spec.md`
 
 ### GCL integration
 
-`hwcloud-skillcheck gcl run` performs pre-execution risk check: before running the Generator command, it queries `failure_patterns.json` for known failure signatures matching the command. If matched, the trace includes `pre_execution_risk` with pattern_id, known_fix, and historical success rate.
+`hwcloud-skillcheck gcl run` executes one Generator command (default smoke `echo ok`; override with `--command` for production work) under a per-iteration timeout and writes the trace to `audit-results/gcl-trace-<UTC>-<rand>.json`. The pre-execution risk check on `failure_patterns.json` happens in the L4 orchestrator step loop (`hwcloud-skillcheck l4 handle`), not in `gcl run` — see the L4 section.
 
 ### Hard constraints
 
