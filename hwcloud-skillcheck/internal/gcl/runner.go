@@ -72,14 +72,59 @@ var SKILL_MAX_ITER = map[string]int{
 // GeneratorOutput is the result of running a Generator command.
 // Mirrors the "generator" dict in a GCL trace iteration.
 type GeneratorOutput struct {
-	Command       string `json:"command"`
-	ExitCode      int    `json:"exit_code"`
-	ResultExcerpt string `json:"result_excerpt"` // masked, max 2000 chars
-	StdoutLen     int    `json:"stdout_len"`
-	StderrLen     int    `json:"stderr_len"`
-	DurationMs    int    `json:"duration_ms"`
-	HasLeak       bool   `json:"has_leak"` // true if raw output contained a credential leak (before masking)
+	Command         string `json:"command"`
+	ExitCode        int    `json:"exit_code"`
+	ResultExcerpt   string `json:"result_excerpt"` // masked, max 2000 chars
+	StdoutLen       int    `json:"stdout_len"`
+	StderrLen       int    `json:"stderr_len"`
+	StdoutDropped   int64  `json:"stdout_dropped_bytes,omitempty"` // bytes past the capture cap, dropped
+	StderrDropped   int64  `json:"stderr_dropped_bytes,omitempty"`
+	StdoutTruncated bool   `json:"stdout_truncated,omitempty"`
+	StderrTruncated bool   `json:"stderr_truncated,omitempty"`
+	DurationMs      int    `json:"duration_ms"`
+	HasLeak         bool   `json:"has_leak"` // true if raw output contained a credential leak (before masking)
 }
+
+// maxCaptureBytes caps the per-stream capture buffer in runCommand. Past
+// this size, runCommand stops appending to the buffer (recording the dropped
+// byte count on GeneratorOutput) and the downstream MaskSecrets scan sees
+// only the head — usually where leaks and failure messages live.
+const maxCaptureBytes = 1 << 20 // 1 MiB
+
+// cappedWriter is an io.Writer that forwards into a bytes.Buffer up to a
+// byte cap, silently drops the rest, and reports whether truncation happened.
+// Used by runCommand to keep generator stdout/stderr bounded.
+type cappedWriter struct {
+	buf          bytes.Buffer
+	cap          int
+	truncated     bool
+	droppedBytes int64
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	remaining := w.cap - w.buf.Len()
+	switch {
+	case remaining > 0:
+		n := len(p)
+		if n > remaining {
+			n = remaining
+		}
+		w.buf.Write(p[:n])
+		if len(p) > remaining {
+			w.truncated = true
+			w.droppedBytes += int64(len(p) - remaining)
+		}
+	case w.buf.Len() >= w.cap:
+		// First dropped write — flip the flag once.
+		w.truncated = true
+		w.droppedBytes += int64(len(p))
+	}
+	// We always claim the whole slice was accepted so the cmd side
+	// does not see a short-write error and abort on overflow.
+	return len(p), nil
+}
+
+func (w *cappedWriter) String() string { return w.buf.String() }
 
 // CriticResult holds the Critic's quality assessment of a Generator output.
 type CriticResult struct {
@@ -423,7 +468,19 @@ func hasCredentialLeak(text string) bool {
 func runCommand(command string, timeoutSecs int) GeneratorOutput {
 	maskedCmd := MaskSecrets([]byte(command))
 
-	var stdout, stderr bytes.Buffer
+	// Bound the captured stdout / stderr. A noisy generator (a hung
+	// process looping, a verbose `hcloud` command, a misbehaving
+	// child shell) can otherwise pin ~4x the actual output size in
+	// memory through stdout+stderr buffers plus the
+	// stdout.String()+stderr.String()+[]byte(combined) copies
+	// below. 1 MiB per stream is comfortably larger than any
+	// realistic hcloud output and gives leak/mask scanning the head
+	// of the stream; bytes past the cap are discarded and flagged
+	// on the returned GeneratorOutput for downstream awareness.
+	const maxCaptureBytes = 1 << 20
+	stdout := cappedWriter{cap: maxCaptureBytes}
+	stderr := cappedWriter{cap: maxCaptureBytes}
+
 	timeout := time.Duration(timeoutSecs) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -473,6 +530,8 @@ func runCommand(command string, timeoutSecs int) GeneratorOutput {
 
 	stdoutStr := stdout.String()
 	stderrStr := stderr.String()
+	// combined is bounded by maxCaptureBytes per stream, so the concat
+	// costs at most 2 MiB instead of leaking the full stream size.
 	combined := stdoutStr + stderrStr
 
 	// Check for credential leaks BEFORE masking.
@@ -495,12 +554,16 @@ func runCommand(command string, timeoutSecs int) GeneratorOutput {
 	}
 
 	return GeneratorOutput{
-		Command:       maskedCmd,
-		ExitCode:      exitCode,
-		ResultExcerpt: excerpt,
-		StdoutLen:     len(stdoutStr),
-		StderrLen:     len(stderrStr),
-		HasLeak:       leak,
+		Command:         maskedCmd,
+		ExitCode:        exitCode,
+		ResultExcerpt:   excerpt,
+		StdoutLen:       len(stdoutStr),
+		StderrLen:       len(stderrStr),
+		StdoutDropped:   stdout.droppedBytes,
+		StderrDropped:   stderr.droppedBytes,
+		StdoutTruncated: stdout.truncated,
+		StderrTruncated: stderr.truncated,
+		HasLeak:         leak,
 	}
 }
 
