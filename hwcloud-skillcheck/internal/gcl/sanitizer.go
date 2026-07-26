@@ -108,7 +108,9 @@ func maskJSON(v any) any {
 var secretKeyRe = regexp.MustCompile(`(?i)(?:secret|password|token|credential|ak|sk)`)
 
 // maskResourceScope applies MaskResourceID to each string element in scope,
-// mirroring _mask_resource_scope in gcl_runner.py.
+// mirroring _mask_resource_scope in gcl_runner.py. Non-string elements are
+// passed through (preserving int / float / bool semantics) rather than
+// silently coerced to "***" — a strict type lie introduced by the Go port.
 func maskResourceScope(value any) any {
 	switch val := value.(type) {
 	case []any:
@@ -117,14 +119,17 @@ func maskResourceScope(value any) any {
 			if s, ok := val[i].(string); ok {
 				out[i] = MaskResourceID(s)
 			} else {
-				out[i] = masked
+				// ponytail: pass non-string elements through (int resource
+				// IDs are common). Coercing to "***" is a type lie that
+				// breaks downstream consumers expecting numeric IDs.
+				out[i] = val[i]
 			}
 		}
 		return out
 	case string:
 		return MaskResourceID(val)
 	default:
-		return masked
+		return value
 	}
 }
 

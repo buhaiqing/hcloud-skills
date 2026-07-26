@@ -118,17 +118,33 @@ func EnhanceTokenUsage(tokenUsage map[string]any, totalIters int) {
 
 // FinalizeFinopsAiops computes and injects FinOps + AIOps derived fields
 // before trace persistence. Mirrors scripts/gcl_runner.py:_finalize_finops_aiops.
+//
+// Cost attribution is only populated when the caller actually injected
+// token_usage / resource_context — otherwise every persisted trace would
+// carry a zero-valued cost_attribution block that downstream consumers
+// (aggregate FinOps totals, alarm-wire cost breaches) would silently read
+// as $0 spend instead of "unknown." Without this guard the migration to Go
+// deleted the Python --token-json / --context-json flags without also
+// dropping the CostAttribution output, turning the block from "expensive
+// but accurate" into "always zero and misleading."
 func FinalizeFinopsAiops(trace *GCLTrace) {
 	if trace == nil {
 		return
 	}
 	totalIters := len(trace.Iterations)
 
-	EnhanceTokenUsage(trace.TokenUsage, totalIters)
+	// Ops efficiency is always derivable from iterations alone; populate
+	// unconditionally so consumers can rely on its presence.
 	ops := ComputeOpsEfficiency(*trace)
 	trace.OpsEfficiency = &ops
-	cost := ComputeCostAttribution(*trace, trace.TokenUsage, trace.ResourceContext)
-	trace.CostAttribution = &cost
+
+	if len(trace.TokenUsage) > 0 {
+		EnhanceTokenUsage(trace.TokenUsage, totalIters)
+		if len(trace.ResourceContext) > 0 {
+			cost := ComputeCostAttribution(*trace, trace.TokenUsage, trace.ResourceContext)
+			trace.CostAttribution = &cost
+		}
+	}
 }
 
 // helpers

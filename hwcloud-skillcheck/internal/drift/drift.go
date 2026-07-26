@@ -65,7 +65,11 @@ func Check(root string) (*Report, error) {
 	if len(r.Errors) > 0 {
 		return r, nil
 	}
-	r.Drift = collectDrift(canonical, runtime)
+	d, err := collectDrift(canonical, runtime)
+	if err != nil {
+		return nil, err
+	}
+	r.Drift = d
 	r.appendDriftErrors(runtime)
 	r.OK = len(r.Errors) == 0
 	return r, nil
@@ -97,14 +101,20 @@ func Sync(root string, dryRun bool) (*Report, error) {
 }
 
 // collectDrift walks both trees and classifies each relative path.
-func collectDrift(canonical, runtime string) Drift {
+func collectDrift(canonical, runtime string) (Drift, error) {
 	canon := indexFiles(canonical)
 	runt := indexFiles(runtime)
 	var onlyCan, onlyRun, diff []string
 	for rel := range canon {
 		if _, ok := runt[rel]; !ok {
 			onlyCan = append(onlyCan, rel)
-		} else if !sameBytes(canon[rel], runt[rel]) {
+			continue
+		}
+		equal, err := sameBytes(canon[rel], runt[rel])
+		if err != nil {
+			return Drift{}, err
+		}
+		if !equal {
 			diff = append(diff, rel)
 		}
 	}
@@ -116,7 +126,7 @@ func collectDrift(canonical, runtime string) Drift {
 	sort.Strings(onlyCan)
 	sort.Strings(onlyRun)
 	sort.Strings(diff)
-	return Drift{OnlyCanonical: onlyCan, OnlyRuntime: onlyRun, Differing: diff}
+	return Drift{OnlyCanonical: onlyCan, OnlyRuntime: onlyRun, Differing: diff}, nil
 }
 
 func (r *Report) appendDriftErrors(runtime string) {
@@ -146,7 +156,11 @@ func (r *Report) appendDriftErrors(runtime string) {
 // appendFileActions emits the copy/overwrite/remove actions for drift
 // reconciliation and applies them when !dryRun.
 func (r *Report) appendFileActions(canonical, runtime string, dryRun bool) {
-	d := collectDrift(canonical, runtime)
+	d, err := collectDrift(canonical, runtime)
+	if err != nil {
+		r.Errors = append(r.Errors, err.Error())
+		return
+	}
 	for _, rel := range d.OnlyCanonical {
 		src := filepath.Join(canonical, rel)
 		dst := filepath.Join(runtime, rel)
@@ -206,10 +220,18 @@ func indexFiles(root string) map[string]string {
 	return out
 }
 
-func sameBytes(a, b string) bool {
-	ha, _ := hashFile(a)
-	hb, _ := hashFile(b)
-	return ha != "" && ha == hb
+// sameBytes reports whether two files have identical SHA-256 contents. A
+// hashing error on either side is surfaced so callers can distinguish
+// "files differ" from "could not compare" — silently swallowing the error
+// would cause transient I/O / permission failures to look like drift and
+// abort the pre-commit gate.
+func sameBytes(a, b string) (bool, error) {
+	ha, errA := hashFile(a)
+	hb, errB := hashFile(b)
+	if errA != nil || errB != nil {
+		return false, fmt.Errorf("hash compare %s vs %s: %w / %w", a, b, errA, errB)
+	}
+	return ha == hb, nil
 }
 
 func hashFile(path string) (string, error) {
