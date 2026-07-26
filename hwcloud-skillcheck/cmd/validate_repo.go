@@ -1,16 +1,20 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/yaml"
+	"golang.org/x/sync/errgroup"
 )
 
 // cliApplicability is the set of legal cli_applicability values, mirroring
@@ -109,21 +113,44 @@ func runValidateFrontmatter(args []string) error {
 		return fmt.Errorf("validate frontmatter: no huaweicloud-*-ops/*/SKILL.md found under %s", rootDir)
 	}
 
+	// Frontmatter validation is embarrassingly parallel: each skill file is
+	// disjoint, validateSkillFrontmatter is pure. Fan out with bounded
+	// concurrency to cut YAML parse cost off the wall clock on a 20+
+	// skill repo.
 	var all []string
-	okCount := 0
+	var okCount int
+	var mu sync.Mutex
+	g, gCtx := errgroup.WithContext(context.Background())
+	g.SetLimit(runtime.NumCPU())
 	for _, path := range skills {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			all = append(all, fmt.Sprintf("%s: read error: %v", path, err))
-			continue
-		}
-		skillDir := skillNameFromPath(path)
-		errs := validateSkillFrontmatter(content, skillDir)
-		if len(errs) == 0 {
-			okCount++
-			continue
-		}
-		all = append(all, errs...)
+		path := path
+		g.Go(func() error {
+			select {
+			case <-gCtx.Done():
+				return gCtx.Err()
+			default:
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				mu.Lock()
+				all = append(all, fmt.Sprintf("%s: read error: %v", path, err))
+				mu.Unlock()
+				return nil
+			}
+			skillDir := skillNameFromPath(path)
+			errs := validateSkillFrontmatter(content, skillDir)
+			mu.Lock()
+			if len(errs) == 0 {
+				okCount++
+			} else {
+				all = append(all, errs...)
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+	if wErr := g.Wait(); wErr != nil && wErr != context.Canceled {
+		return wErr
 	}
 
 	if len(all) > 0 {
