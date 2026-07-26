@@ -18,16 +18,19 @@ import (
 // runGCL dispatches `hwcloud-skillcheck gcl` subcommands.
 func runGCL(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("gcl: missing subcommand (use 'run' or 'alarm-wire')")
+		return fmt.Errorf("gcl: missing subcommand (use 'run', 'alarm-wire', or 'criticeval')")
 	}
 	switch args[0] {
 	case "run":
 		return runGCLRun(args[1:])
 	case "alarm-wire":
 		return runGCLAlarmWire(args[1:])
+	case "criticeval":
+		return runGCLCriticEval(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck gcl run --root <dir> [--json] [--quiet]")
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck gcl alarm-wire --root <dir> [--json] [--quiet] [--plan-file <path>]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck gcl run --root <dir> [--json] [--quiet] [--command <shell>] [--request <text>] [--critic-cmd <executable>]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck gcl alarm-wire --root <dir> [--json] [--quiet] [--plan-file <path>] [--apply] [--yes] [--apply-target-region <id>]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck gcl criticeval                       # reads GeneratorOutput JSON on stdin, prints CriticResult JSON on stdout")
 		return nil
 	default:
 		return fmt.Errorf("gcl: unknown subcommand %q", args[0])
@@ -44,6 +47,10 @@ func runGCLRun(args []string) error {
 	model := fs.String("model", "", "LLM model name for the Generator (e.g. 'anthropic/claude-3-5-sonnet'). Stored in trace. If empty, 'unknown' is recorded.")
 	command := fs.String("command", "", "shell command for the Generator to run (e.g. 'hcloud ecs list-servers --region cn-north-4'). When empty, a smoke 'echo ok' is run so the structural critic path can still be exercised.")
 	request := fs.String("request", "smoke test", "natural-language request the Generator is responding to; recorded in trace.iterations[*].request.")
+	criticCmd := fs.String("critic-cmd", "", "path to an external Critic executable. The Runner pipes GeneratorOutput JSON to its stdin and reads CriticResult JSON from stdout. When empty, the in-process Structural critic is used. Pass repeated --critic-arg to forward arguments.")
+	var criticArgs []string
+	fs.Var(&criticArgsValue{slice: &criticArgs}, "critic-arg", "argument forwarded to --critic-cmd (repeatable).")
+	_ = criticArgs
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil // help was shown; exit cleanly
@@ -84,6 +91,9 @@ func runGCLRun(args []string) error {
 		Command: resolvedCommand,
 		Root:    skillDir,
 		Model:   *model,
+	}
+	if *criticCmd != "" {
+		cfg.Critic = gcl.NewExternalCritic(*criticCmd, criticArgs...)
 	}
 
 	// Suppress gcl.Run's printf output when --json or --quiet.
@@ -184,4 +194,56 @@ func printGCLRunJSON(skillName string, result gcl.RunResult) {
 		"exit_code": result.ExitCode,
 		"trace":     result.TracePath,
 	})
+}
+
+// runGCLCriticEval implements `hwcloud-skillcheck gcl criticeval`.
+//
+// Reads a GeneratorOutput JSON document from stdin, runs the
+// in-process Structural Critic on it, and prints the corresponding
+// CriticResult JSON on stdout. This subcommand exists so callers can
+// prove their --critic-cmd pipe works end-to-end by pointing it at
+// `hwcloud-skillcheck gcl criticeval` — the binary itself plays the
+// role of the out-of-process Critic.
+func runGCLCriticEval(args []string) error {
+	fs := newFlagSet("hwcloud-skillcheck gcl criticeval")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return fmt.Errorf("read stdin: %w", err)
+	}
+	var gen gcl.GeneratorOutput
+	if err := json.Unmarshal(data, &gen); err != nil {
+		return fmt.Errorf("decode GeneratorOutput: %w", err)
+	}
+	res := gcl.StructuralCritic(gen)
+	out, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(append(out, '\n'))
+	return err
+}
+
+// criticArgsValue is the flag.Value adapter for a repeatable --critic-arg.
+// Each occurrence appends one string to the slice. Use with
+// flag.Var(&criticArgsValue{slice: &dst}, "critic-arg", ...).
+type criticArgsValue struct {
+	slice *[]string
+}
+
+func (c *criticArgsValue) String() string {
+	if c.slice == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", *c.slice)
+}
+
+func (c *criticArgsValue) Set(v string) error {
+	*c.slice = append(*c.slice, v)
+	return nil
 }

@@ -191,6 +191,7 @@ type RunConfig struct {
 	OperationIntent string // optional JSON operation intent
 	MaxIter         int    // maximum loop iterations (0 = use SKILL_MAX_ITER default)
 	Timeout         int    // command timeout in seconds (default 120)
+	Critic          Critic // optional Critic override; nil falls back to StructuralCriticAdapter
 	Root            string // repository root for audit-results/
 	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
 }
@@ -219,6 +220,13 @@ type RunResult struct {
 // correct for tests but incorrect in production.
 func Run(cfg RunConfig) RunResult {
 	startTime := time.Now()
+
+	// Resolve Critic once. Callers that leave cfg.Critic nil get
+	// the in-process Structural critic (the historical default).
+	critic := cfg.Critic
+	if critic == nil {
+		critic = StructuralCriticAdapter{}
+	}
 
 	// Determine max iterations.
 	maxIter := cfg.MaxIter
@@ -265,15 +273,26 @@ func Run(cfg RunConfig) RunResult {
 		generator := runCommand(cfg.Command, timeout)
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
 
-		// Structural critic (rule-based, not production-quality).
-		critic := StructuralCritic(generator)
+		// Critic evaluates the Generator output. Default is the
+		// in-process Structural critic; callers may inject a custom
+		// Critic (e.g. an ExternalCritic subprocess) via RunConfig.
+		scored := critic.Score(context.Background(), generator)
+		if scored.Scores == nil {
+			scored.Scores = map[string]float64{}
+		}
+		criticResult := CriticResult{
+			Scores:      scored.Scores,
+			Suggestions: scored.Suggestions,
+			Blocking:    scored.Blocking,
+			Mode:        scored.Mode,
+		}
 
-		decision := Decide(critic.Scores)
+		decision := Decide(criticResult.Scores)
 
 		trace.Iterations = append(trace.Iterations, Iteration{
 			Iter:      iteration,
 			Generator: generator,
-			Critic:    critic,
+			Critic:    criticResult,
 			Decision:  decision,
 		})
 
@@ -283,7 +302,7 @@ func Run(cfg RunConfig) RunResult {
 				Status:         "SAFETY_FAIL",
 				Iter:           iteration,
 				Output:         "",
-				FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, generator, critic),
+				FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, generator, criticResult),
 			}
 			trace.DurationMs = int(time.Since(startTime).Milliseconds())
 			FinalizeFinopsAiops(&trace)
