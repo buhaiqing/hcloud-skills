@@ -152,15 +152,7 @@ rubric: {{output.rubric}}
 
 ## 4. Sanitization Helper
 
-```python
-# Pseudocode — agent runtime uses scripts/gcl_runner.py
-def mask(trace: dict) -> dict:
-    SENSITIVE = ("HW_SECRET_ACCESS_KEY", "SecretAccessKey", "password", "sk-")
-    for k in list(trace.keys()):
-        if any(s in k for s in SENSITIVE):
-            trace[k] = "***"
-    return trace
-```
+The agent runtime masks trace fields via `internal/gcl/sanitizer.go:MaskSecrets` and `maskJSON` (the production code path is `gcl.Run` → `SanitizeOperationIntent` → `PersistTrace`). Field-name matching against `HW_SECRET_ACCESS_KEY`, `SecretAccessKey`, `password`, `sk-`, `<masked>`, etc. — replaces the value with `"***"` before persistence. See `internal/gcl/sanitizer.go` for the exact regex set.
 
 ## 5. Failure-Recovery Helper
 

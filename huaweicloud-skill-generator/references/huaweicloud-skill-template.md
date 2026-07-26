@@ -376,7 +376,7 @@ This skill uses Generator-Critic-Loop runtime validation for cloud operations. G
 1. Persist `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` for PASS, MAX_ITER, and SAFETY_FAIL.
 2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK values, tokens, passwords, and authorization headers.
 3. Include sanitized `operation_intent` so the Critic can assess expected state without seeing raw user wording.
-4. Use root scripts for validation: `scripts/gcl_runner.py`, `scripts/gcl_trace_aggregate.py`, `scripts/check_gcl_conformance.py`.
+4. Use the Go CLI for validation: `hwcloud-skillcheck gcl run --root <this-skill-dir>`, `hwcloud-skillcheck aggregate trace --require-traces --root <repo>`, and `hwcloud-skillcheck validate <subcmd> --root <repo>`. (As of 2026-07-26 the legacy `scripts/*.py` validators no longer exist.)
 
 ### Prompt Backbone
 

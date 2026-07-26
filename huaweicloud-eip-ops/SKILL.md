@@ -581,7 +581,7 @@ Generated skills MUST ship the following artifacts:
 1. Persist `audit-results/gcl-trace-{{timestamp}}.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
 2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK values, tokens, passwords, and authorization headers.
 3. Include sanitized `operation_intent` so the Critic can assess expected state without seeing raw user wording.
-4. Use root scripts: `scripts/gcl_runner.py` (reference spec), `hwcloud-skillcheck gcl run`, `hwcloud-skillcheck aggregate trace` (canonical Go runtime).
+4. Use the Go CLI: `hwcloud-skillcheck gcl run --root .` and `hwcloud-skillcheck aggregate trace --require-traces --root .`. (Legacy `scripts/gcl_runner.py` was the reference spec for the wire format; the canonical Go runtime in `hwcloud-skillcheck/` is now the only path.)
 
 ### Prompt Backbone
 

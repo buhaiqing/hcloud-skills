@@ -186,15 +186,14 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 **For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
 
 - A single shot gun covers everything: `bash scripts/pre_commit_check.sh`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
-- The git pre-commit hook lives at `.githooks/pre-commit` and is installed by `python3 scripts/install_hook.go` (a thin Go wrapper, see `scripts/install_hook.go`). It auto-runs when `scripts/*.py` or `hwcloud-skillcheck/**/*.go` or `hwcloud-skillcheck/testdata/*.py` is staged or modified, so markdown-only commits stay fast. Use `--check` to see if the hook is installed, `--uninstall` to remove it.
+- The git pre-commit hook is fully covered by `scripts/pre_commit_check.sh`; CI runs the same script. Markdown-only commits stay fast because Go build/test gates skip when `.go` and the `hwcloud-skillcheck/` tree are unchanged.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.
-  - Prefer `argparse` with explicit `--help` text for CLIs.
+  - Prefer `flag` (std lib) with explicit `--help` text for CLIs.
   - Keep functions short; favor pure helpers that are unit-testable.
-- Shared helpers (`json_schema_subset`, `gcl_security_scan`) MUST be reused instead of copy-pasted patterns — same rule as TE-6.
-- Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`. Go tests in `hwcloud-skillcheck/` are run via `go test ./...`.
-- CI runs `hwcloud-skillcheck validate --root .` plus `go test ./...`; local dev MUST run the same suite before pushing.
+- Tests live next to source as Go `_test.go` files; `go test ./...` runs them. Subagent-driven-development + race detector are how new functionality is verified before commit.
+- CI runs `hwcloud-skillcheck validate --root .` plus `go test ./... -race`; local dev MUST run the same suite before pushing.
 
 > **As of 2026-07-26, zero Python scripts remain in `scripts/`.** All 17 scripts
 > previously listed have been migrated to Go: see §"Cross-Language Migration Lessons
@@ -466,7 +465,7 @@ Shared libraries (schema validator, security scanner) → Internal packages (YAM
 
 ### 8. Orchestration Script ↔ CLI Flag Contract
 
-When migrating a Python CLI to Go binary, orchestration scripts (`validate_local.py`, CI workflows) that invoke the CLI **must** be updated to match the new Go flag interface. Go binaries often simplify flags (e.g., `--root <skill-dir>` replaces `--skill <name> --request <text> --command <cmd>`). Also: not every Python subcommand needs a Go equivalent — some (like `skill-generator-drift`) remain Python-only and should be called directly via `python3 scripts/...`.
+When migrating a Python CLI to Go binary, orchestration scripts (CI workflows, internal callers) that invoke the CLI **must** be updated to match the new Go flag interface. Go binaries often simplify flags (e.g., `--root <skill-dir>` replaces `--skill <name> --request <text> --command <cmd>`). As of 2026-07-26 no Python scripts remain in `scripts/` — every invocation in pre-commit / CI / Makefile goes through `hwcloud-skillcheck` (see §8 table above for the mapping).
 
 **Rule**: After any CLI migration, grep all callers (`validate_local.py`, `.github/workflows/`, `Makefile`) for the old invocation pattern and update them in the same PR.
 
