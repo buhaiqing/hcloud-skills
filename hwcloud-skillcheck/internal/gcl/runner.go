@@ -9,6 +9,8 @@ package gcl
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -360,7 +362,8 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 	}
 
 	ts := time.Now().UTC().Format("20060102-150405")
-	filename := fmt.Sprintf("gcl-trace-%s.json", ts)
+	suffix := uniqueShortID()
+	filename := fmt.Sprintf("gcl-trace-%s-%s.json", ts, suffix)
 	path := filepath.Join(outDir, filename)
 
 	data, err := json.MarshalIndent(trace, "", "  ")
@@ -373,6 +376,17 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 		return "", fmt.Errorf("PersistTrace write: %w", err)
 	}
 	return path, nil
+}
+
+// uniqueShortID returns 8 hex chars from crypto/rand; the Python port
+// appended uuid.uuid4().hex[:8] to the timestamp to avoid filename collisions
+// when two traces finish in the same second.
+func uniqueShortID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "00000000"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // ---- Internal helpers ----------------------------------------------------

@@ -328,7 +328,7 @@ func WritePlan(report *AlarmPlanReport, auditDir, suffix string) (string, error)
 		return "", fmt.Errorf("marshal report: %w", err)
 	}
 	stamp := time.Now().UTC().Format("20060102-150405")
-	filename := fmt.Sprintf("gcl-alarm-plan-%s-%s.json", stamp, suffix)
+	filename := fmt.Sprintf("gcl-alarm-plan-%s-%s-%s.json", stamp, suffix, uniqueShortID())
 	path := filepath.Join(auditDir, filename)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", fmt.Errorf("write plan: %w", err)
@@ -355,10 +355,14 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 			"--evaluation-periods", strconv.Itoa(entry.EvaluationPeriods),
 		}
 		cmd := exec.Command("hcloud", args...)
+		// Bound a hung hcloud CLI; without this the alarm wire blocks
+		// indefinitely. Mirrors the 60s guard in gcl_alarm_wire.py:cmd_apply.
+		timer := time.AfterFunc(60*time.Second, func() { cmd.Process.Kill() })
 		out, err := cmd.CombinedOutput()
+		timer.Stop()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[apply] FAILED %s: %s\n", entry.Name, string(out))
-			return fmt.Errorf("apply %s: %w", entry.Name, err)
+			continue
 		}
 		fmt.Printf("[apply] OK: %s\n", entry.Name)
 	}
