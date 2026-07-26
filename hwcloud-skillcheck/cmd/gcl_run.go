@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -9,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/yaml"
@@ -96,41 +94,12 @@ func runGCLRun(args []string) error {
 		cfg.Critic = gcl.NewExternalCritic(*criticCmd, criticArgs...)
 	}
 
-	// Suppress gcl.Run's printf output when --json or --quiet.
-	var result gcl.RunResult
+	// Suppress gcl.Run's output when --json or --quiet.
 	if *jsonOut || *quiet {
-		// Redirect stdout/stderr to suppress gcl.Run's messages.
-		// Use goroutines with WaitGroup to avoid pipe deadlock when
-		// gcl.Run output exceeds the 64KB pipe buffer.
-		var wg sync.WaitGroup
-		var stdoutBuf, stderrBuf bytes.Buffer
-		oldStdout := os.Stdout
-		oldStderr := os.Stderr
-		rStdout, wStdout, _ := os.Pipe()
-		rStderr, wStderr, _ := os.Pipe()
-		os.Stdout = wStdout
-		os.Stderr = wStderr
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			io.Copy(&stdoutBuf, rStdout)
-			rStdout.Close()
-		}()
-		go func() {
-			defer wg.Done()
-			io.Copy(&stderrBuf, rStderr)
-			rStderr.Close()
-		}()
-		result = gcl.Run(cfg)
-		os.Stdout = oldStdout
-		os.Stderr = oldStderr
-		wStdout.Close()
-		wStderr.Close()
-		wg.Wait()                                     // drain both pipes before continuing
-		_, _ = stdoutBuf.String(), stderrBuf.String() // captured but not used
-	} else {
-		result = gcl.Run(cfg)
+		cfg.Stdout = io.Discard
+		cfg.Stderr = io.Discard
 	}
+	result := gcl.Run(cfg)
 
 	if *quiet {
 		// Only print trace path or final status.
