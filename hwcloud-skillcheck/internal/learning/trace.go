@@ -52,15 +52,31 @@ func ExtractPatternFromTrace(trace map[string]any) map[string]any {
 	return fp
 }
 
-// MakePatternID returns the next sequential id (e.g. "ECS-FP004") based on
-// existing patterns.
+// MakePatternID returns the next sequential id (e.g. "ECS-FP004") for
+// the given nextNum. Callers compute nextNum once via MaxPatternID and
+// increment per new pattern, avoiding the previous O(N·P) hotspot where
+// the whole patterns slice was re-scanned on every insertion.
+func MakePatternID(skill string, nextNum int) string {
+	prefix := strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(skill, "huaweicloud-", ""), "-ops", ""))
+	return fmt.Sprintf("%s-FP%03d", prefix, nextNum)
+}
+
+// MaxPatternID scans patterns and returns the highest numeric pattern id
+// found in their "id" field, or 0 when none. Used by callers that
+// previously passed the full pattern list to MakePatternID.
+//
+// Pattern id convention: <PREFIX>-FP<NNN>. The numeric suffix is parsed
+// here; anything that does not match the convention falls back to 0.
 var fpIDRegex = regexp.MustCompile(`(\d+)$`)
 
-func MakePatternID(skill string, existing []map[string]any) string {
-	prefix := strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(skill, "huaweicloud-", ""), "-ops", ""))
+func MaxPatternID(patterns []any) int {
 	maxNum := 0
-	for _, p := range existing {
-		pid, _ := p["id"].(string)
+	for _, p := range patterns {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		pid, _ := pm["id"].(string)
 		m := fpIDRegex.FindStringSubmatch(pid)
 		if len(m) >= 2 {
 			n := 0
@@ -70,19 +86,20 @@ func MakePatternID(skill string, existing []map[string]any) string {
 			}
 		}
 	}
-	return fmt.Sprintf("%s-FP%03d", prefix, maxNum+1)
+	return maxNum
 }
 
 // CreatePatternEntry builds a new failure_patterns.json entry from a raw
-// failure_pattern block.
-func CreatePatternEntry(fp map[string]any, skill string, existing []map[string]any, traceFile string) map[string]any {
+// failure_pattern block. nextNum is the integer to embed in the new
+// pattern's id; see MakePatternID + MaxPatternID.
+func CreatePatternEntry(fp map[string]any, skill string, nextNum int, traceFile string) map[string]any {
 	category, _ := fp["category"].(string)
 	if _, ok := ValidCategories[category]; !ok {
 		category = "runtime"
 	}
 	now := NowISO()
 	entry := map[string]any{
-		"id":       MakePatternID(skill, existing),
+		"id":       MakePatternID(skill, nextNum),
 		"category": category,
 		"signature": map[string]any{
 			"error_code":          "",
@@ -121,6 +138,12 @@ func firstToken(v any) string {
 	return fields[0]
 }
 
+// truncString returns at most n leading bytes of s (or fallback when s is
+// empty). When truncating, it returns a freshly allocated string via
+// strings.Clone so the caller's storage does NOT hold a (ptr, len)
+// header pointing into the source backing array — otherwise the original
+// megabyte-scale fix text would stay pinned even after we only intended
+// to keep 200 bytes of it.
 func truncString(s string, n int, fallback string) string {
 	if s == "" {
 		return fallback
@@ -128,7 +151,7 @@ func truncString(s string, n int, fallback string) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	return strings.Clone(s[:n])
 }
 
 func pickStrategy(category string) string {
@@ -168,7 +191,10 @@ func MergePattern(existing map[string]any, fp map[string]any, traceFile string) 
 		cur, _ := fix["action"].(string)
 		if len(newFix) > len(cur) {
 			if len(newFix) > 200 {
-				newFix = newFix[:200]
+				// strings.Clone so we don't pin the entire fp["fix"]
+				// backing array (the (ptr, len) header would otherwise
+				// hold a 1 MB source live for a 200-byte field).
+				newFix = strings.Clone(newFix[:200])
 			}
 			fix["action"] = newFix
 		}
@@ -273,6 +299,13 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		existing[keyT{cat, errRegex, cmdPat}] = pm
 	}
 
+	// Compute the next available id once. Aggregate previously called
+	// sliceFromPatterns(patterns) for every new pattern to feed
+	// MakePatternID, scanning the whole list (O(P)) on every miss →
+	// O(N·P) total. Track nextNum locally and increment after each
+	// insert.
+	nextNum := MaxPatternID(patterns) + 1
+
 	res := &AggregateResult{}
 
 	// Walk audit-results/ once. Each iteration read+parse+extract+merge
@@ -329,7 +362,8 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 				MergePattern(existing[k], patternFp, traceName)
 				res.UpdatedCount++
 			} else {
-				entry := CreatePatternEntry(patternFp, skill, sliceFromPatterns(patterns), traceName)
+				entry := CreatePatternEntry(patternFp, skill, nextNum, traceName)
+				nextNum++
 				patterns = append(patterns, entry)
 				existing[k] = entry
 				res.NewCount++
@@ -360,16 +394,6 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		res.WrittenTo = out
 	}
 	return res, nil
-}
-
-func sliceFromPatterns(patterns []any) []map[string]any {
-	out := make([]map[string]any, 0, len(patterns))
-	for _, p := range patterns {
-		if pm, ok := p.(map[string]any); ok {
-			out = append(out, pm)
-		}
-	}
-	return out
 }
 
 // LoadFailurePatterns returns the existing failure_patterns.json or a fresh
