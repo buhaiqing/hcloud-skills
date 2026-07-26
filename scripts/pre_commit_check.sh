@@ -32,9 +32,11 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Build hwcloud-skillcheck if missing.
+# Always rebuild so the cached binary cannot drift from current source — the
+# extra ~1s with a warm Go cache is cheaper than running gates against a
+# stale tool. Set SKILLCHECK_SKIP_BUILD=1 to skip (for ad-hoc local iteration).
 SKILLCHECK_BIN="${SKILLCHECK_BIN:-$ROOT/bin/hwcloud-skillcheck}"
-if [[ ! -x "$SKILLCHECK_BIN" ]]; then
+if [[ "${SKILLCHECK_SKIP_BUILD:-}" != "1" ]]; then
   echo "==> building hwcloud-skillcheck"
   (cd "$ROOT/hwcloud-skillcheck" && go build -trimpath -o "$SKILLCHECK_BIN" .)
 fi
