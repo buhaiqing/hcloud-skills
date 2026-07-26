@@ -39,23 +39,15 @@ jobs:
         working-directory: hwcloud-skillcheck
         run: go test ./... -count=1
 
-      # --- Go: run the A-class total entry (replaces the prior Python per-check steps) ---
+      # --- Go: run the A-class total entry (replaces the prior Python per-check steps;
+      #    `validate` already runs markdown-links, references-links, example-config,
+      #    and advanced-coverage) ---
       - name: hwcloud-skillcheck validate (A-class total entry)
         run: ./bin/hwcloud-skillcheck validate --root .
 
-      - name: hwcloud-skillcheck check markdown-links
-        run: ./bin/hwcloud-skillcheck check markdown-links --root .
-
-      - name: hwcloud-skillcheck check references-links
-        run: ./bin/hwcloud-skillcheck check references-links --root .
-
-      - name: hwcloud-skillcheck check example-config
-        run: ./bin/hwcloud-skillcheck check example-config --root .
-
-      - name: hwcloud-skillcheck check advanced-coverage (TE-7)
-        run: ./bin/hwcloud-skillcheck check advanced-coverage --root .
-
       - name: hwcloud-skillcheck check audit-results
+        # Not part of the `validate` total entry — kept as a dedicated gate so a
+        # regression in audit-results persistence cannot pass CI unnoticed.
         run: ./bin/hwcloud-skillcheck check audit-results --root .
 
       # --- Go: GCL surface ---
