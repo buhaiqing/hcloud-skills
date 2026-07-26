@@ -247,8 +247,15 @@ type AggregateResult struct {
 }
 
 // Aggregate runs the loop: scan → extract → dedup → merge → write.
+//
+// Stream implementation: each gcl-trace-*.json is read, parsed, and
+// consumed one at a time. The full trace map and its raw JSON go out
+// of scope after we've extracted the failure_pattern block — peak
+// memory is O(1 trace) rather than O(N traces × ~50 KB). For
+// ScanTraces callers (test fixtures, ad-hoc tools) the full slice is
+// still available; production aggregate traffic goes through this
+// function only.
 func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResult, error) {
-	traces := ScanTraces(root, skill, sinceHours)
 	data := LoadFailurePatterns(root, skill)
 	patterns, _ := data["patterns"].([]any)
 
@@ -266,27 +273,67 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		existing[keyT{cat, errRegex, cmdPat}] = pm
 	}
 
-	res := &AggregateResult{Scanned: len(traces)}
-	for _, t := range traces {
-		fp := ExtractPatternFromTrace(t.Data)
-		if fp == nil {
-			res.SkippedCount++
-			continue
-		}
-		cat, _ := fp["category"].(string)
-		errStr, _ := fp["error"].(string)
-		cmd, _ := fp["command"].(string)
-		cmdKey := firstToken(cmd)
-		k := keyT{cat, errStr, cmdKey}
-		traceName := filepath.Base(t.Path)
-		if _, ok := existing[k]; ok {
-			MergePattern(existing[k], fp, traceName)
-			res.UpdatedCount++
-		} else {
-			entry := CreatePatternEntry(fp, skill, sliceFromPatterns(patterns), traceName)
-			patterns = append(patterns, entry)
-			existing[k] = entry
-			res.NewCount++
+	res := &AggregateResult{}
+
+	// Walk audit-results/ once. Each iteration read+parse+extract+merge
+	// happens inline; the parsed map and raw bytes drop out of scope at
+	// the end of each iteration, so the GC can reclaim them.
+	tracesDir := filepath.Join(root, "audit-results")
+	entries, dirErr := os.ReadDir(tracesDir)
+	if dirErr == nil {
+		now := time.Now().UTC()
+		// Sorted for deterministic iteration order — matches the prior
+		// ScanTraces behavior so callers relying on trace order see the
+		// same sequence.
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasPrefix(e.Name(), "gcl-trace-") || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			fp := filepath.Join(tracesDir, e.Name())
+			if sinceHours != nil {
+				info, sErr := os.Stat(fp)
+				if sErr == nil {
+					ageHours := now.Sub(info.ModTime().UTC()).Hours()
+					if ageHours > float64(*sinceHours) {
+						continue
+					}
+				}
+			}
+			raw, rErr := os.ReadFile(fp)
+			if rErr != nil {
+				continue
+			}
+			var trace map[string]any
+			if uErr := json.Unmarshal(raw, &trace); uErr != nil {
+				continue
+			}
+			// Drop the raw bytes now — they were only needed for Unmarshal.
+			raw = nil
+			if trace["skill"] != skill {
+				continue
+			}
+			res.Scanned++
+			traceName := e.Name()
+			patternFp := ExtractPatternFromTrace(trace)
+			if patternFp == nil {
+				res.SkippedCount++
+				continue
+			}
+			cat, _ := patternFp["category"].(string)
+			errStr, _ := patternFp["error"].(string)
+			cmd, _ := patternFp["command"].(string)
+			cmdKey := firstToken(cmd)
+			k := keyT{cat, errStr, cmdKey}
+			if _, ok := existing[k]; ok {
+				MergePattern(existing[k], patternFp, traceName)
+				res.UpdatedCount++
+			} else {
+				entry := CreatePatternEntry(patternFp, skill, sliceFromPatterns(patterns), traceName)
+				patterns = append(patterns, entry)
+				existing[k] = entry
+				res.NewCount++
+			}
 		}
 	}
 
@@ -296,9 +343,9 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		data["meta"] = meta
 	}
 	if v, ok := meta["source_traces_analyzed"].(float64); ok {
-		meta["source_traces_analyzed"] = v + float64(len(traces))
+		meta["source_traces_analyzed"] = v + float64(res.Scanned)
 	} else {
-		meta["source_traces_analyzed"] = len(traces)
+		meta["source_traces_analyzed"] = res.Scanned
 	}
 	data["patterns"] = patterns
 
