@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,6 +193,8 @@ type RunConfig struct {
 	MaxIter         int    // maximum loop iterations (0 = use SKILL_MAX_ITER default)
 	Timeout         int    // command timeout in seconds (default 120)
 	Critic          Critic // optional Critic override; nil falls back to StructuralCriticAdapter
+	Stdout          io.Writer
+	Stderr          io.Writer
 	Root            string // repository root for audit-results/
 	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
 }
@@ -203,6 +206,22 @@ type RunResult struct {
 }
 
 // ---- Public API ----------------------------------------------------------
+
+// rcStdout returns the configured output stream or the process stdout.
+func rcStdout(cfg *RunConfig) io.Writer {
+	if cfg.Stdout != nil {
+		return cfg.Stdout
+	}
+	return os.Stdout
+}
+
+// rcStderr returns the configured error stream or the process stderr.
+func rcStderr(cfg *RunConfig) io.Writer {
+	if cfg.Stderr != nil {
+		return cfg.Stderr
+	}
+	return os.Stderr
+}
 
 // Run executes the GCL loop: Generator → Critic → Orchestrator.
 // It returns when a PASS or SAFETY_FAIL decision is reached, or MAX_ITER is exhausted.
@@ -243,7 +262,7 @@ func Run(cfg RunConfig) RunResult {
 		var err error
 		opIntent, err = SanitizeOperationIntent(cfg.OperationIntent)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+			fmt.Fprintf(rcStderr(&cfg), "ERROR: %v\n", err)
 			return RunResult{ExitCode: ExitUsage}
 		}
 	}
@@ -308,9 +327,9 @@ func Run(cfg RunConfig) RunResult {
 			FinalizeFinopsAiops(&trace)
 			path, err := PersistTrace(&trace, cfg.Root)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+				fmt.Fprintf(rcStderr(&cfg), "warning: PersistTrace failed: %v\n", err)
 			}
-			fmt.Fprintf(os.Stderr, "SAFETY_FAIL — trace: %s\n", path)
+			fmt.Fprintf(rcStderr(&cfg), "SAFETY_FAIL — trace: %s\n", path)
 			return RunResult{ExitCode: ExitSafety, TracePath: path}
 
 		case "PASS":
@@ -323,9 +342,9 @@ func Run(cfg RunConfig) RunResult {
 			FinalizeFinopsAiops(&trace)
 			path, err := PersistTrace(&trace, cfg.Root)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+				fmt.Fprintf(rcStderr(&cfg), "warning: PersistTrace failed: %v\n", err)
 			}
-			fmt.Printf("PASS (iter %d) — trace: %s\n", iteration, path)
+			fmt.Fprintf(rcStdout(&cfg), "PASS (iter %d) — trace: %s\n", iteration, path)
 			return RunResult{ExitCode: ExitOK, TracePath: path}
 		}
 
@@ -343,9 +362,9 @@ func Run(cfg RunConfig) RunResult {
 	FinalizeFinopsAiops(&trace)
 	path, err := PersistTrace(&trace, cfg.Root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: PersistTrace failed: %v\n", err)
+		fmt.Fprintf(rcStderr(&cfg), "warning: PersistTrace failed: %v\n", err)
 	}
-	fmt.Fprintf(os.Stderr, "MAX_ITER — trace: %s\n", path)
+	fmt.Fprintf(rcStderr(&cfg), "MAX_ITER — trace: %s\n", path)
 	return RunResult{ExitCode: ExitMaxIter, TracePath: path}
 }
 
