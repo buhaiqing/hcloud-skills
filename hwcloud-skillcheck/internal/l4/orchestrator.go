@@ -1,13 +1,17 @@
 package l4
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
+	"golang.org/x/sync/errgroup"
 )
 
 // primarySkillFromPlan returns the first step's skill (the "primary" skill
@@ -198,6 +202,51 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	for _, s := range matched {
 		knownSkills[s.Skill] = true
 	}
+
+	// Pre-fetch failure patterns for every unique step.Skill concurrently
+	// BEFORE entering the step loop. With many steps referencing the same
+	// few skills, this collapses N sequential file reads into one fan-out
+	// (capped at NumCPU). Each read is a disjoint file (per-skill path),
+	// so the work is embarrassingly parallel.
+	patternCache := map[string][]map[string]any{}
+	if len(plan.Steps) > 0 {
+		skillSet := map[string]struct{}{}
+		for _, step := range plan.Steps {
+			if knownSkills[step.Skill] {
+				skillSet[step.Skill] = struct{}{}
+			}
+		}
+		if len(skillSet) > 0 {
+			skills := make([]string, 0, len(skillSet))
+			for s := range skillSet {
+				skills = append(skills, s)
+			}
+			var patternMu sync.Mutex
+			g, gCtx := errgroup.WithContext(context.Background())
+			g.SetLimit(runtime.NumCPU())
+			for _, skill := range skills {
+				skill := skill
+				g.Go(func() error {
+					select {
+					case <-gCtx.Done():
+						return gCtx.Err()
+					default:
+					}
+					patterns, err := readFailurePatternsForSkill(root, skill)
+					if err == nil {
+						patternMu.Lock()
+						patternCache[skill] = patterns
+						patternMu.Unlock()
+					}
+					return nil
+				})
+			}
+			// errors are best-effort; an empty cache for a skill means "no
+			// known patterns" and falls back to no pre-execution risk.
+			_ = g.Wait()
+		}
+	}
+
 	for _, step := range plan.Steps {
 		short := step.SkillShort
 		if short == "" {
@@ -213,8 +262,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		// Match pre-execution risk from failure patterns (best-effort).
 		var preRisk any
 		if knownSkills[step.Skill] {
-			// Load patterns via internal/learning; safe no-op on error.
-			if patterns, err := readFailurePatternsForSkill(root, step.Skill); err == nil {
+			if patterns, ok := patternCache[step.Skill]; ok && len(patterns) > 0 {
 				preRisk = matchPreExecutionRisk(candidate, patterns)
 			}
 		}

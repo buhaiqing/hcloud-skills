@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/security"
+	"golang.org/x/sync/errgroup"
 )
 
 // runScan dispatches the `hwcloud-skillcheck scan` subcommands.
@@ -178,33 +181,60 @@ func collectScanPaths(root string, inputs []string, glob string, latest bool) []
 }
 
 func scanArtifactPaths(paths []string) []scanSecretResult {
-	results := make([]scanSecretResult, 0, len(paths))
-	for _, p := range paths {
-		res := scanSecretResult{artifact: p}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			res.error = err.Error()
-			results = append(results, res)
-			continue
-		}
-		// Verify it is JSON-decodable; a decode error is reported but not a leak.
-		var probe any
-		if jErr := json.Unmarshal(data, &probe); jErr != nil {
-			res.error = "invalid JSON: " + jErr.Error()
-			results = append(results, res)
-			continue
-		}
-		findings, sErr := security.ScanContent(data)
-		if sErr != nil {
-			res.error = "scan error: " + sErr.Error()
-			results = append(results, res)
-			continue
-		}
-		res.leaks = len(findings)
-		res.ok = len(findings) == 0
-		results = append(results, res)
+	// Bounded-parallel I/O: each artifact file is read+decoded+scanned in
+	// its own goroutine. security.ScanContent is the regex-heaviest call
+	// in the binary, so fanning out gives a near-NumCPU wall-clock speedup
+	// on a CI box that produced 100+ summary files.
+	results := make([]scanSecretResult, len(paths))
+	g, gCtx := errgroup.WithContext(context.Background())
+	g.SetLimit(runtime.NumCPU())
+	for i, p := range paths {
+		i, p := i, p
+		g.Go(func() error {
+			select {
+			case <-gCtx.Done():
+				return gCtx.Err()
+			default:
+			}
+			res := scanSecretResult{artifact: p}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				res.error = err.Error()
+				results[i] = res
+				return nil
+			}
+			// Verify it is JSON-decodable; a decode error is reported but not a leak.
+			var probe any
+			if jErr := json.Unmarshal(data, &probe); jErr != nil {
+				res.error = "invalid JSON: " + jErr.Error()
+				results[i] = res
+				return nil
+			}
+			findings, sErr := security.ScanContent(data)
+			if sErr != nil {
+				res.error = "scan error: " + sErr.Error()
+				results[i] = res
+				return nil
+			}
+			res.leaks = len(findings)
+			res.ok = len(findings) == 0
+			results[i] = res
+			return nil
+		})
 	}
-	return results
+	// On hard error (ctx cancelled mid-flight) report but still return what
+	// we collected so the caller can degrade gracefully.
+	if wErr := g.Wait(); wErr != nil && wErr != context.Canceled {
+		fmt.Fprintf(os.Stderr, "WARN: scan parallel join: %v\n", wErr)
+	}
+	// Compact: drop zero-value entries from cancellation pre-empts.
+	out := results[:0]
+	for _, r := range results {
+		if r.artifact != "" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func countLeaks(results []scanSecretResult) int {

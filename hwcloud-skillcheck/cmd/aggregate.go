@@ -1,14 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"time"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"golang.org/x/sync/errgroup"
 )
 
 // runAggregate dispatches the `hwcloud-skillcheck aggregate` subcommands.
@@ -93,17 +96,54 @@ func runAggregateTrace(args []string) error {
 		return nil
 	}
 
-	var traces []map[string]any
-	for _, p := range paths {
-		rel, _ := filepath.Rel(rootDir, p)
-		trace, perr := parseAggregateTrace(p)
-		if perr != nil {
-			fmt.Fprintf(os.Stderr, "WARN: skip %s: %v\n", rel, perr)
-			continue
-		}
-		trace["_source_path"] = rel
-		traces = append(traces, trace)
+	// Fan-out parseAggregateTrace across paths with bounded concurrency.
+	// Each trace file is read+decoded in its own goroutine; the wall-clock
+	// win is roughly NumCPU on a CI box with 100+ trace files (was serial).
+	// Results are collected into per-index slots so we never need a mutex —
+	// errgroup.Wait gives us happens-before across all of them.
+	var (
+		traces = make([]map[string]any, len(paths))
+		skips  = make([]string, len(paths))
+	)
+	g, gCtx := errgroup.WithContext(context.Background())
+	g.SetLimit(runtime.NumCPU())
+	for i, p := range paths {
+		i, p := i, p
+		g.Go(func() error {
+			select {
+			case <-gCtx.Done():
+				return gCtx.Err()
+			default:
+			}
+			trace, perr := parseAggregateTrace(p)
+			if perr != nil {
+				rel, _ := filepath.Rel(rootDir, p)
+				skips[i] = fmt.Sprintf("skip %s: %v", rel, perr)
+				return nil
+			}
+			rel, _ := filepath.Rel(rootDir, p)
+			trace["_source_path"] = rel
+			traces[i] = trace
+			return nil
+		})
 	}
+	if wErr := g.Wait(); wErr != nil {
+		return wErr
+	}
+	// Drain skip warnings now (after all goroutines done) to avoid interleaved stderr.
+	for _, s := range skips {
+		if s != "" {
+			fmt.Fprintln(os.Stderr, "WARN:", s)
+		}
+	}
+	// Compact: drop nil slots left by skipped traces.
+	parsed := traces[:0]
+	for _, t := range traces {
+		if t != nil {
+			parsed = append(parsed, t)
+		}
+	}
+	traces = parsed
 	if len(traces) == 0 {
 		if *requireTraces {
 			return fmt.Errorf("aggregate: no valid traces parsed under %s (--require-traces set)", auditDir)
