@@ -357,7 +357,17 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 		cmd := exec.Command("hcloud", args...)
 		// Bound a hung hcloud CLI; without this the alarm wire blocks
 		// indefinitely. Mirrors the 60s guard in gcl_alarm_wire.py:cmd_apply.
-		timer := time.AfterFunc(60*time.Second, func() { cmd.Process.Kill() })
+		//
+		// The callback must guard against nil Process — cmd.Start can fail
+		// (e.g. hcloud not in PATH), in which case cmd.Process is nil and
+		// .Kill() panics. The nil check is the difference between a clean
+		// "FAILED hcloud-missing" log and a goroutine-driven panic that
+		// takes down the orchestrator.
+		timer := time.AfterFunc(60*time.Second, func() {
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		})
 		out, err := cmd.CombinedOutput()
 		timer.Stop()
 		if err != nil {

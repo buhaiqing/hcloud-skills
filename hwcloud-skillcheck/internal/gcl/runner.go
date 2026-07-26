@@ -9,6 +9,7 @@ package gcl
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -423,21 +424,42 @@ func runCommand(command string, timeoutSecs int) GeneratorOutput {
 	maskedCmd := MaskSecrets([]byte(command))
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("sh", "-c", command)
+	timeout := time.Duration(timeoutSecs) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	// Cancel runs INSIDE the goroutine that owns cmd, so cmd.Process is
+	// read after Start has already written it — no race against cmd.Process
+	// being set by Start.
+	cmd.Cancel = func() error {
+		return cmd.Process.Kill()
+	}
+	// WaitDelay forces the process to be killed if it ignores the cancel
+	// signal. 100 ms is enough for SIGKILL to land.
+	cmd.WaitDelay = 100 * time.Millisecond
 
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Run()
 	}()
 
+	// time.NewTimer + explicit Stop is preferable to time.After in a one-shot
+	// select: the After channel is unstopped and persists until the configured
+	// deadline, minorly wasteful across many iterations.
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
 	var runErr error
 	select {
 	case runErr = <-done:
 		// completed normally
-	case <-time.After(time.Duration(timeoutSecs) * time.Second):
-		cmd.Process.Kill()
+	case <-timer.C:
+		// Trigger Cancel + WaitDelay inside cmd's lifecycle. We don't
+		// touch cmd.Process here — that's owned by the goroutine.
+		cancel()
 		<-done
 		return GeneratorOutput{
 			Command:       maskedCmd,
