@@ -205,75 +205,30 @@ See [huaweicloud-skill-generator/SKILL.md](huaweicloud-skill-generator/SKILL.md)
 
 `hwcloud-skillcheck` is a **standalone CLI binary** that validates a hcloud-skills repository (or any skill collection following the same layout). It runs all A-class checks (schema validation, frontmatter, YAML config, markdown links, secret scanning, etc.) with **zero external dependencies** — no Python, no Go toolchain required.
 
-### One-Click Install
-
-First fetch the latest release tag (the binary URL embeds the tag, e.g. `v0.1.3`):
+### Quick Install
 
 ```bash
+# Latest release tag
 VERSION=$(curl -sSL https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v([^"]+)".*/v\1/')
-```
 
-Then pick the binary for your platform:
-
-**Linux (amd64):**
-```bash
+# Linux (amd64) — replace with your platform
 curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-linux-amd64"
 chmod +x hwcloud-skillcheck-linux-amd64
 sudo mv hwcloud-skillcheck-linux-amd64 /usr/local/bin/hwcloud-skillcheck
+
+# Verify
+hwcloud-skillcheck --help
 ```
 
-**Linux (arm64):**
-```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-linux-arm64"
-chmod +x hwcloud-skillcheck-linux-arm64
-sudo mv hwcloud-skillcheck-linux-arm64 /usr/local/bin/hwcloud-skillcheck
-```
+See [Deployment Guide](docs/deployment-guide.md) for:
+- All 6 platform binary URLs
+- Docker sandbox deployment
+- CI/CD integration
+- Release process
+- Operations checklist
+> See [Deployment Guide](docs/deployment-guide.md) for macOS (Intel/Apple Silicon) and Windows (amd64/arm64) install commands.
 
-**macOS (arm64, Apple Silicon):**
-```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-darwin-arm64"
-chmod +x hwcloud-skillcheck-darwin-arm64
-sudo mv hwcloud-skillcheck-darwin-arm64 /usr/local/bin/hwcloud-skillcheck
-```
-
-**macOS (amd64, Intel):**
-```bash
-curl -sSLO "https://github.com/buhaiqing/hcloud-skills/releases/download/${VERSION}/hwcloud-skillcheck-darwin-amd64"
-chmod +x hwcloud-skillcheck-darwin-amd64
-sudo mv hwcloud-skillcheck-darwin-amd64 /usr/local/bin/hwcloud-skillcheck
-```
-
-**Windows (amd64, PowerShell as Administrator):**
-```powershell
-$version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-amd64"
-$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
-New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
-Invoke-WebRequest -Uri $url -OutFile $out
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($userPath -notlike "*\.local\bin*") {
-  [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
-}
-Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env:USERPROFILE\.local\bin`""
-```
-
-**Windows (arm64, PowerShell as Administrator):**
-```powershell
-$version = (Invoke-RestMethod "https://api.github.com/repos/buhaiqing/hcloud-skills/releases/latest").tag_name
-$url = "https://github.com/buhaiqing/hcloud-skills/releases/download/$version/hwcloud-skillcheck-windows-arm64"
-$out = "$env:USERPROFILE\.local\bin\hwcloud-skillcheck.exe"
-New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
-Invoke-WebRequest -Uri $url -OutFile $out
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($userPath -notlike "*\.local\bin*") {
-  [Environment]::SetEnvironmentVariable("Path", "$userPath;$env:USERPROFILE\.local\bin", "User")
-}
-Write-Host "Installed to $out — restart terminal or run: `$env:Path += `";$env:USERPROFILE\.local\bin`""
-```
-
-> **Maintainers** — release a new version with `make release VERSION=vX.Y.Z`. The target runs `go vet`, full test suite, builds the binary, tags, and pushes the tag in one shot.
-
-### Build From Source
+### Build From Source### Build From Source
 
 ```bash
 git clone https://github.com/buhaiqing/hcloud-skills.git
@@ -548,3 +503,5 @@ GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
 - [Agent Skills Open Specification](https://agentskills.io/specification)
 - [AGENTS.md](AGENTS.md) — repository conventions for agents and contributors
 - [README_CN.md](README_CN.md) — 中文文档（详细目录树与说明）
+- [Deployment Guide](docs/deployment-guide.md) — installation, operations, CI/CD, security baseline
+- [CLI Manual](docs/manual/hwcloud-skillcheck.md) — full command reference

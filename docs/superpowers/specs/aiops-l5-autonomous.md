@@ -2,7 +2,7 @@
 
 > Version: 1.0.0
 > Created: 2026-07-18
-> Status: **DRAFT** — for review
+> Status: **FINAL_SPEC** — 18 个 Batch 全部合并 main (2026-07-18)，2026-07-26 补充代码实现引用
 > Target: hcloud-skills AIOps L5 (Autonomous)
 
 ## 1. Overview
@@ -68,18 +68,32 @@ L5 builds upon L3/L4 foundations:
 
 ### 2.2 Components
 
-| Component | Responsibility | State |
-|-----------|---------------|-------|
-| Detector | CES alarm monitoring, anomaly detection | Requires L3 |
-| Diagnoser | Root cause analysis, confidence scoring | Requires L4 (Diagnosis Confidence) |
-| Decider | Action selection, risk assessment, human approval gate | L5 New |
-| Actor | Execute remediation via hcloud CLI / SDK | L5 New |
-| Verifier | Verify action effectiveness, SLO impact | L5 New |
-| Learner | Historical pattern mining, threshold optimization | L5 New |
-| Knowledge Graph | Causal chain storage, incident memory | L5 New |
-| Predictor | Failure prediction, capacity forecasting | Requires L3 Capacity Forecasting |
+| Component | Responsibility | State | Implementation |
+|-----------|---------------|-------|---------------|
+| Detector | CES alarm monitoring, anomaly detection | Requires L3 | `huaweicloud-ces-ops` skill; CES alarm rules via `hcloud ces alarm` CLI |
+| Diagnoser | Root cause analysis, confidence scoring | Requires L4 (Diagnosis Confidence) | `internal/l4/orchestration.go` — `matchFaultSkills()`, `evaluateOperation()` |
+| Decider | Action selection, risk assessment, human approval gate | L5 New | `internal/l4/orchestrator.go` — progressive trust scoring, risk-level gating |
+| Actor | Execute remediation via hcloud CLI / SDK | L5 New | `internal/l4/trust.go` — trust-tier gating; `internal/gcl/runner.go` — Generator command execution |
+| Verifier | Verify action effectiveness, SLO impact | L5 New | `internal/gcl/runner.go` — GCL cycle verification; `internal/critic/critic.go` — 5-dim scoring |
+| Learner | Historical pattern mining, threshold optimization | L5 New | `internal/learning/trace.go` — trace aggregation; `internal/learning/knowledge.go` — failure pattern knowledge base |
+| Knowledge Graph | Causal chain storage, incident memory | L5 New | `internal/l4/topology.go` — topology graph; `internal/learning/knowledge.go` — pattern knowledge |
+| Predictor | Failure prediction, capacity forecasting | Requires L3 Capacity Forecasting | `internal/l4/predictive.go` — breach prediction, trend analysis |
 
-### 2.3 Data Flow
+### 2.3 CLI Integration
+
+All L5 capabilities are accessible via the `hwcloud-skillcheck` CLI:
+
+| CLI Subcommand | L5 Component | File |
+|----------------|-------------|------|
+| `l4 handle --fault <text>` | Closed-Loop Orchestrator (Decider + Actor + Verifier) | `cmd/l4.go` |
+| `learning trace aggregate` | Learner — trace → failure pattern aggregation | `cmd/learning.go` |
+| `learning trace learn` | Learner — single trace learning | `cmd/learning.go` |
+| `learning trace report` | Learner — knowledge base report | `cmd/learning.go` |
+| `learning gen` | Knowledge Base — regenerate patterns + playbooks | `cmd/learning.go` |
+| `gcl run` | Actor — GCL execution loop | `cmd/gcl_run.go` |
+| `critic score` | Verifier — 5-dimension quality scoring | `cmd/critic.go` |
+
+### 2.4 Data Flow
 
 ```
 CES Alarms ──▶ Detector ──▶ Diagnoser ──▶ Decider ──▶ Actor ──▶ Verifier
@@ -95,13 +109,77 @@ CES Alarms ──▶ Detector ──▶ Diagnoser ──▶ Decider ──▶ Ac
 
 ---
 
-## 3. Self-Healing Closed-Loop
+## 3. Implementation Status
 
-### 3.1 Definition
+### 3.1 Reference Documents (18 Batch, 25 files)
+
+All L5 design documents have been created and merged to `main`:
+
+| Phase | Batch | Document | Status |
+|-------|-------|----------|--------|
+| 1 Foundation | L5-A | `huaweicloud-skill-generator/references/action-catalog.md` | ✅ |
+| 1 Foundation | L5-B | `huaweicloud-skill-generator/references/decider-design.md` | ✅ |
+| 1 Foundation | L5-C | `huaweicloud-skill-generator/references/actor-framework.md` | ✅ |
+| 2 Closed-Loop | L5-D | `huaweicloud-ces-ops/references/advanced/autonomous-loop.md` | ✅ |
+| 2 Closed-Loop | L5-E | `huaweicloud-ecs-ops/references/advanced/auto-remediate.md` | ✅ |
+| 2 Closed-Loop | L5-E | `huaweicloud-rds-ops/references/advanced/auto-remediate.md` | ✅ |
+| 2 Closed-Loop | L5-E | `huaweicloud-dcs-ops/references/advanced/auto-remediate.md` | ✅ |
+| 2 Closed-Loop | L5-F | `huaweicloud-skill-generator/references/human-approval-workflow.md` | ✅ |
+| 2 Closed-Loop | L5-G | `huaweicloud-ces-ops/references/advanced/verification-logic.md` | ✅ |
+| 3 Self-Learning | L5-H | `huaweicloud-skill-generator/references/self-learning-framework.md` | ✅ |
+| 3 Self-Learning | L5-I | `huaweicloud-ces-ops/references/advanced/threshold-optimization.md` | ✅ |
+| 3 Self-Learning | L5-J | `huaweicloud-skill-generator/references/pattern-mining.md` | ✅ |
+| 4 Predictive | L5-K | `huaweicloud-skill-generator/references/prediction-models.md` | ✅ |
+| 4 Predictive | L5-L | `huaweicloud-ces-ops/references/advanced/prediction-service.md` | ✅ |
+| 4 Predictive | L5-M | `huaweicloud-ces-ops/references/advanced/prediction-alerts.md` | ✅ |
+| 4 Predictive | L5-N | `huaweicloud-ces-ops/references/advanced/prediction-dashboard.md` | ✅ |
+| 5 Knowledge Graph | L5-O | `huaweicloud-skill-generator/references/knowledge-graph-schema.md` | ✅ |
+| 5 Knowledge Graph | L5-P | `huaweicloud-skill-generator/references/causal-discovery-algorithm.md` | ✅ |
+| 5 Knowledge Graph | L5-Q | `huaweicloud-ces-ops/references/advanced/knowledge-graph.md` | ✅ |
+| 5 Knowledge Graph | L5-R | `huaweicloud-ces-ops/references/advanced/causal-chain-update.md` | ✅ |
+
+### 3.2 Go Runtime Implementation
+
+| L5 Capability | Go Package | Key Functions |
+|---------------|-----------|---------------|
+| Closed-Loop Orchestrator | `internal/l4/orchestrator.go` | `HandleFault()` — detect → diagnose → decide → act → verify → learn |
+| Dynamic Orchestration | `internal/l4/orchestration.go` | `matchFaultSkills()`, `evaluateOperation()`, `buildExecutionPlan()` |
+| Progressive Trust | `internal/l4/trust.go` | Trust scoring (L0_new → L4_autonomous), risk-level gating |
+| Topology Graph | `internal/l4/topology.go` | Resource blast radius, criticality scoring, cross-skill delegation |
+| Predictive Maintenance | `internal/l4/predictive.go` | Breach prediction, trend analysis, threshold scanning |
+| Learning Engine | `internal/learning/trace.go` | Trace aggregation, pattern learning |
+| Knowledge Base | `internal/learning/knowledge.go` | Failure pattern management, playbook storage |
+| GCL Runner | `internal/gcl/runner.go` | Generator → Critic → Loop → Trace execution |
+| Critic Scoring | `internal/critic/critic.go` | 5-dimension (correctness, safety, idempotency, traceability, spec_compliance) |
+
+### 3.3 CLI Surface
+
+```bash
+# L4/L5 Orchestrator — closed-loop fault handler
+hwcloud-skillcheck l4 handle --fault "RDS CPU > 90%" --risk medium
+
+# Learning — trace aggregation and pattern mining
+hwcloud-skillcheck learning trace aggregate --skill huaweicloud-ecs-ops --since-hours 168
+hwcloud-skillcheck learning trace learn --skill huaweicloud-ecs-ops --trace audit-results/gcl-trace-*.json
+hwcloud-skillcheck learning trace report --skill huaweicloud-ecs-ops
+
+# Knowledge base — regenerate patterns and playbooks
+hwcloud-skillcheck learning gen
+
+# GCL execution loop (Actor + Verifier)
+hwcloud-skillcheck gcl run --skill huaweicloud-billing-ops --command 'hcloud ...' --structural-critic-only
+
+# Critic scoring (Verifier)
+hwcloud-skillcheck critic score --generator /path/to/generator-trace.json
+```
+
+---
+
+### 4.1 Definition
 
 Self-healing closed-loop enables automatic remediation of detected anomalies without human intervention for routine failures. High-risk actions require human approval.
 
-### 3.2 Action Classification
+### 4.2 Action Classification
 
 | Risk Level | Criteria | Example | Action |
 |------------|----------|---------|--------|
@@ -110,7 +188,7 @@ Self-healing closed-loop enables automatic remediation of detected anomalies wit
 | **High** | Significant cost, data risk, service impact | Delete resource, change security group | Human approval required |
 | **Critical** | Irreversible, compliance-relevant | Drop table, disable multi-AZ | Manual only |
 
-### 3.3 Pre-Approved Action Catalog
+### 4.3 Pre-Approved Action Catalog
 
 #### Low-Risk (Auto-Execute)
 
@@ -146,7 +224,7 @@ Self-healing closed-loop enables automatic remediation of detected anomalies wit
 | 关闭多AZ | Disable multi-AZ | RDS |
 | 删除EIP | EIP release | VPC |
 
-### 3.4 Closed-Loop Workflow
+### 4.4 Closed-Loop Workflow
 
 ```yaml
 closed_loop:
@@ -193,13 +271,13 @@ closed_loop:
 
 ---
 
-## 4. Self-Learning
+## 5. Self-Learning
 
-### 4.1 Definition
+### 5.1 Definition
 
 Self-learning enables the system to improve from historical incidents, optimizing thresholds and patterns based on past outcomes.
 
-### 4.2 Learning Sources
+### 5.2 Learning Sources
 
 | Source | Data | Frequency |
 |--------|------|-----------|
@@ -208,9 +286,9 @@ Self-learning enables the system to improve from historical incidents, optimizin
 | Threshold Adjustments | Before/after alarm behavior | Weekly |
 | Chaos Engineering Results | Resilience scores, failure modes | Quarterly |
 
-### 4.3 Learning Algorithms
+### 5.3 Learning Algorithms
 
-#### 4.3.1 Threshold Optimization
+#### 5.3.1 Threshold Optimization
 
 ```
 New_Threshold = α × Historical_P95 + (1-α) × Current_Threshold
@@ -226,7 +304,7 @@ Where:
 - Only learn from stable periods (no incidents in past 7 days)
 - Minimum 30 data points required
 
-#### 4.3.2 Pattern Mining
+#### 5.3.2 Pattern Mining
 
 ```
 # From incident history, extract:
@@ -236,7 +314,7 @@ Where:
 4. Resolution patterns: Which actions resolve which alarms?
 ```
 
-### 4.4 Learning Workflow
+### 5.4 Learning Workflow
 
 ```yaml
 learning:
@@ -271,13 +349,13 @@ learning:
 
 ---
 
-## 5. Predictive Maintenance
+## 6. Predictive Maintenance
 
-### 5.1 Definition
+### 6.1 Definition
 
 Predictive maintenance forecasts potential failures before they occur, enabling proactive intervention.
 
-### 5.2 Prediction Targets
+### 6.2 Prediction Targets
 
 | Target | Prediction Horizon | Required Data |
 |--------|-------------------|---------------|
@@ -288,9 +366,9 @@ Predictive maintenance forecasts potential failures before they occur, enabling 
 | Quota exhaustion | 30-90 days | Resource creation rate |
 | Service outage | 1-24 hours | Multi-metric anomaly |
 
-### 5.3 Prediction Models
+### 6.3 Prediction Models
 
-#### 5.3.1 Linear Regression (Short-term)
+#### 6.3.1 Linear Regression (Short-term)
 
 ```
 y = mx + b
@@ -306,7 +384,7 @@ Exhaustion_Date = (Quota_Limit - Current_Value) / m
 
 **Use case**: Stable, linear growth patterns (disk usage, connection count)
 
-#### 5.3.2 Seasonal Decomposition (Periodic)
+#### 6.3.2 Seasonal Decomposition (Periodic)
 
 ```
 y(t) = Trend(t) + Seasonal(t) + Residual(t)
@@ -319,7 +397,7 @@ Where:
 
 **Use case**: Load patterns with clear seasonality (business hours, weekly cycles)
 
-#### 5.3.3 Anomaly Detection (Outlier-based)
+#### 6.3.3 Anomaly Detection (Outlier-based)
 
 ```
 z = (x - μ) / σ
@@ -334,7 +412,7 @@ Alert when: z > 3 (3-sigma rule) OR trend acceleration detected
 
 **Use case**: Sudden changes, DDoS detection, traffic spikes
 
-### 5.4 Prediction Output Schema
+### 6.4 Prediction Output Schema
 
 ```yaml
 prediction:
@@ -354,13 +432,13 @@ prediction:
 
 ---
 
-## 6. Root Cause Self-Discovery
+## 7. Root Cause Self-Discovery
 
-### 6.1 Definition
+### 7.1 Definition
 
 Root cause self-discovery automatically builds causal graphs from incidents, enabling faster diagnosis of future problems.
 
-### 6.2 Knowledge Graph Schema
+### 7.2 Knowledge Graph Schema
 
 ```yaml
 knowledge_graph:
@@ -414,7 +492,7 @@ knowledge_graph:
       to: "symptom"
 ```
 
-### 6.3 Causal Discovery Algorithm
+### 7.3 Causal Discovery Algorithm
 
 ```python
 def discover_causal_chain(incident):
@@ -437,7 +515,7 @@ def discover_causal_chain(incident):
     return scored_paths[0]  # Highest confidence path
 ```
 
-### 6.4 Knowledge Graph Update Flow
+### 7.4 Knowledge Graph Update Flow
 
 ```
 Incident Resolved
@@ -464,7 +542,7 @@ Incident Resolved
 
 ---
 
-## 7. Implementation Phases
+## 8. Implementation Phases
 
 ### Phase 1: Foundation (Weeks 1-4)
 
@@ -513,9 +591,9 @@ Incident Resolved
 
 ---
 
-## 8. Acceptance Criteria
+## 9. Acceptance Criteria
 
-### 8.1 Self-Healing
+### 9.1 Self-Healing
 
 | Criteria | Target | Measurement |
 |----------|--------|-------------|
@@ -524,7 +602,7 @@ Incident Resolved
 | MTTR improvement | ≥ 50% reduction | Mean time to resolve |
 | Human approval accuracy | ≥ 95% | Correct approve/reject decisions |
 
-### 8.2 Self-Learning
+### 9.2 Self-Learning
 
 | Criteria | Target | Measurement |
 |----------|--------|-------------|
@@ -533,7 +611,7 @@ Incident Resolved
 | Pattern accuracy | ≥ 85% | Correctly predicted next alarm |
 | False threshold adjustment | ≤ 5% | Overly aggressive tuning |
 
-### 8.3 Predictive Maintenance
+### 9.3 Predictive Maintenance
 
 | Criteria | Target | Measurement |
 |----------|--------|-------------|
@@ -542,7 +620,7 @@ Incident Resolved
 | False positive rate | ≤ 20% | Predicted but didn't occur |
 | Coverage | ≥ 60% of critical resources | Resources with active predictions |
 
-### 8.4 Knowledge Graph
+### 9.4 Knowledge Graph
 
 | Criteria | Target | Measurement |
 |----------|--------|-------------|
@@ -553,7 +631,7 @@ Incident Resolved
 
 ---
 
-## 9. Out of Scope
+## 10. Out of Scope
 
 - Physical infrastructure automation
 - Compliance-critical changes (always manual)
@@ -563,18 +641,27 @@ Incident Resolved
 
 ---
 
-## 10. Open Questions
+## 11. Open Questions & Resolutions
 
-1. **Knowledge Graph Storage**: Neo4j vs. PostgreSQL with graph extension?
-2. **Human Approval UX**: How to surface approval requests efficiently?
-3. **Rollback Strategy**: How to automatically rollback failed remediations?
-4. **Learning Rate**: What α value for threshold optimization? (suggest 0.1)
-5. **Prediction Model Selection**: Which models per metric type?
+> **Status**: All questions resolved in current implementation.
+
+| # | Question | Resolution | Rationale |
+|---|----------|-----------|-----------|
+| 1 | **Knowledge Graph Storage**: Neo4j vs. PostgreSQL? | **In-memory topology graph** (`internal/l4/topology.go`) + JSON persistence. No external DB. | L5 scope is single-repo operational intelligence; external DB adds deployment complexity with no immediate benefit. The topology graph parses `references/integration.md` delegation tables at runtime. |
+| 2 | **Human Approval UX**: How to surface approval requests efficiently? | **Trust-tier gating** (`internal/l4/trust.go`): `human_review_required` flag in orchestrator output. Destructive ops on high-criticality resources with low trust auto-escalate. | Integrated into the existing `l4 handle` CLI output rather than building a separate notification system. |
+| 3 | **Rollback Strategy**: How to auto-rollback failed remediations? | **Per-step verification in GCL loop** (`internal/gcl/runner.go`). Failed steps → `RETRY` or `SAFETY_FAIL` (non-retryable). No automatic rollback; escalation to human for destructive reversals. | Automatic rollback is itself a destructive operation. Safety-first: verify → fail → notify. |
+| 4 | **Learning Rate α**: What α value for threshold optimization? | **α = 0.1** (as suggested). Configurable via `assets/remediation-playbooks.json` per-skill settings. | Conservative rate prevents wild threshold swings; 0.1 means 90% weight on current threshold, 10% on historical P95. |
+| 5 | **Prediction Model Selection**: Which models per metric type? | **Linear regression** for monotonic growth (disk, connections); **z-score anomaly** for sudden changes (CPU spikes). Implemented in `internal/l4/predictive.go`. | Seasonal decomposition deferred — most hcloud metrics lack clear weekly seasonality patterns. |
 
 ---
 
-## 11. References
+## 12. References
 
 - `huaweicloud-skill-generator/references/aiops-best-practices.md` — L1-L4 spec
 - `huaweicloud-ces-ops/references/advanced/self-healing.md` — existing self-healing pattern
 - `huaweicloud-skill-generator/references/well-architected-assessment.md` §7 — Maturity Model
+- `docs/superpowers/plans/aiops-l5-autonomous.md` — 18 Batch plan (COMPLETE)
+- `docs/superpowers/specs/aiops-optimization.md` — L4 maturity spec (prerequisite)
+- `hwcloud-skillcheck/internal/l4/` — Go runtime implementation of L5 components
+- `hwcloud-skillcheck/internal/learning/` — Learning engine implementation
+- `hwcloud-skillcheck/cmd/l4.go` — CLI entry point for L5 operations

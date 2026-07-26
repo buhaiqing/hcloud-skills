@@ -579,3 +579,18 @@ of dev time if applied upfront:
 - *Alternative*: Could have batched the 4 L4 engines + learning into a single dispatch subagent. **Rejected**: the test contracts were tightly coupled (shared `HandleFaultInput` type, shared `l4` package), and orchestrator subagents don't have the same shared-context view. Inline implementation was actually faster than 4 subagent round-trips.
 - *Escalation*: The pre-commit check now surfaces pre-existing A-class issues (e.g. `huaweicloud-obs-ops/assets/example-config.yaml` missing anchors, `huaweicloud-skill-generator` missing `Worker Output Contract` section). These are NOT regressions from this migration — they were already broken in the data. Fix them in a separate PR; do not block this commit on them.
 - *Cross-Pillar Synergy*: Trust (progressive) and topology (blast radius) are now both inputs to the orchestrator's decision. A destructive op on a high-criticality resource with low trust automatically escalates. This is exactly the FinOps-SecOps-AIOps cross-pillar design the spec calls for.
+
+### 15. Plan-Document vs Code-State Synchronization Discipline (CADL — 2026-07-26)
+
+Lesson from the skillcheck-b-class wrap-up: Phase 2 and Phase 3 code had been
+quietly completed during Phase 1 merge cycles (via other PRs), but the plan
+document and tracking index still showed them as "not started." Phase 4 cleanup
+(delete Python scripts, update docs) was also already done. This created a
+misleading picture that required a code audit to resolve.
+
+| Rule | Why |
+|------|-----|
+| **After every PR merge that touches a tracked plan item, update the plan doc immediately** | Plans are the source of truth for what's done; a stale plan causes wasted re-exploration. Don't batch plan updates — update on merge. |
+| **Every `n` PRs (or weekly), audit plan status against the live code** | Phase 2/3 went stale because they were implemented piecemeal across unrelated PRs. A 5-minute `git log --oneline | grep` against plan task names catches drift. |
+| **Phase boundary in plan != git branch boundary** | Plan phases are a logical grouping; code can land in any order across any branch. Track per-component (not per-phase) in the plan to avoid the "phase says not started but code is merged" trap. |
+| **When closing a plan, verify DoD items by grep/read, not by memory** | The DoD said "8 Python scripts deleted" — I assumed they were still there based on the stale plan, but `ls scripts/*.py` showed zero. Grep before claiming incomplete. |

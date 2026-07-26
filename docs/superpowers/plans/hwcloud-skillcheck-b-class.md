@@ -1,7 +1,7 @@
 # Plan: hwcloud-skillcheck B 类迁移 — GCL 契约校验 + 运行时 GCL 编排
 
-> Status: ✅ READY (依赖 docs/superpowers/specs/hwcloud-skillcheck-b-class.md ✅ FINAL_SPEC)
-> Last updated: 2026-07-18
+> Status: ✅ COMPLETE — Phase 1~4 全部完成并合并 main
+> Last updated: 2026-07-26
 > Execution model: **并行 sub-agent + 主 Agent 聚合** (per AGENTS.md orchestrator rule + GCL rules §3)
 
 ## Execution Approach
@@ -180,14 +180,20 @@ diff <(echo "exit: $?") <(echo "exit: $?")
 
 ## Definition of Done
 
-- [ ] Phase 1 ~ Phase 4 全部完成并合并 main
-- [ ] 8 个 Python 脚本删除，`check_py310_compat.py` 删除，`ruff.toml` 删除
-- [ ] `scripts/install_hook.go` + `make install-hook` / `make check-hook` / `make uninstall-hook` 可用
-- [ ] `.githooks/pre-commit` 触发条件更新为 Go 文件
-- [ ] `validate_local.py` 不再引用已删 Python 脚本
-- [ ] `make all` 通过，`make self-check` 通过
-- [ ] 等价性测试覆盖所有迁移子命令
-- [ ] `docs/manual/hwcloud-skillcheck.md` 用户手册更新
-- [ ] README 中文/英文版更新
-- [ ] AGENTS.md 新增迁移经验沉淀
-- [ ] worktree 全部删除，无残留分支
+- [x] Phase 1 ~ Phase 4 全部完成并合并 main
+- [x] 8 个 Python 脚本删除，`check_py310_compat.py` 删除，`ruff.toml` 删除
+- [x] `scripts/install_hook.go` + `make install-hook` / `make check-hook` / `make uninstall-hook` 可用
+- [x] `.githooks/pre-commit` 触发条件更新为 Go 文件
+- [x] `validate_local.py` 不再引用已删 Python 脚本
+- [x] `make all` 通过，`make self-check` 通过
+- [x] 等价性测试覆盖所有迁移子命令
+- [x] `docs/manual/hwcloud-skillcheck.md` 用户手册更新
+- [x] README 中文/英文版更新
+- [x] AGENTS.md 新增迁移经验沉淀
+- [x] worktree 全部删除，无残留分支
+
+---
+
+> **Note**: Phase 2 (L2-A~D) 和 Phase 3 (L3-A~B, L4-A~B) 的代码并非在 plan 定义的独立 worktree 中完成，
+> 而是在 Phase 1 合并期间随其他 PR 陆续实现并合并到 main。Phase 4 清理（删除 Python 脚本、更新文档）
+> 也已在后续开发过程中同步完成。2026-07-26 收尾：更新计划文档和 AGENTS.md 经验沉淀。
