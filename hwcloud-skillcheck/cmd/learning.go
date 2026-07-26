@@ -151,8 +151,8 @@ func runTraceLearn(args []string) error {
 		}
 	}
 	if !matched {
-		flat := patternsAnyToMapAny(patterns)
-		entry := learning.CreatePatternEntry(fp, *skill, flat, filepath.Base(*tracePath))
+		nextNum := learning.MaxPatternID(patterns) + 1
+		entry := learning.CreatePatternEntry(fp, *skill, nextNum, filepath.Base(*tracePath))
 		patterns = append(patterns, entry)
 		fmt.Printf("Created new pattern: %s (%s)\n", entry["id"], entry["category"])
 	}
@@ -228,14 +228,4 @@ func firstTokenString(v any) string {
 		}
 	}
 	return s
-}
-
-func patternsAnyToMapAny(patterns []any) []map[string]any {
-	out := make([]map[string]any, 0, len(patterns))
-	for _, p := range patterns {
-		if m, ok := p.(map[string]any); ok {
-			out = append(out, m)
-		}
-	}
-	return out
 }

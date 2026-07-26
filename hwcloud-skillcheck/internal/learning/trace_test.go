@@ -59,15 +59,29 @@ func TestExtractPatternFromTrace_PresentForFAIL(t *testing.T) {
 	}
 }
 
-// TestMakePatternID_Sequential asserts ids are <PROD>-FP001, 002, ... from max+1.
+// TestMakePatternID_Sequential asserts ids are formatted with the
+// supplied nextNum.
 func TestMakePatternID_Sequential(t *testing.T) {
-	existing := []map[string]any{
-		{"id": "ECS-FP001"},
-		{"id": "ECS-FP003"},
-	}
-	got := MakePatternID("huaweicloud-ecs-ops", existing)
+	got := MakePatternID("huaweicloud-ecs-ops", 4)
 	if got != "ECS-FP004" {
 		t.Errorf("got %q, want ECS-FP004", got)
+	}
+}
+
+// TestMaxPatternID asserts the helper that callers use to feed
+// MakePatternID scans existing patterns for the highest numeric suffix.
+func TestMaxPatternID(t *testing.T) {
+	patterns := []any{
+		map[string]any{"id": "ECS-FP001"},
+		map[string]any{"id": "ECS-FP003"},
+		"not a map",
+		map[string]any{"no_id": true},
+	}
+	if got := MaxPatternID(patterns); got != 3 {
+		t.Errorf("got %d, want 3", got)
+	}
+	if got := MaxPatternID(nil); got != 0 {
+		t.Errorf("got %d, want 0", got)
 	}
 }
 
@@ -80,7 +94,7 @@ func TestCreatePatternEntry_Shape(t *testing.T) {
 		"command":  "hcloud rds create-instance",
 		"fix":      "Delegate to IAM",
 	}
-	entry := CreatePatternEntry(fp, "huaweicloud-rds-ops", nil, "trace-001.json")
+	entry := CreatePatternEntry(fp, "huaweicloud-rds-ops", 1, "trace-001.json")
 
 	if entry["id"] != "RDS-FP001" {
 		t.Errorf("id=%v, want RDS-FP001", entry["id"])
