@@ -196,51 +196,11 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - Tests live next to scripts (`scripts/*_test.py`) and are run via `python3 -m unittest discover -s scripts -p "*_test.py"`. Go tests in `hwcloud-skillcheck/` are run via `go test ./...`.
 - CI runs `hwcloud-skillcheck validate --root .` plus `go test ./...`; local dev MUST run the same suite before pushing.
 
-## Python 3.10 Syntax Compatibility (P0)
-
-> **As of 2026-07-26, only 1 Python script remains in `scripts/`:**
-> `gcl_runner.py`, kept as the human-readable cross-language spec for the GCL runner loop. The
-> 16 scripts previously listed here have all been migrated to Go: see §"Cross-Language
-> Migration Lessons (hwcloud-skillcheck Go Migration Retrospective)" below for the latest wave (L4
-> engines + learning + dead-code cleanup + drift guard + critic + GCL runner surface).
-## Python 3.10 Syntax Compatibility (P0)
-
-- Agent runtime executes scripts on **Python 3.10**, even though CI lints them with Python 3.11. Any 3.11-only symbol silently breaks the agent.
-- **Why two checks instead of one.** `py_compile` only validates parse-time
-  syntax; it does NOT execute imports. The original `from datetime import UTC`
-  bug shipped through CI because the syntax is valid on 3.10 — only name
-  resolution fails at runtime. The gate below now does both checks under
-  3.10: `py_compile` for syntax, plus an import dry-run for name resolution.
-- Disallowed in `scripts/*.py` (any 3.11+-only stdlib symbol used at runtime):
-
-  | Symbol | Why | 3.10 replacement |
-  |--------|-----|------------------|
-  | `from datetime import UTC` (and `datetime.UTC`) | 3.11+ alias | `from datetime import timezone; UTC = timezone.utc` with `# noqa: UP017` (see existing usage in `gcl_runner.py`) |
-  | `import tomllib` | 3.11+ stdlib module | `import json` (rewrite TOML to JSON/YAML) or `pip install tomli` + `import tomli as tomllib` |
-  | `typing.Self` (without `from __future__ import annotations`) | 3.11+ at runtime | `from typing import Self` (works on 3.10) |
-  | PEP 695 type aliases (`type Alias = int`) | 3.12+ syntax | `Alias = int` (plain assignment) |
-  | PEP 695 type parameters (`class C[T]:`, `def f[T](x: T)`) | 3.12+ syntax | `from typing import TypeVar, Generic` |
-  | `datetime.timezone.utc` 3.11+ features (`datetime.GregorianCalendar`, etc.) | varies | 3.10 compatible equivalent |
-
-  The list above is non-exhaustive; the import dry-run in
-  `check_py310_compat.py` is the source of truth. Add a new entry here when
-  you discover a new trap.
-- All scripts MUST start with `from __future__ import annotations` so PEP 604
-  / new-style generics remain *string* and are safe across 3.10 / 3.11 / 3.12.
-- **Enforcement** (in `scripts/pre_commit_check.sh`):
-  1. `python3 -m py_compile` on every `scripts/*.py` — syntax gate.
-  2. (Import dry-run was previously in `check_py310_compat.py`; that script
-     has been folded into the Go pre-commit gate — see `python-version: "3.10"`
-     pin in the CI workflow.)
-  3. Both run in fresh subprocesses; module-level state never leaks.
-  - Local: `bash scripts/pre_commit_check.sh` (runs py_compile under the
-    active `python3`).
-  - CI: same script, pinned to `python-version: "3.10"`.
-  - The `Python unit tests` workflow step **MUST** be pinned to 3.10 too;
-    without `setup-python: "3.10"` it inherits 3.11 and silently misses
-    3.10-only import errors.
-- **After every Python script change, the script MUST pass the syntax gate
-  under Python 3.10.** A regression is a release-blocker.
+> **As of 2026-07-26, zero Python scripts remain in `scripts/`.** All 17 scripts
+> previously listed have been migrated to Go: see §"Cross-Language Migration Lessons
+> (hwcloud-skillcheck Go Migration Retrospective)" below for the latest wave (L4 engines +
+> learning + dead-code cleanup + drift guard + critic + GCL runner surface + the
+> `gcl_runner.py` reference spec).
 
 ## Test Hermeticity — Runtime-State Tests (P0)
 
@@ -332,7 +292,7 @@ Detailed runtime-quality specifications are externalized to reduce always-loaded
 | Spec / Tool | Read or run before modifying |
 |---|---|
 | `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md`, GCL scripts, or CES GCL monitoring wiring |
-| `scripts/gcl_runner.py` | runtime Orchestrator loop; external Critic required in production |
+| `hwcloud-skillcheck gcl run --root .` | runtime Orchestrator loop; external Critic required in production |
 | `hwcloud-skillcheck aggregate trace --root .` | trace → quality summary aggregation |
 | `hwcloud-skillcheck gcl alarm-wire --root .` | CES alarm plan/apply for GCL SLOs |
 | `hwcloud-skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation |
@@ -402,7 +362,7 @@ Full spec: `references/self-healing-spec.md`
 
 ### GCL integration
 
-`gcl_runner.py` performs pre-execution risk check: before running the Generator command, it queries `failure_patterns.json` for known failure signatures matching the command. If matched, the trace includes `pre_execution_risk` with pattern_id, known_fix, and historical success rate.
+`hwcloud-skillcheck gcl run` performs pre-execution risk check: before running the Generator command, it queries `failure_patterns.json` for known failure signatures matching the command. If matched, the trace includes `pre_execution_risk` with pattern_id, known_fix, and historical success rate.
 
 ### Hard constraints
 
@@ -573,7 +533,7 @@ of dev time if applied upfront:
 
 | Script | Why kept |
 |--------|----------|
-| `gcl_runner.py` | The Go version (`internal/gcl/runner.go`) is the *implementation*; this Python file is the *reference spec* cited by `docs/gcl-spec.md` and `references/self-healing-spec.md`. Deleting it would break the spec citations. The Go version is now the canonical runtime path; the Python version serves as human-readable cross-language documentation. |
+| _(none)_ | As of 2026-07-26, zero Python scripts remain in `scripts/`. All GCL functionality (`internal/gcl/*.go`) and the spec citations in `docs/gcl-spec.md` / `references/self-healing-spec.md` are now served by the Go binary. The historical "Python kept for spec" rationale no longer applies. |
 
 ### 14. Self-Reflection: This Migration (2026-07-26)
 

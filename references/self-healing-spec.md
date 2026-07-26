@@ -196,7 +196,7 @@ def self_heal(alarm_event, skill_id):
 
 ### 5.1 触发条件
 
-- GCL trace 写入后（`gcl_runner.py` 自动触发）
+- GCL trace 写入后（`hwcloud-skillcheck gcl run` 自动触发）
 - 定期聚合（`hwcloud-skillcheck learning trace aggregate --skill <skill_id> --root .`）
 - 手动触发（`hwcloud-skillcheck learning trace learn --skill <skill_id> --trace <trace-path> --root .`）
 
@@ -222,7 +222,7 @@ audit-results/gcl-trace-*.json
 
 ### 5.3 GCL Runner 集成
 
-`gcl_runner.py` 在执行前查询 failure_patterns.json：
+`hwcloud-skillcheck gcl run` 在执行前查询 failure_patterns.json：
 
 ```python
 # Pre-execution: check known risks

@@ -92,22 +92,3 @@ jobs:
         # Reads the embedded trace fixture inside the binary and verifies the
         # 5-dimension scoring + blocking logic wires up end-to-end.
         run: ./bin/hwcloud-skillcheck critic score --generator scripts/fixtures/gcl-quality-summary-healthy.json || true
-
-      # --- Python: 3 remaining GCL reference scripts (gcl_runner/alarm_wire/trace_aggregate) ---
-      # Kept as the human-readable cross-language spec per AGENTS.md §13;
-      # ruff catches style drift, py_compile catches 3.10/3.11 syntax drift
-      # since the agent runtime still loads them under Python 3.10.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Ruff Python lint (3 GCL reference scripts only)
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: 0.11.8
-          args: check --output-format=github scripts/
-
-      - name: py_compile Python 3.10 compat
-        # Remaining Python scripts are loaded by the agent runtime under 3.10.
-        # Syntax drift between 3.10 and 3.11 is a release-blocker.
-        run: python3 -m py_compile scripts/*.py

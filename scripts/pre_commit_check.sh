@@ -49,13 +49,12 @@ run_gate() {
   fi
 }
 
-# ── 1. ruff lint (remaining Python files) ───────────────
+# ── 1. ruff lint (no-op when no Python files) ───────────
 if ls "$ROOT"/scripts/*.py >/dev/null 2>&1; then
   run_gate "ruff lint" ruff check scripts/
 fi
 
-# ── 2. Python 3.10 syntax compatibility ───────────────────
-# Covers both parse-level syntax (py_compile) and import-level 3.11+ names.
+# ── 2. Python 3.10 syntax compatibility (no-op when no Python files) ──
 if ls "$ROOT"/scripts/*.py >/dev/null 2>&1; then
   run_gate "py310 compat (py_compile)" python3 -m py_compile "$ROOT"/scripts/*.py
 fi
