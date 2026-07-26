@@ -68,27 +68,32 @@ func ComputeSuccessRate(h []OpHistory) float64 {
 }
 
 // ComputeConsistency is 1 - sqrt(variance of 0/1 outcomes).
+//
+// Two passes over h are required (you can't compute variance without
+// first knowing the mean), but the intermediate []float64 the prior
+// implementation allocated was unnecessary work — a success-count
+// accumulator lets us keep the passes in-line and drop the temporary
+// (saving ~8 bytes × len(h) on a 10k-entry history).
 func ComputeConsistency(h []OpHistory) float64 {
 	if len(h) < 3 {
 		return 0.5
 	}
-	out := make([]float64, len(h))
-	for i, x := range h {
+	successes := 0
+	for _, x := range h {
 		if x.Outcome == "success" {
-			out[i] = 1
+			successes++
 		}
 	}
-	mean := 0.0
-	for _, v := range out {
-		mean += v
-	}
-	mean /= float64(len(out))
+	mean := float64(successes) / float64(len(h))
 	var variance float64
-	for _, v := range out {
-		d := v - mean
+	for _, x := range h {
+		d := -mean
+		if x.Outcome == "success" {
+			d = 1.0 - mean
+		}
 		variance += d * d
 	}
-	variance /= float64(len(out))
+	variance /= float64(len(h))
 	val := 1.0 - math.Sqrt(variance)
 	if val < 0 {
 		val = 0
@@ -136,23 +141,26 @@ func parseISO(s string) (time.Time, error) {
 }
 
 // ComputeComplexityMastery is success rate over high/critical operations.
+//
+// Prior implementation built a temporary `complex []OpHistory` slice
+// only to drop it two lines later and re-iterate, costing ~16 bytes
+// per entry × count. Fold the work into a single pass that tracks
+// (n, successCount) inline.
 func ComputeComplexityMastery(h []OpHistory) float64 {
-	var complex []OpHistory
+	n := 0
+	s := 0
 	for _, x := range h {
 		if x.RiskLevel == "high" || x.RiskLevel == "critical" {
-			complex = append(complex, x)
+			n++
+			if x.Outcome == "success" {
+				s++
+			}
 		}
 	}
-	if len(complex) == 0 {
+	if n == 0 {
 		return 0.5
 	}
-	s := 0
-	for _, x := range complex {
-		if x.Outcome == "success" {
-			s++
-		}
-	}
-	return float64(s) / float64(len(complex))
+	return float64(s) / float64(n)
 }
 
 // ComputeErrorRecovery is fraction of failures followed by a success.
