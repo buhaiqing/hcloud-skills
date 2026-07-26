@@ -196,12 +196,6 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - CI runs `hwcloud-skillcheck validate --root .` plus `go test ./... -race`; local dev MUST run the same suite before pushing.
 
 > **As of 2026-07-26, zero Python scripts remain in `scripts/`.** All 17 scripts
-> previously listed have been migrated to Go: see §"Cross-Language Migration Lessons
-> (hwcloud-skillcheck Go Migration Retrospective)" below for the latest wave (L4 engines +
-> learning + dead-code cleanup + drift guard + critic + GCL runner surface + the
-> `gcl_runner.py` reference spec).
-
-## Decision-Question Rule: Always Lead With a Recommendation
 
 When asking the user a multiple-choice question — through `AskUserQuestion`, free-form
 prose, or any other channel — every option beyond the first MUST be accompanied by:
@@ -410,6 +404,10 @@ CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Se
 1. **读前 sync** — 任何 `codegraph explore/impact/callees` 前先 `codegraph sync --quiet`（过期索引产生假阴性）。例外：`codegraph status` 显示 up-to-date 且距变更 < 几分钟。
 2. **写后 sync** — 每次 Go/Python 变更提交前必须 sync。Agent 纪律，非 CI 门禁。
 3. **MCP 优先** — 代码理解任务先 `codegraph explore <symbol>`，再 grep/read 补充（AST+调用图覆盖接口实现、动态派送）。纯文本搜索除外。
+4. **Fallback 层级** — 代码理解按以下顺序选择工具：
+   - **首选**：`codegraph explore <symbol>`（符号定义、调用者、影响面分析）
+   - **备选**：`grep` / `read` / `rg`（当 CodeGraph 不可用、索引过期、或仅需文本匹配时）
+   - **显式原则**：当 `codegraph explore` 已能回答问题时，禁止跳过他直接用 grep
 
 | 场景 | 命令 |
 |------|------|
@@ -418,179 +416,3 @@ CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Se
 | 同步索引 | `codegraph sync --quiet` |
 
 MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegraph` 在 PATH 中（`which codegraph` 验证）。
-
----
-
-## Cross-Language Migration Lessons (hwcloud-skillcheck Go Migration Retrospective)
-
-Lessons from migrating ~5000 lines of Python A-class validation scripts to a Go CLI binary (`hwcloud-skillcheck/`). Reusable for any future Go migration in this repo.
-
-### 1. Embed + .gitignore Trap
-
-`//go:embed fixtures/*.json` requires fixture files to be tracked by git. Top-level `.gitignore` patterns (`**/gcl-trace-*.json`) silently exclude them → `go build` fails with `no matching files found`.
-
-**Rule**: Always verify `git check-ignore` on every `//go:embed` glob pattern before committing. Add `!` negation rules in `.gitignore` for embed directories.
-
-### 2. Equivalence Test Strategy
-
-When comparing Python ↔ Go output, use **structured equivalence** not byte-for-byte comparison:
-
-| Check | Rule |
-|-------|------|
-| Exit code | Python fail → Go must also fail (no false negatives) |
-| Failure items | Same `[FAIL]` line set (after normalizing paths/timestamps) |
-| Strictness | Go may be stricter than Python — acceptable |
-
-### 3. String → Rune in Go
-
-`s[i]` yields a single byte, not a rune. For multi-byte UTF-8 characters (Chinese, emoji, special symbols in YAML/markdown), use `utf8.DecodeRuneInString()`. This is the #1 correctness bug in Python→Go migrations.
-
-### 4. Subprocess Flag Semantics
-
-`gofmt -l` (list unformatted files) and `gofmt -w` (write in-place) are mutually exclusive output modes. Never replace one with the other — use `-l` for detection and conditionally run `-w` for fix mode, preserving the listing output.
-
-### 5. Error Disposal in Go
-
-`_ = fn()` in Go is the equivalent of `try: fn() except: pass` in Python — it silently swallows failures. Every non-trivial return value (especially `error`) must be checked. A `grep '_ = .*error'` check before commit catches most of these.
-
-### 6. Migration Order
-
-```
-Shared libraries (schema validator, security scanner) → Internal packages (YAML, coverage) → CLI subcommands (validate, check, scan, aggregate) → Integration tests → Equivalence tests → Delete Python originals (after 2-week bake)
-```
-
-### 7. Zero-External-Dependency Binary
-
-`schema/`, `security/`, `yaml/`, `coverage/` + Go stdlib + `gopkg.in/yaml.v3` = complete A-class coverage. No Python, no Node, no shell scripts needed at runtime.
-
-### 8. Orchestration Script ↔ CLI Flag Contract
-
-When migrating a Python CLI to Go binary, orchestration scripts (CI workflows, internal callers) that invoke the CLI **must** be updated to match the new Go flag interface. Go binaries often simplify flags (e.g., `--root <skill-dir>` replaces `--skill <name> --request <text> --command <cmd>`). As of 2026-07-26 no Python scripts remain in `scripts/` — every invocation in pre-commit / CI / Makefile goes through `hwcloud-skillcheck` (see §8 table above for the mapping).
-
-**Rule**: After any CLI migration, grep all callers (`validate_local.py`, `.github/workflows/`, `Makefile`) for the old invocation pattern and update them in the same PR.
-
-### 9. Advanced Ops Component Pattern (CADL)
-
-When adding standalone operational intelligence scripts (`dynamic_orchestration.py`, `predictive_ops.py`, `topology_graph.py`, `progressive_trust.py`):
-
-| Rule | Rationale |
-|------|----------|
-| Each script is self-contained with argparse CLI + `--json` output | Enables pipeline composition and CI integration |
-| Static knowledge (skill registry, dependency edges, thresholds) lives as module-level dicts | Avoids external config files; versioned with code |
-| All scripts share `ROOT_DEFAULT = Path(__file__).resolve().parents[1]` | Consistent repo-root resolution |
-| Use `UTC = timezone.utc  # noqa: UP017` (not `datetime.UTC`) | Python 3.10 compat (P0 gate) |
-| Smoke-test each subcommand after creation | Catches argparse wiring bugs (e.g. duplicate `set_defaults`) early |
-
-### 10. L4 Closed-Loop Orchestrator Pattern (CADL — 2026-07-25)
-
-Lessons from porting the L4 engines + GCL chaining logic to Go (`hwcloud-skillcheck/internal/l4/...`) and the `l4 handle` CLI subcommand:
-
-| Rule | Why |
-|------|-----|
-| **Engine composition = function import, not subprocess** | `import dynamic_orchestration as do; do.match_fault_skills(...)` is ~10× faster and lets you share state. Reserve subprocess for true process boundaries. |
-| **Check engine function signatures BEFORE coding** | `evaluate_operation(trust_score, op_risk, op_type)` not `(... current_time=...)`; `build_execution_plan(fault, skills, strategy)` not `(..., transitive_skills=...)`; step key is `action` not `execute`. Wrong kwargs waste 30-50% of dev time. |
-| **`structural_critic()` returns `{"scores":..., "suggestions":..., "blocking":...}`** not just scores. Pass `.get("scores", {})` to `decide()`. |
-| **Generator payload must include `exit_code` + `result_excerpt`** for `structural_critic` to score `spec_compliance ≥ 0.5`. Empty/unset → RETRY regardless of safety. |
-| **JSON values: `null` in Python dict → `None`, not `null`** | `null` is JSON syntax; Python `null` is undefined. Linter catches this immediately. |
-| **Knowledge base bootstrap: write a generator script, not 80 hand-crafted JSON files** | `gen_skill_knowledge.py` produced RDS/VPC/ELB/CCE × (10 patterns + 4 playbooks) in one run. Re-run when OpenAPI error codes change. |
-| **Trust state persistence: default-load from `<root>/<skill>/assets/trust_history.json`** | Makes the tool chain-friendly. `--trust-data` becomes optional override, not required. |
-| **Topology dynamic discovery: parse `references/integration.md` delegation tables** | Hidden source of truth — every skill already documents cross-skill deps there. Static model + dynamic parse gives 3→13 affected resources on RDS blast radius. |
-| **Persisted trace lives in `audit-results/` (gitignored)**, not in skill assets | Keeps skills clean; trace files are operational state, not knowledge. |
-| **Critic v1 output schema must pass `validate_critic_payload()`** | The 5-dim scores must be `{0, 0.5, 1}` literal — booleans/percentages silently fail validation. |
-
-### 11. SearchReplace Tool Limitation: "partial success" silent failure
-
-The `SearchReplace` tool occasionally reports `save file ... failed, reason: unknown` yet still modifies the file content (verified by grep). On such failures:
-
-1. Always re-grep the file to confirm whether the edit actually landed.
-2. If not applied, fall back to `Bash` with `sed -i ''` for simple line replacements — it works where the structured tool doesn't.
-3. Never waste a retry round assuming the prior edit applied without verification.
-
-**Cost of ignoring**: silent partial state = 2-3 extra debugging iterations per file.
-
-### 12. Frontmatter Backfill Discipline (CADL — 2026-07-25)
-
-Lesson from backfilling SKILL.md `delegates_to:` for 24 skills (the original Python backfill script lives in git history only — preserved as a reference pattern):
-
-| Rule | Why |
-|------|-----|
-| **Insert in canonical position (after `name:`), not at end** | Most YAML frontmatter loaders expect fields in consistent positions; appending breaks generator diffs and PR review. |
-| **Parse YAML BEFORE and AFTER the change** | Pre-existing YAML bugs (like `huaweicloud-ecs-ops/SKILL.md` line 56 dangling line) will pass `yaml.safe_load()` after edit too — you must compare BEFORE/AFTER error to attribute blame correctly. |
-| **Idempotent regex: detect existing block AND insert-only path separately** | `re.sub(no_match, new_block)` is a silent no-op; you need explicit `search() == None` branch with insert logic. |
-| **Body extraction: skip frontmatter before scanning for `huaweicloud-X-ops` mentions** | Otherwise self-references in the YAML key would pollute the delegation list. |
-| **Convention: always include the key, even when empty (`delegates_to: []`)** | Makes generator output deterministic; downstream parsers don't need null-checks. |
-
-**Cost of ignoring**: silently broken backfill = "0 changes reported" success message, but source 1 stays inactive — silent failure that the user catches.
-
-### 13. L4 + Learning Migration Wave (CADL — 2026-07-26)
-
-Second wave of the hwcloud-skillcheck Go migration, porting the L4 runtime engines
-and learning loop (4,200 LOC Python → 6,500 LOC Go) and deleting 12 dead
-Python scripts. Lessons learned — all of these would have saved 30-50%
-of dev time if applied upfront:
-
-| Rule | Why |
-|------|-----|
-| **TDD: write the test first, see it fail, then write the impl** | The `learning` and `l4` packages are 100% test-driven: every Go function was preceded by a failing test. Tests written *after* the impl always pass immediately and prove nothing. The Iron Law is real: "NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST." |
-| **Tests are the contract; do not modify them during impl** | After RED, dispatch the impl as a single batched subagent (or write it inline) with strict instructions: "make these tests pass, do not touch the test files." This separates contract design from mechanical implementation. |
-| **Map Python tuple semantics carefully** | Python's `_signature_key()` returns `(category, error, cmd)` as a tuple; Go's natural equivalent is a `string` or a struct. Choose the form that makes the dedup test trivial. Two same inputs should produce a key that compares equal; two different inputs (e.g. `hcloud ecs ...` vs `aws rds ...`) should differ. First-token extraction is the Python contract — replicate it exactly. |
-| **int vs float64 in JSON round-trips** | `stats["occurrence_count"]` is `int(1)` in-memory but `float64(1)` after `json.Marshal/Unmarshal`. Either normalize at marshal time, OR write the test to accept both. The second is cheaper and matches the in-memory contract. |
-| **Composite literals need explicit type tags when nested** | `var TrustLevels = []struct{ Key string; Def TrustLevel }{{"L4", {MinScore: 0.95, ...}}}` is a compile error — Go can't infer the inner type. Tag the inner literal: `TrustLevel{MinScore: 0.95, ...}`. |
-| **The orchestrator reads `trust_history.json` from disk by default** | Python's `cmd_handle` falls back to `<root>/<skill>/assets/trust_history.json` when `--trust-data` is omitted. The Go port must do the same: when `in.TrustData == nil`, call `LoadTrustData(root, primarySkill)`. The primary skill is `plan.Steps[0].Skill`, not the matched-skill list head — these differ when the strategy is `pipeline` (first step is monitoring, not the matched priority). |
-| **Trace files must include every block the consumers expect** | Downstream `gcl_security_scan` reads `topology`, `orchestration`, `trust`, `gcl`, `learning` from the trace. The Python `runtime_orchestrator` writes all of them; the first Go port forgot `orchestration` and `gcl`. Symptom: `TestHandleFault_TraceFileMaskedSecrets` failed with "trace missing orchestration block". Fix: add them to the trace map. |
-| **Vet warnings block `go test`** | `go test` runs `go vet` first. `fmt.Fprintln(os.Stderr, "...\n")` triggers "redundant newline" if the string ends in `\n`. Use `fmt.Fprint` (not `Fprintln`) when the string already has a trailing newline. |
-| **DEAD CODE has the highest ROI** | Deleting 12 Python scripts (already replaced by Go) gave more developer-time back than any single porting effort. The migration was effectively "done" the moment the Go surface covered the Python surface — the porting was just confirmation. **Audit for dead code first**, then port what's actually used. |
-| **Re-run Go tests after every `gofmt -w`** | `gofmt -l .` returns non-empty on unformatted files; `go test ./...` doesn't auto-format. Always `gofmt -w .` before the final test pass, or CI fails with `unformatted` gate. |
-
-**New CLI subcommands added (replace deleted Python scripts):**
-
-| Deleted Python | New Go command |
-|----------------|----------------|
-| `gen_skill_knowledge.py` | `hwcloud-skillcheck learning gen --root .` |
-| `trace_learning.py aggregate` | `hwcloud-skillcheck learning trace aggregate --root . --skill huaweicloud-ecs-ops` |
-| `trace_learning.py learn`    | `hwcloud-skillcheck learning trace learn --root . --skill <s> --trace <path>` |
-| `trace_learning.py report`   | `hwcloud-skillcheck learning trace report --root . --skill <s>` |
-| `dynamic_orchestration.py plan` | (folded into `hwcloud-skillcheck l4 handle --fault <text>`) |
-| `topology_graph.py build/impact/query/criticality/discovery` | (folded into `hwcloud-skillcheck l4 handle`) |
-| `predictive_ops.py forecast/scan/recommend` | (folded into `hwcloud-skillcheck l4 handle --metric-values ... --metric-threshold ...`) |
-| `progressive_trust.py score/evaluate/update/report/state-path` | (folded into `hwcloud-skillcheck l4 handle --trust-data ...`) |
-| `runtime_orchestrator.py handle` | `hwcloud-skillcheck l4 handle --fault <text> [--risk low\|medium\|high\|critical]` |
-| `validate_local.py` | `hwcloud-skillcheck validate --root .` (Go total-entry) |
-| `check_skill_frontmatter.py` | `hwcloud-skillcheck validate frontmatter --root .` |
-| `check_markdown_links.py` | `hwcloud-skillcheck check markdown-links --root .` |
-| `backfill_delegates_to.py` | (one-shot, already executed; deleted) |
-
-**Python scripts intentionally kept** (per GCL spec / AGENTS.md invariant):
-
-| Script | Why kept |
-|--------|----------|
-| _(none)_ | As of 2026-07-26, zero Python scripts remain in `scripts/`. All GCL functionality (`internal/gcl/*.go`) and the spec citations in `docs/gcl-spec.md` / `references/self-healing-spec.md` are now served by the Go binary. The historical "Python kept for spec" rationale no longer applies. |
-
-### 14. Self-Reflection: This Migration (2026-07-26)
-
-**Round 1 — Foundation:**
-- *FinOps*: L4 closed-loop automation directly reduces human-on-call minutes per incident. The `auto_proceed` vs `human_review_required` decision gates unnecessary approvals (saves ~5min per ops action).
-- *SecOps*: Trust-tier gating (L0_new → L4_autonomous) means destructive ops are blocked unless the skill has earned L4 trust through consistent success. Even with `--risk critical`, score < 0.95 forces human review.
-- *AIOps*: predictive breach detection (predictive_ops → Go) feeds the orchestrator's predictive block; the GCL structural critic runs on every step before execution; failure patterns (failure_patterns.json) close the loop.
-- *TE-7*: The new `internal/l4/` and `internal/learning/` packages are "advanced" surface area — they should be in `references/advanced/` per the AIOps/FinOps rule. **For now they're at the package root** because that's the only place Go tests can import them. Document this trade-off in code comments; revisit if/when `references/advanced/` becomes a Go-importable path.
-
-**Round 2 — Critical Analysis:**
-- *Gap*: A `l4 handle` call writes an `orchestrator-trace-*.json` to `<root>/audit-results/`. If `<root>` is a TmpDir (test case), the trace is lost. Production deployments should use a persistent audit directory; add a `--audit-dir` flag in a follow-up if needed.
-- *Alternative*: Could have batched the 4 L4 engines + learning into a single dispatch subagent. **Rejected**: the test contracts were tightly coupled (shared `HandleFaultInput` type, shared `l4` package), and orchestrator subagents don't have the same shared-context view. Inline implementation was actually faster than 4 subagent round-trips.
-- *Escalation*: The pre-commit check now surfaces pre-existing A-class issues (e.g. `huaweicloud-obs-ops/assets/example-config.yaml` missing anchors, `huaweicloud-skill-generator` missing `Worker Output Contract` section). These are NOT regressions from this migration — they were already broken in the data. Fix them in a separate PR; do not block this commit on them.
-- *Cross-Pillar Synergy*: Trust (progressive) and topology (blast radius) are now both inputs to the orchestrator's decision. A destructive op on a high-criticality resource with low trust automatically escalates. This is exactly the FinOps-SecOps-AIOps cross-pillar design the spec calls for.
-
-### 15. Plan-Document vs Code-State Synchronization Discipline (CADL — 2026-07-26)
-
-Lesson from the skillcheck-b-class wrap-up: Phase 2 and Phase 3 code had been
-quietly completed during Phase 1 merge cycles (via other PRs), but the plan
-document and tracking index still showed them as "not started." Phase 4 cleanup
-(delete Python scripts, update docs) was also already done. This created a
-misleading picture that required a code audit to resolve.
-
-| Rule | Why |
-|------|-----|
-| **After every PR merge that touches a tracked plan item, update the plan doc immediately** | Plans are the source of truth for what's done; a stale plan causes wasted re-exploration. Don't batch plan updates — update on merge. |
-| **Every `n` PRs (or weekly), audit plan status against the live code** | Phase 2/3 went stale because they were implemented piecemeal across unrelated PRs. A 5-minute `git log --oneline | grep` against plan task names catches drift. |
-| **Phase boundary in plan != git branch boundary** | Plan phases are a logical grouping; code can land in any order across any branch. Track per-component (not per-phase) in the plan to avoid the "phase says not started but code is merged" trap. |
-| **When closing a plan, verify DoD items by grep/read, not by memory** | The DoD said "8 Python scripts deleted" — I assumed they were still there based on the stale plan, but `ls scripts/*.py` showed zero. Grep before claiming incomplete. |
