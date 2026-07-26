@@ -52,20 +52,18 @@ run_gate() {
   fi
 }
 
-# ── 1. Go: build, fmt, vet ────────────────────────────────
-run_gate "hwcloud-skillcheck build" bash -c "cd $ROOT/hwcloud-skillcheck && go build -trimpath -o $SKILLCHECK_BIN ."
+# ── 1. Go: fmt, vet (binary is built conditionally above; running `go build`
+#    here again would just rebuild the same artifact and double wall-clock cost) ──
 run_gate "gofmt" bash -c "cd $ROOT/hwcloud-skillcheck && [ -z \"\$(gofmt -l .)\" ]"
 run_gate "go vet" bash -c "cd $ROOT/hwcloud-skillcheck && go vet ./..."
 
-# ── 2. Go: A-class total entry ──
+# ── 2. Go: A-class total entry (already runs validate frontmatter, eval-queries,
+#    product-assessment, example-config, markdown-links, references-links, and
+#    advanced-coverage). The four `check X` calls below used to repeat that
+#    work and double subprocess startup cost. Keep `audit-results` as a
+#    dedicated gate because the validate total-entry does NOT cover it. ──
 run_gate "hwcloud-skillcheck validate" "$SKILLCHECK_BIN" validate --root "$ROOT"
-
-# ── 3. Go: per-check subcommands ───────────────────────────
-run_gate "hwcloud-skillcheck check markdown-links"   "$SKILLCHECK_BIN" check markdown-links --root "$ROOT"
-run_gate "hwcloud-skillcheck check references-links" "$SKILLCHECK_BIN" check references-links --root "$ROOT"
-run_gate "hwcloud-skillcheck check example-config"    "$SKILLCHECK_BIN" check example-config --root "$ROOT"
-run_gate "hwcloud-skillcheck check advanced-coverage" "$SKILLCHECK_BIN" check advanced-coverage --root "$ROOT"
-run_gate "hwcloud-skillcheck check audit-results"     "$SKILLCHECK_BIN" check audit-results --root "$ROOT"
+run_gate "hwcloud-skillcheck check audit-results" "$SKILLCHECK_BIN" check audit-results --root "$ROOT"
 
 # ── 4. Go: GCL surface ──
 run_gate "hwcloud-skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --root "$ROOT"
@@ -77,9 +75,7 @@ run_gate "hwcloud-skillcheck l4 handle smoke" "$SKILLCHECK_BIN" l4 handle --faul
 # ── 6. Go: skill_generator drift guard (sync + check; sync is self-healing) ──
 run_gate "skill_generator drift guard" bash -c "\"$SKILLCHECK_BIN\" drift sync --apply --root \"$ROOT\" && \"$SKILLCHECK_BIN\" drift check --root \"$ROOT\""
 
-# ── 7. Unit tests (skipped in pre-commit hook) ──────────
-
-# ── 9. Unit tests (skipped in pre-commit hook) ──────────
+# ── 6. Unit tests (skipped in pre-commit hook) ──────────
 if (( SKIP_TESTS == 0 )); then
   run_gate "Go test" bash -c "cd $ROOT/hwcloud-skillcheck && go test ./... -count=1"
 fi
