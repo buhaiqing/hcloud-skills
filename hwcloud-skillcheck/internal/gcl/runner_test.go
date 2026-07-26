@@ -3,6 +3,7 @@ package gcl
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,6 +130,28 @@ func TestStructuralCritic_CredentialLeak(t *testing.T) {
 }
 
 // ---- Run -----------------------------------------------------------------
+
+func TestExternalCritic_PassesThrough(t *testing.T) {
+	if _, err := exec.LookPath("/bin/echo"); err != nil {
+		t.Skip("/bin/echo not available on this platform")
+	}
+	// /bin/echo prints its arguments, so we feed it a fixed CriticResult JSON
+	// and assert the Run happily accepts the synthetic scores.
+	// Skipping when /bin/echo is absent (Windows / stripped containers).
+	criticJSON := `{"scores":{"correctness":1,"safety":1,"idempotency":1,"traceability":1,"spec_compliance":1}}`
+	cfg := RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Request: "list servers",
+		Command: "echo hello",
+		MaxIter: 1,
+		Timeout: 10,
+		Critic:  NewExternalCritic("/bin/echo", criticJSON),
+	}
+	result := Run(cfg)
+	if result.ExitCode != 0 {
+		t.Errorf("Run with /bin/echo critic: exit code %d, want 0", result.ExitCode)
+	}
+}
 
 func TestRun_GenOutput(t *testing.T) {
 	cfg := RunConfig{
