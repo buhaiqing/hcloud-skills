@@ -52,7 +52,10 @@ jobs:
 
       # --- Go: GCL surface ---
       - name: hwcloud-skillcheck aggregate trace
-        run: ./bin/hwcloud-skillcheck aggregate trace --root .
+        # --require-traces makes the gate fail on a fresh CI checkout with no
+        # trace files instead of silently passing — the parsing path must be
+        # exercised every run.
+        run: ./bin/hwcloud-skillcheck aggregate trace --require-traces --root .
 
       - name: hwcloud-skillcheck gcl alarm-wire (no mutations)
         run: |

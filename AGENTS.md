@@ -202,6 +202,38 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 > learning + dead-code cleanup + drift guard + critic + GCL runner surface + the
 > `gcl_runner.py` reference spec).
 
+## Decision-Question Rule: Always Lead With a Recommendation
+
+When asking the user a multiple-choice question — through `AskUserQuestion`, free-form
+prose, or any other channel — every option beyond the first MUST be accompanied by:
+
+1. **A recommended option.** Pick the one you (the agent) would choose in the user's
+   shoes given the evidence in scope, and label it as the recommendation
+   (`(Recommended)` in `AskUserQuestion`; `**推荐:A**` or similar in prose).
+2. **The reasoning.** One to three short lines that connect the recommendation to
+   the evidence: which finding is the highest priority, which option closes the
+   loop fastest, what trade-off the other options accept.
+
+**Why this is a rule, not a default.** Most option-lists defer the call to the user.
+That pushes the cognitive cost of every decision onto one person who has less
+context than the agent that produced the trade-off list. The user has delegated the
+investigation; they hired the agent's judgment, not its menu. The recommendation
+should still be defensible — the user can override freely — but it should not be
+absent.
+
+**Acceptance test before sending a question:** if you delete the user from the
+room, would you still know which option to take? If yes, state it. If no (pure
+preference with no evidence), ask without a recommendation and say so.
+
+**Exceptions** (when to ask without a recommendation):
+- Personal preference (color scheme, naming, library choice with no measurable
+  impact).
+- Decisions locked behind missing context the user has but you don't (e.g., team
+  conventions, customer SLA).
+- Decisions where the user previously declared the answer (re-confirming is noise).
+
+In every other case: lead with the recommendation.
+
 ## Test Hermeticity — Runtime-State Tests (P0)
 
 - **Tests that touch the real repo (`Path(__file__).resolve().parents[1]`)

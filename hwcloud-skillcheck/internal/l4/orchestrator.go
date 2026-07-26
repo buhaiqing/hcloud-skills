@@ -355,10 +355,10 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		trace["decision"] = "halt"
 	}
 	auditRoot := filepath.Join(root, "audit-results")
-	_ = os.MkdirAll(auditRoot, 0o755)
+	_ = os.MkdirAll(auditRoot, 0o700)
 	tracePath := filepath.Join(auditRoot, fmt.Sprintf("orchestrator-trace-%s.json", faultID))
 	raw, _ := json.MarshalIndent(trace, "", "  ")
-	_ = os.WriteFile(tracePath, append(raw, '\n'), 0o644)
+	_ = os.WriteFile(tracePath, append(raw, '\n'), 0o600)
 	learning.TracePersisted = tracePath
 
 	decision := "human_review_required"
