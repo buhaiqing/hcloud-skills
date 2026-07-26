@@ -97,7 +97,7 @@ const maxCaptureBytes = 1 << 20 // 1 MiB
 type cappedWriter struct {
 	buf          bytes.Buffer
 	cap          int
-	truncated     bool
+	truncated    bool
 	droppedBytes int64
 }
 
