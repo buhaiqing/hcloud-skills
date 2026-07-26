@@ -96,7 +96,9 @@ func Sync(root string, dryRun bool) (*Report, error) {
 		}
 	}
 	r.appendFileActions(canonical, runtime, dryRun)
-	r.OK = true
+	// appendFileActions records per-file failures in r.Errors but does not
+	// raise to the caller. Honor that: any reconcile error fails the sync.
+	r.OK = len(r.Errors) == 0
 	return r, nil
 }
 

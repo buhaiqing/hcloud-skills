@@ -66,7 +66,7 @@ run_gate "hwcloud-skillcheck validate" "$SKILLCHECK_BIN" validate --root "$ROOT"
 run_gate "hwcloud-skillcheck check audit-results" "$SKILLCHECK_BIN" check audit-results --root "$ROOT"
 
 # ── 4. Go: GCL surface ──
-run_gate "hwcloud-skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --root "$ROOT"
+run_gate "hwcloud-skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace --require-traces --root "$ROOT"
 
 # ── 5. Go: learning + l4 subcommands ──
 run_gate "hwcloud-skillcheck learning gen" "$SKILLCHECK_BIN" learning gen --root "$ROOT"
