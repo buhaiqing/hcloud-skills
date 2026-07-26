@@ -232,16 +232,19 @@ func checkExampleYAMLBasic(block, rel string) []string {
 	return errs
 }
 
+// yamlKeyRE matches YAML map keys indented at >= 1 space; capture groups are
+// (indent run, key). Compiled once per process — not per call.
+var yamlKeyRE = regexp.MustCompile(`^(\s+)([A-Za-z_][\w-]*):\s`)
+
 // detectRepeatedKeys counts keys (indent <= 2) that appear 3+ times in block.
 func detectRepeatedKeys(block string) []string {
 	counts := map[string]int{}
-	keyRe := regexp.MustCompile(`^(\s+)([A-Za-z_][\w-]*):\s`)
 	for _, raw := range strings.Split(block, "\n") {
 		stripped := strings.TrimSpace(raw)
 		if stripped == "" || strings.HasPrefix(stripped, "#") {
 			continue
 		}
-		m := keyRe.FindStringSubmatch(raw)
+		m := yamlKeyRE.FindStringSubmatch(raw)
 		if m == nil {
 			continue
 		}

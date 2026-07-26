@@ -95,13 +95,56 @@ var requiredContractFiles = map[string]string{
 	"backbone":        "huaweicloud-skill-generator/references/gcl-prompt-backbone.md",
 }
 
+// contractItemREs is the compiled form of contractItems[i].pattern, indexed
+// parallel to contractItems so checkGeneratorContract can probe each pattern
+// without paying compilation cost on every call.
+var contractItemREs []*regexp.Regexp
+
+// expectedSafetyClassWordREs[i] compiles `\b<value>\b` for the i-th entry in
+// expectedSafetyClassValues — same data, pre-compiled.
+var expectedSafetyClassWordREs []*regexp.Regexp
+
+// maskKeywordRe is the static regex used to check that resource-scope docs
+// mention masking.
+var maskKeywordRe = regexp.MustCompile(`(?i)mask`)
+
+// allowedResourceScopePatternREs[i] is the compiled form of
+// allowedResourceScopePatterns[i].
+var allowedResourceScopePatternREs []*regexp.Regexp
+
+func init() {
+	contractItemREs = make([]*regexp.Regexp, len(contractItems))
+	for i, ci := range contractItems {
+		contractItemREs[i] = regexp.MustCompile(ci.pattern)
+	}
+	expectedSafetyClassWordREs = make([]*regexp.Regexp, len(expectedSafetyClassValues))
+	for i, val := range expectedSafetyClassValues {
+		expectedSafetyClassWordREs[i] = regexp.MustCompile(`\b` + regexp.QuoteMeta(val) + `\b`)
+	}
+	allowedResourceScopePatternREs = make([]*regexp.Regexp, len(allowedResourceScopePatterns))
+	for i, pat := range allowedResourceScopePatterns {
+		allowedResourceScopePatternREs[i] = regexp.MustCompile(pat)
+	}
+}
+
+// Static regexes for hasBarePlaceholdersContract. The pattern set is fixed
+// (allow lists for {{env/user/output.X}} and ${VAR}, plus the bare-{{}} to
+// strip before the final bare {} probe) so compiling them per call is pure
+// waste. Hoisted to package scope.
+var (
+	contractAllowedTripleRe = regexp.MustCompile(`\{\{\s*(env|user|output)\.[^{}]+\}\}`)
+	contractEnvVarRe        = regexp.MustCompile(`\$\{[A-Z_][A-Z0-9_]*\}`)
+	contractEscapedRe       = regexp.MustCompile(`\{\{[^}]+\}\}`)
+	contractBareRe          = regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_.-]*\}`)
+)
+
 func hasBarePlaceholdersContract(text string) bool {
 	text = stripComments(text)
-	allowed := regexp.MustCompile(`\{\{\s*(env|user|output)\.[^{}]+\}\}`).ReplaceAllString(text, "")
-	allowed = regexp.MustCompile(`\$\{[A-Z_][A-Z0-9_]*\}`).ReplaceAllString(allowed, "")
+	allowed := contractAllowedTripleRe.ReplaceAllString(text, "")
+	allowed = contractEnvVarRe.ReplaceAllString(allowed, "")
 	// Strip escaped {{...}} and then check for bare {placeholders}
-	allowed = regexp.MustCompile(`\{\{[^}]+\}\}`).ReplaceAllString(allowed, "")
-	return regexp.MustCompile(`\{[a-zA-Z_][a-zA-Z0-9_.-]*\}`).MatchString(allowed)
+	allowed = contractEscapedRe.ReplaceAllString(allowed, "")
+	return contractBareRe.MatchString(allowed)
 }
 
 func stripComments(text string) string {
@@ -136,9 +179,9 @@ func checkGeneratorContract(root string) generatorContractReport {
 	var checks []contractCheckItem
 
 	// Pattern checks
-	for _, ci := range contractItems {
+	for i, ci := range contractItems {
 		text := texts[ci.scope]
-		ok := regexp.MustCompile(ci.pattern).MatchString(text)
+		ok := contractItemREs[i].MatchString(text)
 		checks = append(checks, contractCheckItem{Scope: ci.scope, Item: ci.item, OK: ok})
 		if !ok {
 			failures = append(failures, contractFailure{
@@ -386,9 +429,9 @@ func checkSafetyClassDocs(root string) []string {
 			continue
 		}
 		text := readFileString(path)
-		for _, val := range expectedSafetyClassValues {
-			if !regexp.MustCompile(`\b` + regexp.QuoteMeta(val) + `\b`).MatchString(text) {
-				errors = append(errors, fmt.Sprintf("%s: enum value %q not documented", rel, val))
+		for _, re := range expectedSafetyClassWordREs {
+			if !re.MatchString(text) {
+				errors = append(errors, fmt.Sprintf("%s: enum value not documented", rel))
 			}
 		}
 	}
@@ -638,7 +681,7 @@ func checkResourceScopeDocs(root string) []string {
 		if !strings.Contains(text, "resource_scope") {
 			errors = append(errors, fmt.Sprintf("%s: missing documented `resource_scope`", rel))
 		}
-		if !regexp.MustCompile(`(?i)mask`).MatchString(text) {
+		if !maskKeywordRe.MatchString(text) {
 			errors = append(errors, fmt.Sprintf("%s: missing any reference to masking", rel))
 		}
 	}
@@ -690,8 +733,8 @@ func looksLikeRawID(value string) bool {
 		return false
 	}
 	// Already masked?
-	for _, pat := range allowedResourceScopePatterns {
-		if regexp.MustCompile(pat).MatchString(value) {
+	for _, re := range allowedResourceScopePatternREs {
+		if re.MatchString(value) {
 			return false
 		}
 	}

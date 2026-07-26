@@ -87,10 +87,25 @@ var doubleBraceRe = regexp.MustCompile(`\{\{[^}]+\}\}`)
 // does not fire on examples.
 var codeBlockRe = regexp.MustCompile("```[\\s\\S]*?```")
 
+// numberedHeadingREs[i-1] matches `(?m)^## i. ` (the i-th numbered section
+// header). Pre-compiled for 1..maxRubricSections so countNumberedSections
+// can probe a sequence of headings without recompiling per call.
+var numberedHeadingREs [10]*regexp.Regexp
+
+func init() {
+	for i := range numberedHeadingREs {
+		numberedHeadingREs[i] = regexp.MustCompile(fmt.Sprintf(`(?m)^## %d\. `, i+1))
+	}
+}
+
+const maxNumberedSectionProbe = 8
+
 func countNumberedSections(text string, target int) int {
+	if target > maxNumberedSectionProbe {
+		target = maxNumberedSectionProbe
+	}
 	for number := 1; number <= target; number++ {
-		pattern := fmt.Sprintf(`(?m)^## %d\. `, number)
-		if !regexp.MustCompile(pattern).MatchString(text) {
+		if !numberedHeadingREs[number-1].MatchString(text) {
 			return 0
 		}
 	}
