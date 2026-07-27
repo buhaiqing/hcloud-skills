@@ -245,10 +245,12 @@ func GeneratePitfallReport(root string) (int, error) {
 		fpPath := filepath.Join(root, d.Name(), "assets", "failure_patterns.json")
 		raw, err := os.ReadFile(fpPath)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: pitfall-report skipped %s: %v\n", fpPath, err)
 			continue
 		}
 		var data map[string]any
 		if err := json.Unmarshal(raw, &data); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: pitfall-report skipped %s (parse error): %v\n", fpPath, err)
 			continue
 		}
 		patterns, _ := data["patterns"].([]any)
