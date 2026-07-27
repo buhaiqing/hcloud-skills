@@ -15,12 +15,14 @@
 package drift
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -112,7 +114,7 @@ func collectDrift(canonical, runtime string) (Drift, error) {
 			onlyCan = append(onlyCan, rel)
 			continue
 		}
-		equal, err := sameBytes(canon[rel], runt[rel])
+		equal, err := sameContent(canon[rel], runt[rel])
 		if err != nil {
 			return Drift{}, err
 		}
@@ -221,12 +223,6 @@ func indexFiles(root string) map[string]string {
 	})
 	return out
 }
-
-// sameBytes reports whether two files have identical SHA-256 contents. A
-// hashing error on either side is surfaced so callers can distinguish
-// "files differ" from "could not compare" — silently swallowing the error
-// would cause transient I/O / permission failures to look like drift and
-// abort the pre-commit gate.
 func sameBytes(a, b string) (bool, error) {
 	ha, errA := hashFile(a)
 	hb, errB := hashFile(b)
@@ -235,6 +231,50 @@ func sameBytes(a, b string) (bool, error) {
 	}
 	return ha == hb, nil
 }
+
+// sameContent reports whether two files are semantically equal, ignoring
+// noise that does not affect agent execution.  For .md files it strips HTML
+// comments and normalises whitespace; for all other files it falls back to
+// sameBytes.
+func sameContent(a, b string) (bool, error) {
+	ext := strings.ToLower(filepath.Ext(a))
+	if ext != ".md" && ext != ".markdown" {
+		return sameBytes(a, b)
+	}
+	dataA, errA := os.ReadFile(a)
+	dataB, errB := os.ReadFile(b)
+	if errA != nil || errB != nil {
+		return sameBytes(a, b)
+	}
+	normA := normalizeMarkdown(dataA)
+	normB := normalizeMarkdown(dataB)
+	return bytes.Equal(normA, normB), nil
+}
+
+// normalizeMarkdown removes HTML/markdown comments, collapses blank lines,
+// trims trailing whitespace, and strips leading/trailing blank lines.
+// This makes comment-only and formatting-only changes invisible to drift detection.
+var commentRe = regexp.MustCompile(`<!--[\s\S]*?-->`)
+
+func normalizeMarkdown(data []byte) []byte {
+	// Remove HTML comments
+	out := commentRe.ReplaceAll(data, nil)
+	// Remove blank lines (collapse 2+ to 1)
+	out = blankLineRe.ReplaceAll(out, []byte{'\n'})
+	// Trim trailing whitespace per line
+	lines := bytes.Split(out, []byte{'\n'})
+	for i, line := range lines {
+		lines[i] = bytes.TrimRight(line, " \t")
+	}
+	out = bytes.Join(lines, []byte{'\n'})
+	// Strip leading/trailing blank lines
+	out = bytes.Trim(out, "\n")
+	return out
+}
+
+// blankLineRe matches one or more consecutive blank lines (line containing
+// only zero or more space/tab characters).
+var blankLineRe = regexp.MustCompile(`(?m)(^[ \t]*\n){2,}`)
 
 func hashFile(path string) (string, error) {
 	data, err := os.ReadFile(path)

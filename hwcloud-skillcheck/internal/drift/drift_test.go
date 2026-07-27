@@ -78,6 +78,47 @@ func TestCheckDrift(t *testing.T) {
 		t.Fatalf("unexpected OnlyRuntime: %v", r.Drift.OnlyRuntime)
 	}
 }
+func TestCheckSemanticDrift(t *testing.T) {
+	root := t.TempDir()
+	canon := filepath.Join(root, CanonicalRel)
+	runt := filepath.Join(root, RuntimeRel)
+
+	// Comment-only changes must NOT trigger drift.
+	writeFile(t, filepath.Join(canon, "SKILL.md"),
+		"# Title\n\nSome content\n<!-- old comment -->\nMore content")
+	writeFile(t, filepath.Join(runt, "SKILL.md"),
+		"# Title\n\nSome content\n<!-- updated comment with more text -->\nMore content")
+
+	// Substantive change MUST trigger drift.
+	writeFile(t, filepath.Join(canon, "README.md"),
+		"# Readme\n\nOriginal content.")
+	writeFile(t, filepath.Join(runt, "README.md"),
+		"# Readme\n\nChanged content.")
+
+	// Binary file (no extension): byte comparison still applies.
+	writeFile(t, filepath.Join(canon, "data.bin"), "\x00\x01\x02")
+	writeFile(t, filepath.Join(runt, "data.bin"), "\x00\x01\x03")
+
+	r, err := Check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.OK {
+		t.Fatal("expected drift")
+	}
+	// SKILL.md: comment-only change → not in drift list.
+	if contains(r.Drift.Differing, "SKILL.md") {
+		t.Fatalf("SKILL.md comment-only change should not be drift, got %v", r.Drift.Differing)
+	}
+	// README.md: content change → in drift list.
+	if !contains(r.Drift.Differing, "README.md") {
+		t.Fatalf("README.md content change should be drift, got %v", r.Drift.Differing)
+	}
+	// data.bin: binary diff → in drift list.
+	if !contains(r.Drift.Differing, "data.bin") {
+		t.Fatalf("data.bin binary diff should be drift, got %v", r.Drift.Differing)
+	}
+}
 
 func TestCheckMissingCanonicalFile(t *testing.T) {
 	root := t.TempDir()
