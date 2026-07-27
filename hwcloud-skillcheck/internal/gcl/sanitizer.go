@@ -326,5 +326,13 @@ var requestCredentialRe = regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY|SECRET_A
 // requestOpaqueTokenRe catches leftover long alphanumeric tokens after the
 // structured rules have run. 16+ chars is the threshold: a typical
 // credential / resource ID / API key is well above this, while ordinary
-// English words never are.
-var requestOpaqueTokenRe = regexp.MustCompile(`\b[A-Za-z0-9]{16,}\b`)
+// requestOpaqueTokenRe catches leftover long opaque tokens after the
+// structured rules have run. 16+ chars is the threshold: a typical
+// credential / resource ID / API key is well above this, while
+// ordinary English words never are. The character class includes
+// `_` and `-` so an attacker cannot bypass fail-closed by inserting
+// a single underscore into a 16+ char token (e.g. "abcd_efgh_..."
+// would otherwise be silently accepted). resource IDs and ARNs have
+// already been masked by the rules above by the time this check
+// runs, so expanding the alphabet here is safe.
+var requestOpaqueTokenRe = regexp.MustCompile(`\b[A-Za-z0-9_-]{16,}\b`)

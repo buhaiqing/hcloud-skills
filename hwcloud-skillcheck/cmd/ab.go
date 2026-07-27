@@ -32,6 +32,10 @@ func runABCompare(root, oldRef string) error {
 
 	oldData, err := os.ReadFile(oldPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "no baseline .ab/old.json found; skipping compare on first run")
+			return nil
+		}
 		return fmt.Errorf("read old result: %w", err)
 	}
 	var oldResult ab.Result
@@ -41,6 +45,10 @@ func runABCompare(root, oldRef string) error {
 
 	curData, err := os.ReadFile(curPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "no current .ab/cur.json found; skipping compare")
+			return nil
+		}
 		return fmt.Errorf("read cur result: %w", err)
 	}
 	var curResult ab.Result

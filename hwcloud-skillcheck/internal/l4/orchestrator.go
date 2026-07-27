@@ -410,8 +410,22 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	learning.TracePersisted = tracePath
 
 	decision := "human_review_required"
+	executionTask := (*TaskState)(nil)
 	if gclRes.OverallSafety && trustRes.AutoApprove {
 		decision = "auto_proceed"
+		// Build task from plan and run execution loop with persistence + RBAC.
+		task := BuildTaskFromPlan(plan, in.Fault, root)
+		_ = PersistTask(root, task.ID, task)
+		executionTask = RunExecutionLoop(root, task, plan, matched)
+		// Update decision based on execution result.
+		switch executionTask.Status {
+		case TaskStatusCompleted:
+			decision = "completed"
+		case TaskStatusFailed:
+			decision = "failed"
+		case TaskStatusAborted:
+			decision = "aborted"
+		}
 	}
 	return &OrchestratorOutput{
 		FaultID:          faultID,

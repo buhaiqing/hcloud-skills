@@ -52,6 +52,8 @@ func Execute() error {
 		return runMaturity(args)
 	case "manifest":
 		return runManifest(args)
+	case "drift":
+		return runDrift(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil

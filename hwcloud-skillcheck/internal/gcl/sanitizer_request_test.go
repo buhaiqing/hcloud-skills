@@ -90,3 +90,26 @@ func TestSanitizeRequest_FailClosedOnUnrecognized(t *testing.T) {
 		t.Fatalf("SanitizeRequest(%q) error = nil, want error (fail-closed)", in)
 	}
 }
+
+// TestSanitizeRequest_FailClosedOnUnderscoreBypass closes a bypass
+// where an attacker could defeat the fail-closed check by inserting
+// an underscore into a 16+ char token. The requestOpaqueTokenRe
+// alphabet now includes `_` and `-`, so a 20-char token with
+// underscores must also be rejected.
+func TestSanitizeRequest_FailClosedOnUnderscoreBypass(t *testing.T) {
+	in := "fetch abcd_efgh_ijkl_mnop_qrst_uvwx please"
+	_, err := SanitizeRequest(in)
+	if err == nil {
+		t.Fatalf("SanitizeRequest(%q) error = nil, want error (fail-closed for underscore-bypass)", in)
+	}
+}
+
+// TestSanitizeRequest_FailClosedOnHyphenBypass covers the same path
+// for tokens that use `-` as the only separator.
+func TestSanitizeRequest_FailClosedOnHyphenBypass(t *testing.T) {
+	in := "fetch abcd-efgh-ijkl-mnop-qrst-uvwx please"
+	_, err := SanitizeRequest(in)
+	if err == nil {
+		t.Fatalf("SanitizeRequest(%q) error = nil, want error (fail-closed for hyphen-bypass)", in)
+	}
+}
