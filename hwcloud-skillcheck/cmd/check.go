@@ -19,7 +19,7 @@ import (
 // runCheck dispatches the `hwcloud-skillcheck check` subcommands.
 func runCheck(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("check: missing subcommand (use 'example-config'|'markdown-links'|'references-links'|'audit-results')")
+		return fmt.Errorf("check: missing subcommand (use 'example-config'|'markdown-links'|'references-links'|'audit-results'|'lanes')")
 	}
 	switch args[0] {
 	case "example-config":
@@ -32,8 +32,10 @@ func runCheck(args []string) error {
 		return runCheckAdvancedCoverage(args[1:])
 	case "audit-results":
 		return runCheckAuditResults(args[1:])
+	case "lanes":
+		return runCheckLanes(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck check <example-config|markdown-links|references-links|audit-results> --root <dir>")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck check <example-config|markdown-links|references-links|audit-results|lanes> --root <dir>")
 		return nil
 	default:
 		return fmt.Errorf("check: unknown subcommand %q", args[0])
