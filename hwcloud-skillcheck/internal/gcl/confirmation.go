@@ -53,11 +53,14 @@ type Confirmation struct {
 // Verify/VerifyBound for a nonce that has been consumed and then revoked.
 var ErrReplay = errors.New("confirmation: nonce already consumed (replay)")
 
-// ErrExpired is returned when a nonce has aged past its TTL. Validate
-// happens lazily inside Verify so the registry never hands out a stale id.
+// ErrNonceConsumed is the spec-mandated (A8) name for the replay error.
+var ErrNonceConsumed = ErrReplay
+
 var ErrExpired = errors.New("confirmation: nonce expired")
 
-// ErrUnknown is returned when no nonce matches the supplied id.
+// ErrNonceExpired is the spec-mandated (A9) name for the TTL-expiry error.
+var ErrNonceExpired = ErrExpired
+
 var ErrUnknown = errors.New("confirmation: nonce unknown")
 
 // errBindingMismatch is returned only by VerifyBound when (op, actor) don't
@@ -149,12 +152,21 @@ func (r *ConfirmationRegistry) Verify(nonce string) (bool, error) {
 	return r.verify(nonce, "", "", false)
 }
 
-// VerifyBound consumes the nonce exactly once IF the supplied (op, actor)
-// match what the nonce was issued against. A binding mismatch returns
-// errBindingMismatch (NOT a replay), so callers can distinguish a wrong
-// caller from a replayed nonce.
-func (r *ConfirmationRegistry) VerifyBound(nonce, op, actor string) (bool, error) {
-	return r.verify(nonce, op, actor, true)
+// ValidateAndConsume is the spec-mandated (§5, gcl-trust-boundary-p0)
+// API: atomically checks the nonce matches the (skill, cmd) it was
+// issued against and marks it consumed. Subsequent calls return
+// ErrNonceConsumed. An expired nonce returns ErrNonceExpired; an
+// unknown nonce returns ErrUnknown. A binding mismatch returns
+// errBindingMismatch.
+func (r *ConfirmationRegistry) ValidateAndConsume(nonce, skill, cmd string) error {
+	ok, err := r.verify(nonce, skill, cmd, true)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errBindingMismatch
+	}
+	return nil
 }
 
 func (r *ConfirmationRegistry) verify(nonce, op, actor string, enforceBinding bool) (bool, error) {

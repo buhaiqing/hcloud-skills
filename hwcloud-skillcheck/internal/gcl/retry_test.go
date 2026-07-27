@@ -89,7 +89,7 @@ func TestRetryPromptBuilder_InterfaceContract(t *testing.T) {
 	var b RetryPromptBuilder = MinimalFeedbackRetry{}
 	gen := GeneratorOutput{Command: "noop", DurationMs: 1}
 	critic := CriticResult{
-		Scores: map[string]float64{"correctness": 0.5, "safety": 0.5, "idempotency": 0.5, "traceability": 0.5, "spec_compliance": 0.5},
+		Scores: map[string]float64{"correctness": 0.0, "safety": 1.0, "idempotency": 0.0, "traceability": 0.0, "spec_compliance": 0.0},
 		Mode:   "x",
 	}
 	p1 := b.Build(gen, critic, 1)

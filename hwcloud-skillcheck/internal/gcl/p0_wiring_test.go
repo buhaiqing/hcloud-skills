@@ -8,6 +8,28 @@ import (
 	"time"
 )
 
+// TestRunDestructiveBlockedWithoutNonce is the spec-mandated (A7) test:
+// `cfg.Command = "hcloud rds delete-instance"` without a confirmation
+// nonce must exit with ExitSafety. The runner must short-circuit before
+// invoking the Generator.
+func TestRunDestructiveBlockedWithoutNonce(t *testing.T) {
+	cfg := RunConfig{
+		Skill:   "huaweicloud-rds-ops",
+		Request: "delete a database",
+		Command: "hcloud rds delete-instance --id rds-abc12345",
+		MaxIter: 1,
+		Timeout: 5,
+		Root:    t.TempDir(),
+		// no ConfirmationToken, no ConfirmationRegistry → pre-execution
+		// gate must reject.
+	}
+	result := Run(cfg)
+	if result.ExitCode != ExitSafety {
+		t.Errorf("destructive command without nonce must ExitSafety, got %d",
+			result.ExitCode)
+	}
+}
+
 // TestPreExecutionGate_AllowsReadOnly verifies that a non-destructive
 // command without a token passes the gate.
 func TestPreExecutionGate_AllowsReadOnly(t *testing.T) {

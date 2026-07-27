@@ -74,9 +74,19 @@ func (MinimalFeedbackRetry) Build(gen GeneratorOutput, lastCritic CriticResult, 
 		fmt.Fprintf(&b, "WARNING: credential leak detected in raw output (pre-masking)\n")
 	}
 
-	fmt.Fprintf(&b, "\nCritic mode=%s  Scores:\n", fallback(lastCritic.Mode, "unknown"))
-	for _, dim := range []string{"correctness", "safety", "idempotency", "traceability", "spec_compliance"} {
-		fmt.Fprintf(&b, "  %s=%s\n", dim, fmtScore(lastCritic.Scores[dim]))
+	fmt.Fprintf(&b, "\nCritic mode=%s  Failed dimensions (score below threshold):\n", fallback(lastCritic.Mode, "unknown"))
+	wrote := 0
+	for dim, threshold := range map[string]float64{
+		"correctness":     0.5,
+		"safety":          1.0,
+		"idempotency":     0.5,
+		"traceability":    0.5,
+		"spec_compliance": 0.5,
+	} {
+		if s, ok := lastCritic.Scores[dim]; ok && s < threshold {
+			fmt.Fprintf(&b, "  %s=%s (threshold %.2f)\n", dim, fmtScore(s), threshold)
+			wrote++
+		}
 	}
 
 	if len(lastCritic.Suggestions) > 0 {
