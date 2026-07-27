@@ -40,8 +40,8 @@ func Execute() error {
 		return runLearning(args)
 	case "l4":
 		return runL4(args)
-	case "drift":
-		return runDrift(args)
+	case "snapshot":
+		return runSnapshot(args)
 	case "critic":
 		return runCritic(args)
 	case "-h", "--help", "help":
@@ -171,4 +171,17 @@ func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	return fs
+}
+
+// runSnapshot dispatches `hwcloud-skillcheck snapshot` subcommands.
+func runSnapshot(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("snapshot: missing subcommand (use 'cli')")
+	}
+	switch args[0] {
+	case "cli":
+		return runSnapshotCLI(args[1:])
+	default:
+		return fmt.Errorf("snapshot: unknown subcommand %q", args[0])
+	}
 }
