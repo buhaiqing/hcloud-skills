@@ -19,18 +19,17 @@ import (
 
 func runLearning(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: hwcloud-skillcheck learning <gen|trace> ...")
+		return fmt.Errorf("usage: hwcloud-skillcheck learning <gen|trace|pitfall-report> ...")
 	}
 	switch args[0] {
 	case "gen":
 		return runLearningGen(args[1:])
 	case "trace":
 		return runLearningTrace(args[1:])
-	case "-h", "--help", "help":
-		fmt.Fprint(os.Stderr, learningHelp)
-		return nil
+	case "pitfall-report":
+		return runPitfallReport(args[1:])
 	default:
-		return fmt.Errorf("unknown learning subcommand %q", args[0])
+		return fmt.Errorf("unknown learning subcommand: %s; use gen|trace|pitfall-report", args[0])
 	}
 }
 
@@ -39,6 +38,7 @@ const learningHelp = `hwcloud-skillcheck learning — knowledge base + GCL trace
 Usage:
   hwcloud-skillcheck learning gen [--root <dir>]
   hwcloud-skillcheck learning trace <aggregate|learn|report> [--root <dir>] [--skill <id>] [--since-hours N] [--dry-run] [--json]
+  hwcloud-skillcheck learning pitfall-report [--root <dir>]
 `
 
 func runLearningGen(args []string) error {
@@ -228,4 +228,17 @@ func firstTokenString(v any) string {
 		}
 	}
 	return s
+}
+func runPitfallReport(args []string) error {
+	fs := newFlagSet("hwcloud-skillcheck learning pitfall-report")
+	root := fs.String("root", ".", "repo root")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	count, err := learning.GeneratePitfallReport(*root)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("pitfall-report: wrote %d patterns to huaweicloud-skill-generator/references/common-pitfalls.md\n", count)
+	return nil
 }

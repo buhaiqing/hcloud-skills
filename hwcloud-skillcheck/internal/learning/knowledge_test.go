@@ -7,6 +7,7 @@ package learning
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,5 +112,65 @@ func TestPatternIDFormat(t *testing.T) {
 				t.Errorf("%s pattern[%d].id=%q, want prefix %q", short, i, p.ID, want)
 			}
 		}
+	}
+}
+func TestGeneratePitfallReport(t *testing.T) {
+	root := t.TempDir()
+
+	// Write two minimal failure_patterns.json files in fake skill dirs.
+	for _, name := range []string{"huaweicloud-ecs-ops", "huaweicloud-vpc-ops"} {
+		dir := filepath.Join(root, name, "assets")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fp := map[string]any{
+			"$schema":  "failure-patterns/v1",
+			"skill_id": name,
+			"patterns": []any{
+				map[string]any{
+					"id":         "TEST-FP001",
+					"category":   "resource_state",
+					"root_cause": "Instance not found",
+					"prevention": "Verify instance exists before delete",
+				},
+				map[string]any{
+					"id":         "TEST-FP002",
+					"category":   "permission",
+					"root_cause": "Quota exceeded",
+					"prevention": "Check quota before create",
+				},
+			},
+		}
+		raw, err := json.Marshal(fp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "failure_patterns.json"), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	count, err := GeneratePitfallReport(root)
+	if err != nil {
+		t.Fatalf("GeneratePitfallReport error: %v", err)
+	}
+	if count != 4 {
+		t.Errorf("count=%d, want 4 (2 skills × 2 patterns)", count)
+	}
+
+	// Verify the markdown report was written.
+	reportPath := filepath.Join(root, "huaweicloud-skill-generator", "references", "common-pitfalls.md")
+	raw, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("report not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "resource_state") {
+		t.Error("report missing resource_state category")
+	}
+	if !strings.Contains(string(raw), "permission") {
+		t.Error("report missing permission category")
+	}
+	if !strings.Contains(string(raw), "Verify instance exists before delete") {
+		t.Error("report missing first prevention text")
 	}
 }

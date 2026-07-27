@@ -218,6 +218,9 @@ This workflow follows the **"fail first, evaluate first"** principle: define wha
 [ ] Step 3: Scaffold Layout — Create directory from template
 [ ] Step 4: Populate SKILL.md — Fill template with verified data
     ↓ [Feedback Loop: Five core standards satisfied? If not → fix and re-verify]
+    ↓ [Pre-flight: Read `references/common-pitfalls.md` — cross-check every execution flow
+        against known failure patterns; if a similar pattern exists, cite it in the
+        skill's troubleshooting section and emit a specific prevention step]
 [ ] Step 5: Fill Reference Files — Complete all references/
     ↓ [Feedback Loop: All files populated? If gaps → fix]
 [ ] Step 6: Verify & Review — P0/P1 checklist + adversarial review + 3-pillar assessment
