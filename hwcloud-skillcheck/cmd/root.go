@@ -46,6 +46,8 @@ func Execute() error {
 		return runCritic(args)
 	case "golden":
 		return runGolden(args)
+	case "ab":
+		return runAB(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -85,6 +87,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck drift check --root <dir>                        verify canonical/runtime skill copy equality")
 	fmt.Fprintln(w, "  hwcloud-skillcheck drift sync --root <dir> [--apply]              reconcile runtime copy with canonical")
 	fmt.Fprintln(w, "  hwcloud-skillcheck critic score --generator <path> [--emit]       rule-based 5-dimension scorer")
+	fmt.Fprintln(w, "  hwcloud-skillcheck ab compare --root <dir> [--old <ref>]        A/B diff two golden runs against allowlist")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate --root <dir>                            run all A-class checks (total entry)")
 }
 
