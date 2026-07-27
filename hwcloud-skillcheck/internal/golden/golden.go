@@ -85,8 +85,9 @@ func Run(root string) (*Report, error) {
 			return nil
 		}
 		skill := parts[0]
+		skillDir := skill
 		if skill == "cross-product" {
-			return nil
+			skillDir = "cross-product"
 		}
 		r.PerSkill[skill]++
 		b, _ := os.ReadFile(p)
@@ -95,7 +96,7 @@ func Run(root string) (*Report, error) {
 			r.Errors = append(r.Errors, p+": "+err.Error())
 			return nil
 		}
-		scriptPath := filepath.Join(root, "testdata", skill, sc.Name+".script.json")
+		scriptPath := filepath.Join(root, "testdata", skillDir, sc.Name+".script.json")
 		ok, _ := runScenario(root, scriptPath, sc)
 		if ok {
 			r.Passed++

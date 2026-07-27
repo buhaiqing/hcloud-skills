@@ -20,3 +20,11 @@ func TestDiff_AllowsAllowlisted(t *testing.T) {
 		t.Errorf("expected no drift for allowlisted scenario 'a', got true")
 	}
 }
+func TestABDetectsStdoutDiff(t *testing.T) {
+	old := Result{PerScenario: map[string]string{"a": "x\n"}}
+	cur := Result{PerScenario: map[string]string{"a": "y\n"}}
+	d := Compare(old, cur)
+	if !d.HasDrift("a") {
+		t.Error("drift should be detected")
+	}
+}

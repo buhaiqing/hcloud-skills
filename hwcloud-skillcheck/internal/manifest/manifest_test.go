@@ -54,3 +54,23 @@ version: "1.0"
 		t.Error("SideEffectClass is empty, expected default 'destructive'")
 	}
 }
+func TestManifestGeneration(t *testing.T) {
+	root := t.TempDir()
+	skillName := "huaweicloud-ecs-ops"
+	subDir := filepath.Join(root, skillName)
+	_ = os.MkdirAll(subDir, 0755)
+	skillMD := "---\nname: ECS Operations\ndescription: manage ECS\nversion: \"1.4.0\"\n---\n# ECS Operations\n"
+	_ = os.WriteFile(filepath.Join(subDir, "SKILL.md"), []byte(skillMD), 0644)
+	out := filepath.Join(root, "out")
+	if err := manifest.Generate(root, out); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	b, _ := os.ReadFile(filepath.Join(out, skillName, "capability_manifest.json"))
+	var m manifest.Manifest
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("parse manifest: %v", err)
+	}
+	if m.SchemaVersion == "" || m.Skill == "" {
+		t.Error("manifest fields should be populated")
+	}
+}

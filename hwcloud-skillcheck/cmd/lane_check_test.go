@@ -49,3 +49,15 @@ func TestCheckLanes_DetectsMalformedJSON(t *testing.T) {
 		t.Fatal("expected malformed json to be detected")
 	}
 }
+func TestTelemetryLaneSeparation(t *testing.T) {
+	root := t.TempDir()
+	prodDir := filepath.Join(root, "audit-results", "production")
+	_ = os.MkdirAll(prodDir, 0o700)
+	// Production file with non-production lane → should be detected.
+	_ = os.WriteFile(filepath.Join(prodDir, "x.json"),
+		[]byte(`{"lane":"self-test","trace_id":"x"}`), 0o600)
+	err := runCheckLanes([]string{"--root", root})
+	if err == nil {
+		t.Error("cross-lane write should be detected")
+	}
+}

@@ -45,3 +45,14 @@ func TestReport_RollsUpScores(t *testing.T) {
 		}
 	}
 }
+func TestMaturityReportRollup(t *testing.T) {
+	root := t.TempDir()
+	plantManifest(t, root, "huaweicloud-ecs-ops", 5, true, true, true)
+	r, err := Rollup(root)
+	if err != nil {
+		t.Fatalf("Rollup: %v", err)
+	}
+	if got := r.PerSkill["huaweicloud-ecs-ops"]; got < 0.99 {
+		t.Errorf("score=%f, want >= 0.99", got)
+	}
+}
