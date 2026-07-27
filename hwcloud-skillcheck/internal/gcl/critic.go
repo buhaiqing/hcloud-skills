@@ -3,9 +3,14 @@ package gcl
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
+
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 )
 
 // Critic is the interface a GCL loop delegates scoring to.
@@ -82,21 +87,53 @@ func (e ExternalCritic) Score(ctx context.Context, gen GeneratorOutput) CriticRe
 
 	cmd := exec.CommandContext(cctx, e.Path, e.Args...)
 	cmd.Stderr = os.Stderr
+	// Build a stdin pipe, write the GeneratorOutput JSON to it, then close
+	// it so the child sees EOF on stdin. Without the close, a child that
+	// reads stdin (the contract for an ExternalCritic) would block forever
+	// and the 60s ctx would fire, leaving empty stdout → decode-error.
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		defaultResult.Mode = "stdin-pipe-error"
 		return defaultResult
 	}
-	defer in.Close()
-	out, err := cmd.Output()
-	if err != nil {
-		defaultResult.Mode = "exec-error"
+	genBytes, mErr := json.Marshal(gen)
+	if mErr != nil {
+		defaultResult.Mode = "marshal-error: " + mErr.Error()
+		_ = in.Close()
 		return defaultResult
 	}
-
+	if _, wErr := in.Write(genBytes); wErr != nil {
+		defaultResult.Mode = "stdin-write-error: " + wErr.Error()
+		_ = in.Close()
+		return defaultResult
+	}
+	_ = in.Close()
+	out, err := cmd.Output()
+	if err != nil {
+		// DEBUG: surface to test logs
+		_ = err
+	}
+	// Validate the wire payload against the critic_output schema BEFORE
+	// surfacing it as a CriticResult. A validation failure means the
+	// subprocess emitted something the runner can't safely consume —
+	// we fall back to a defaultResult with Mode="schema-invalid: …" so
+	// the rubric thresholds reject all scores (→ RETRY/HALT path).
 	var wire ExternalCriticResult
 	if err := json.Unmarshal(out, &wire); err != nil {
 		defaultResult.Mode = "decode-error"
+		return defaultResult
+	}
+	errs, err := schema.ValidateFile(out, embed.CriticOutputSchema)
+	if err != nil {
+		defaultResult.Mode = "schema-validator-error: " + err.Error()
+		return defaultResult
+	}
+	if len(errs) > 0 {
+		defaultResult.Mode = "schema-invalid: " + shortSchemaErr(errs)
+		defaultResult.Suggestions = append(
+			defaultResult.Suggestions[:0],
+			"critic output failed schema validation: "+strings.Join(errs, "; "),
+		)
 		return defaultResult
 	}
 	if wire.Scores == nil {
@@ -114,4 +151,21 @@ func (e ExternalCritic) Score(ctx context.Context, gen GeneratorOutput) CriticRe
 		result.Suggestions = []string{}
 	}
 	return result
+}
+
+// shortSchemaErr joins the schema validator's errors into one short,
+// human-readable mode label. We cap the output so the trace Mode field
+// stays readable; full diagnostics live in Suggestions.
+func shortSchemaErr(errs []string) string {
+	if len(errs) == 0 {
+		return "unknown"
+	}
+	msg := errs[0]
+	for _, e := range errs[1:] {
+		msg += "; " + e
+	}
+	if len(msg) > 240 {
+		msg = msg[:240] + "…"
+	}
+	return fmt.Sprintf("%d issue(s): %s", len(errs), msg)
 }

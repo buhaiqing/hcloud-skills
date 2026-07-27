@@ -46,6 +46,8 @@ func runGCLRun(args []string) error {
 	command := fs.String("command", "", "shell command for the Generator to run (e.g. 'hcloud ecs list-servers --region cn-north-4'). When empty, a smoke 'echo ok' is run so the structural critic path can still be exercised.")
 	request := fs.String("request", "smoke test", "natural-language request the Generator is responding to; recorded in trace.iterations[*].request.")
 	criticCmd := fs.String("critic-cmd", "", "path to an external Critic executable. The Runner pipes GeneratorOutput JSON to its stdin and reads CriticResult JSON from stdout. When empty, the in-process Structural critic is used. Pass repeated --critic-arg to forward arguments.")
+	confirmNonce := fs.String("confirm-nonce", "", "P0 trust boundary: confirmation nonce issued by a ConfirmationRegistry. Required when the command declares a destructive safety_class. Mutually exclusive with --confirm-issue.")
+	confirmIssue := fs.Bool("confirm-issue", false, "P0 trust boundary: instead of consuming a nonce, issue a fresh one and print it (then exit). Used by human review flows to get the nonce they will paste back in.")
 	var criticArgs []string
 	fs.Var(&criticArgsValue{slice: &criticArgs}, "critic-arg", "argument forwarded to --critic-cmd (repeatable).")
 	_ = criticArgs
@@ -90,9 +92,26 @@ func runGCLRun(args []string) error {
 		Root:    skillDir,
 		Model:   *model,
 	}
+	if *confirmNonce != "" {
+		cfg.ConfirmationToken = *confirmNonce
+		cfg.ConfirmationRegistry = gcl.NewConfirmationRegistry(gcl.DefaultConfirmationTTL)
+		defer cfg.ConfirmationRegistry.Stop()
+	} else if *confirmIssue {
+		// Issue-only path: print a nonce, exit 0. No Run() invocation.
+		reg := gcl.NewConfirmationRegistry(gcl.DefaultConfirmationTTL)
+		defer reg.Stop()
+		nonce, err := reg.Issue("gcl:"+skillName, "cli-user")
+		if err != nil {
+			return fmt.Errorf("issue nonce: %w", err)
+		}
+		fmt.Println(nonce)
+		return nil
+	}
 	if *criticCmd != "" {
 		cfg.Critic = gcl.NewExternalCritic(*criticCmd, criticArgs...)
 	}
+
+	// Suppress gcl.Run's output when --json or --quiet.
 
 	// Suppress gcl.Run's output when --json or --quiet.
 	if *jsonOut || *quiet {

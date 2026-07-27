@@ -14,6 +14,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 	"io"
 	"os"
 	"os/exec"
@@ -153,6 +155,10 @@ type GCLTrace struct {
 	CostAttribution    *CostAttribution `json:"cost_attribution,omitempty"`
 	Iterations         []Iteration      `json:"iterations"`
 	Final              *FinalResult     `json:"final,omitempty"`
+	// SanitizedRequest is a masked form of Request safe to surface to the
+	// Critic (and to store on the trace). Resource IDs and credentials are
+	// replaced with placeholders; see SanitizeRequest for the contract.
+	SanitizedRequest string `json:"sanitized_request,omitempty"`
 }
 
 // Iteration records one pass through the GCL loop.
@@ -197,6 +203,11 @@ type RunConfig struct {
 	Stderr          io.Writer
 	Root            string // repository root for audit-results/
 	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
+
+	// P0 trust boundary wiring (gcl-spec §14):
+	ConfirmationToken    string                // nonce issued by ConfirmationRegistry; required when intent.safety_class == "destructive"
+	ConfirmationRegistry *ConfirmationRegistry // nil → destructive ops are rejected unconditionally
+	RetryBuilder         RetryPromptBuilder    // nil → next iter runs the same Command unchanged
 }
 
 // RunResult is the output of a GCL Run.
@@ -271,15 +282,51 @@ func Run(cfg RunConfig) RunResult {
 	if model == "" {
 		model = "unknown"
 	}
+	// P0 §14.1 — fail-closed request sanitization. Any unrecognised token
+	// aborts the run with ExitUsage rather than persisting a partially
+	// masked request that could still leak a Resource ID or credential.
+	sanitized, err := SanitizeRequest(cfg.Request)
+	if err != nil {
+		fmt.Fprintf(rcStderr(&cfg), "ERROR: %v\n", err)
+		return RunResult{ExitCode: ExitUsage}
+	}
+
 	trace := GCLTrace{
 		TraceSchemaVersion: "v1",
 		Skill:              cfg.Skill,
 		Model:              model,
 		Request:            cfg.Request,
+		SanitizedRequest:   sanitized,
 		OperationIntent:    opIntent,
 		RubricVersion:      "v1",
 		MaskedFields:       []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
 		Iterations:         []Iteration{},
+	}
+
+	// P0 §14.3 — operation_intent schema validation BEFORE sanitization,
+
+	// P0 §14.3 — operation_intent schema validation BEFORE sanitization,
+	// so a structurally invalid intent fails fast without mask noise.
+	if cfg.OperationIntent != "" {
+		if errs, verr := schema.ValidateFile(
+			[]byte(cfg.OperationIntent), embed.OperationIntentSchema,
+		); verr != nil || len(errs) > 0 {
+			fmt.Fprintf(rcStderr(&cfg), "ERROR: operation_intent schema: %v %v\n", verr, errs)
+			return RunResult{ExitCode: ExitUsage}
+		}
+		opIntent, sErr := SanitizeOperationIntent(cfg.OperationIntent)
+		if sErr != nil {
+			fmt.Fprintf(rcStderr(&cfg), "ERROR: %v\n", sErr)
+			return RunResult{ExitCode: ExitUsage}
+		}
+		trace.OperationIntent = opIntent
+	}
+
+	// P0 §14.4 — pre-execution gate: RBAC destructive detection + token
+	// check. Runs once before the loop, not per-iter.
+	if gateErr := preExecutionGate(cfg, trace.OperationIntent); gateErr != nil {
+		fmt.Fprintf(rcStderr(&cfg), "ERROR: %v\n", gateErr)
+		return RunResult{ExitCode: ExitSafety}
 	}
 
 	timeout := cfg.Timeout
@@ -289,7 +336,17 @@ func Run(cfg RunConfig) RunResult {
 
 	for iteration := 1; iteration <= maxIter; iteration++ {
 		generatorStart := time.Now()
-		generator := runCommand(cfg.Command, timeout)
+		// P0 §14.2 — on retries, hand the previous masked output + Critic
+		// verdict to the RetryBuilder so the LLM can repair instead of
+		// blindly re-running the same command. nil-safe.
+		var generator GeneratorOutput
+		if iteration > 1 && cfg.RetryBuilder != nil && len(trace.Iterations) > 0 {
+			prev := trace.Iterations[len(trace.Iterations)-1]
+			prompt := cfg.RetryBuilder.Build(prev.Generator, prev.Critic, iteration)
+			generator = runCommand(prompt, timeout)
+		} else {
+			generator = runCommand(cfg.Command, timeout)
+		}
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
 
 		// Critic evaluates the Generator output. Default is the
@@ -366,6 +423,73 @@ func Run(cfg RunConfig) RunResult {
 	}
 	fmt.Fprintf(rcStderr(&cfg), "MAX_ITER — trace: %s\n", path)
 	return RunResult{ExitCode: ExitMaxIter, TracePath: path}
+}
+
+// gclHighRiskVerbs mirrors internal/l4.HighRiskVerbs so the GCL Runner can
+// do its own destructive-verb detection without importing l4 (an import
+// cycle: l4 imports gcl). The two tables MUST stay in lock-step; if
+// l4.HighRiskVerbs gains a new verb, add it here too.
+var gclHighRiskVerbs = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)\b(delete|terminate|destroy|drop|remove|rm|del)\b`),
+}
+
+// gclHighRiskCommands mirrors internal/l4.HighRiskCommands. Same lock-step
+// rule as gclHighRiskVerbs.
+var gclHighRiskCommands = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)--force|--delete|--destroy|--purge`),
+}
+
+// preExecutionGate is the P0 §14.4 trust boundary. It returns a non-nil
+// error when the command declares a destructive safety_class (per the
+// operation_intent) without a valid confirmation token, or when the
+// command itself matches a high-risk pattern but no destructive intent
+// was declared. The Harness calls this once before the loop.
+func preExecutionGate(cfg RunConfig, intent map[string]any) error {
+	// (a) Auto-detect destructive verb in the command itself.
+	verbHits := false
+	for _, re := range gclHighRiskVerbs {
+		if re.MatchString(cfg.Command) {
+			verbHits = true
+			break
+		}
+	}
+	flagHits := false
+	for _, re := range gclHighRiskCommands {
+		if re.MatchString(cfg.Command) {
+			flagHits = true
+			break
+		}
+	}
+	// (b) Did the caller declare safety_class="destructive"?
+	declaredDestructive := false
+	if intent != nil {
+		if sc, _ := intent["safety_class"].(string); sc == "destructive" {
+			declaredDestructive = true
+		}
+	}
+	// Gate: declared destructive → require a token. Implicit destructive
+	// (verb/flag match but no intent) → also require a token, fail-closed.
+	if !declaredDestructive && !verbHits && !flagHits {
+		return nil
+	}
+	if cfg.ConfirmationRegistry == nil {
+		return fmt.Errorf("destructive operation requires ConfirmationRegistry (set RunConfig.ConfirmationRegistry)")
+	}
+	if cfg.ConfirmationToken == "" {
+		return fmt.Errorf("destructive operation requires a confirmation token (--confirm-nonce)")
+	}
+	// Verify the nonce — one-time consumption. We do NOT use VerifyBound
+	// because the gate has no actor concept (the caller is the harness,
+	// not a human reviewer). The CLI in --confirm-nonce flow already
+	// supplied the nonce; the harness verifies and consumes it.
+	ok, err := cfg.ConfirmationRegistry.Verify(cfg.ConfirmationToken)
+	if err != nil {
+		return fmt.Errorf("confirmation token rejected: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("confirmation token rejected: not ok")
+	}
+	return nil
 }
 
 // Decide evaluates critic scores against rubric thresholds and returns a GCL
@@ -449,7 +573,11 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 	suffix := uniqueShortID()
 	filename := fmt.Sprintf("gcl-trace-%s-%s.json", ts, suffix)
 	path := filepath.Join(outDir, filename)
-
+	// P0 §14.1 — actually apply MaskedFields. The field is a declaration;
+	// this is the action. Per the gcl-spec trust boundary, trace.Request
+	// and the per-iteration Generator.Command / Generator.ResultExcerpt
+	// are replaced with "<masked>" before any byte touches disk.
+	applyMaskFields(trace)
 	data, err := json.MarshalIndent(trace, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("PersistTrace json: %w", err)
@@ -462,9 +590,43 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 	return path, nil
 }
 
+// applyMaskFields walks trace.MaskedFields and replaces the matching
+// in-memory values with "<masked>" so the JSON marshaller never sees
+// the raw text. P0 §14.1 contract: MaskedFields is a declaration AND
+// an action — the runner applies it.
+//
+// Supported paths:
+//   - "request"                  → trace.Request
+//   - "operation_intent"         → (already sanitised by SanitizeOperationIntent;
+//     we leave it alone here)
+//   - "generator.command"        → each iteration's Generator.Command
+//   - "generator.result_excerpt" → each iteration's Generator.ResultExcerpt
+func applyMaskFields(trace *GCLTrace) {
+	containsPath := func(p string) bool {
+		for _, m := range trace.MaskedFields {
+			if m == p {
+				return true
+			}
+		}
+		return false
+	}
+	if containsPath("request") {
+		trace.Request = "<masked>"
+	}
+	if containsPath("generator.command") || containsPath("generator.result_excerpt") {
+		for i := range trace.Iterations {
+			if containsPath("generator.command") {
+				trace.Iterations[i].Generator.Command = "<masked>"
+			}
+			if containsPath("generator.result_excerpt") {
+				trace.Iterations[i].Generator.ResultExcerpt = "<masked>"
+			}
+		}
+	}
+}
+
 // uniqueShortID returns 8 hex chars from crypto/rand; the Python port
 // appended uuid.uuid4().hex[:8] to the timestamp to avoid filename collisions
-// when two traces finish in the same second.
 func uniqueShortID() string {
 	var b [4]byte
 	if _, err := rand.Read(b[:]); err != nil {

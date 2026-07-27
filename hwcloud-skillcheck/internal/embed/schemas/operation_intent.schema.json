@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gcl/operation_intent.schema.json",
+  "title": "GCL OperationIntent",
+  "type": "object",
+  "required": ["operation", "expected_state", "safety_class"],
+  "properties": {
+    "operation": { "type": "string", "minLength": 1 },
+    "expected_state": { "type": "string", "minLength": 1 },
+    "safety_class": {
+      "type": "string",
+      "enum": ["read-only", "mutating", "destructive"]
+    },
+    "resource_scope": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

@@ -256,3 +256,75 @@ func containsMasked(s string) bool {
 func contains(s, substr string) bool {
 	return indexOf(s, substr) >= 0
 }
+
+// SanitizeRequest masks cloud resource identifiers, ARNs, and credentials
+// that appear in a free-form user request before the request is shown to the
+// Critic or persisted on the GCL trace. It is the request-scoped counterpart
+// of SanitizeOperationIntent (which works on the structured operation_intent
+// JSON).
+//
+// Masking rules, applied in order:
+//  1. Bare resource IDs (ecs-..., rds-..., vpc-..., dcs-..., elb-..., cce-...,
+//     kms-..., iam-..., sg-...) are replaced with "<id>".
+//  2. Huawei Cloud ARNs (acs:<svc>:<region>:<uid>:<res>:<id>) are replaced
+//     with "<arn>".
+//  3. Credentials (HW_SECRET_ACCESS_KEY=..., SECRET_ACCESS_KEY=...,
+//     SecretAccessKey=..., AK=..., SK=...) are replaced with "<redacted>".
+//
+// Idempotent: if the input already contains "<id>", "<arn>", "<redacted>",
+// "<masked>", or "***" placeholders, the input is returned unchanged.
+//
+// Fail-closed: if any remaining whitespace-separated token after masking
+// looks like an unrecognized opaque identifier (16+ chars of alphanumerics
+// with no spaces and no recognised pattern), SanitizeRequest returns an
+// error. Callers MUST treat that as ExitUsage rather than fall through.
+func SanitizeRequest(text string) (string, error) {
+	if text == "" {
+		return "", nil
+	}
+	if requestAlreadyMaskedRe.MatchString(text) {
+		return text, nil
+	}
+
+	out := requestResourceIDRe.ReplaceAllString(text, "<id>")
+	out = requestARNRe.ReplaceAllString(out, "<arn>")
+	out = requestCredentialRe.ReplaceAllString(out, "<redacted>")
+
+	// Fail-closed: any remaining token of 16+ alphanumeric chars that does
+	// not match a recognised pattern is treated as an unknown leak.
+	if m := requestOpaqueTokenRe.FindString(out); m != "" {
+		return "", &SanitizeError{
+			Field:   "request",
+			Value:   m,
+			Message: "unrecognized opaque token; cannot classify as resource ID, ARN, or credential",
+		}
+	}
+	return out, nil
+}
+
+// requestAlreadyMaskedRe short-circuits SanitizeRequest when the input is
+// already sanitized (idempotency).
+var requestAlreadyMaskedRe = regexp.MustCompile(`<id>|<arn>|<redacted>|<masked>|\*\*\*`)
+
+// requestResourceIDRe matches bare Huawei / AWS-style resource IDs with one
+// of the recognised service prefixes. Mirrors the public-resource_id set
+// documented in docs/gcl-spec.md §SanitizeRequest.
+var requestResourceIDRe = regexp.MustCompile(`(?i)\b(?:ecs|rds|vpc|dcs|elb|cce|kms|iam|sg)-[a-z0-9-]{4,}\b`)
+
+// requestARNRe matches Huawei Cloud ARNs of the form
+// acs:<service>:<region>:<uid>:<res>:<id>. The whole ARN is replaced; we do
+// not preserve the prefix because the request context disallows any cloud
+// ARN from leaking to the Critic.
+var requestARNRe = regexp.MustCompile(`\bacs:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+\b`)
+
+// requestCredentialRe matches the credential patterns described in the
+// gcl-runner secret regex set, extended with the HuaweiCloud AccessKey
+// pattern (AK=<value>). The replacement preserves any leading "key="
+// prefix so the masked output still reads like a credential assignment.
+var requestCredentialRe = regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY|SECRET_ACCESS_KEY|SecretAccessKey|AK|SK)\s*[=:]\s*[A-Za-z0-9/+=]{16,}`)
+
+// requestOpaqueTokenRe catches leftover long alphanumeric tokens after the
+// structured rules have run. 16+ chars is the threshold: a typical
+// credential / resource ID / API key is well above this, while ordinary
+// English words never are.
+var requestOpaqueTokenRe = regexp.MustCompile(`\b[A-Za-z0-9]{16,}\b`)

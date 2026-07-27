@@ -540,6 +540,7 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 | 1.6.0 | 2026-06-19 | Added qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES quality-summary contract |
 | 1.7.0 | 2026-07-25 | Trace schema v2: added `trace_id`, `skill_version`, timing, `environment`, `token_usage` contract, `pre_execution_risk`, per-iteration `duration_ms` |
 | 1.8.0 | 2026-07-25 | Trace schema v3: FinOps (`resource_context`, `cost_attribution`, token retry-waste) + AIOps (`incident`, `slo_context`, `change_impact`, `anomaly_baseline`, `ops_efficiency`) full data contract; `--context-json` injection |
+| 1.9.0 | 2026-07-27 | Trust boundary contract (§14): `SanitizeRequest` enforces fail-closed sanitization of user request; `applyMaskFields` enforces `MaskedFields` declarations on persist; embedded JSON-schema validators for `operation_intent` (`embed.OperationIntentSchema`) and `critic_output` (`embed.CriticOutputSchema`) gate Critic input/output at the wire format |
 
 ## 13. See also
 
@@ -547,3 +548,119 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 - `huaweicloud-*-ops/references/rubric.md` — per-skill scoring rubrics
 - `huaweicloud-*-ops/references/prompt-templates.md` — G/C/O templates
 - `huaweicloud-ces-ops/references/gcl-monitoring.md` — CES monitoring design
+
+## 14. Trust Boundary Contract
+
+The GCL pipeline crosses three trust boundaries. Each boundary is enforced by a
+specific code path; every cross-boundary payload MUST be sanitized, validated,
+or masked at the boundary — never trusted downstream.
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│ User / CLI                                                               │
+│   raw request (may contain resource IDs, ARNs, credentials)             │
+└────────────┬─────────────────────────────────────────────────────────────┘
+             │ (1) SanitizeRequest  — fail-closed on unrecognized tokens
+             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Orchestrator                                                             │
+│   trace.SanitizedRequest  → surfaced to Critic                          │
+│   trace.Request           → kept raw for audit only                     │
+└────────────┬─────────────────────────────────────────────────────────────┘
+             │ (2) Critic output must validate against critic_output.schema
+             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Critic (isolated prompt context)                                         │
+│   receives sanitized_request + operation_intent + generator_output      │
+│   emits scores {correctness, safety, idempotency,                        │
+│                 traceability, spec_compliance} ∈ [0, 1]                  │
+└────────────┬─────────────────────────────────────────────────────────────┘
+             │ (3) applyMaskFields — wipe fields listed in masked_fields
+             ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ audit-results/gcl-trace-<ts>-<hex>.json  (mode 0600)                     │
+```
+
+### 14.1 Boundary 1 — Request sanitization (Orchestrator input)
+
+The `SanitizeRequest` function in
+`hwcloud-skillcheck/internal/gcl/sanitizer.go` is the single point that
+transforms a raw user request into a Critic-safe form. Rules, in priority
+order:
+
+| Pattern | Replacement | Example |
+|---|---|---|
+| Huawei Cloud resource IDs (`ecs-…`, `rds-…`, `vpc-…`, `dcs-…`, `elb-…`, `cce-…`, `kms-…`, `iam-…`, `sg-…`, 4+ char suffix) | `<id>` | `ecs-abc12345` → `<id>` |
+| ARNs (`acs:<region>:<svc>:<type>:<id>`) | `<arn>` | `acs:cn-north-4:project:ecs:instance:abc` → `<arn>` |
+| Embedded credentials (`HW_SECRET_ACCESS_KEY=…`, `SecretAccessKey=…`, `AK=…`, `SK=…`) | `<redacted>` | `AK=ABCDEFGHIJ1234567890` → `<redacted>` |
+| Already-masked markers (`***`, `<masked>`, `<id>`, `<arn>`, `<redacted>`) | pass-through (idempotent) | n/a |
+
+**Fail-closed rule.** If `SanitizeRequest` encounters a long token (>32 chars,
+alphanumeric) that matches no pattern above, it returns an error. The caller
+(`Run`) MUST propagate that error as `ExitUsage` — it MUST NOT persist a
+trace containing the unrecognized token. This is the "Critic request leak"
+defense specified in §10 Anti-Patterns.
+
+### 14.2 Boundary 2 — Critic output schema validation
+
+Critic output is validated against
+`hwcloud-skillcheck/internal/embed/schemas/critic_output.schema.json` (exposed
+via `embed.CriticOutputSchema`). The schema is closed for `scores`
+(`additionalProperties: false`) — every required dimension is fixed:
+`correctness`, `safety`, `idempotency`, `traceability`, `spec_compliance`,
+each `number` in `[0, 1]`. Optional fields: `suggestions` (string array),
+`blocking` (boolean), `mode` (string).
+
+A Critic output that fails validation MUST be rejected before it can drive a
+`Decide(...)` call. The rejection surfaces as `ExitUsage` and is logged with
+the underlying `schema.ValidateFile` errors.
+
+### 14.3 Boundary 3 — operation_intent schema validation
+
+The Orchestrator-derived `operation_intent` is validated against
+`hwcloud-skillcheck/internal/embed/schemas/operation_intent.schema.json`
+(exposed via `embed.OperationIntentSchema`). Required: `operation`,
+`expected_state`, `safety_class ∈ {"read-only", "mutating", "destructive"}`.
+Optional: `resource_scope` (string array, pre-masked).
+
+This is in addition to the runtime enum check in `gcl.enforceSafetyClass`
+(`internal/gcl/sanitizer.go`) — the schema is the wire-format guard, the
+enum check is the runtime guard. Both MUST pass before the intent reaches
+the Critic.
+
+### 14.4 Boundary 4 — Trace masking on persist
+
+`PersistTrace` in `hwcloud-skillcheck/internal/gcl/runner.go` invokes
+`applyMaskFields(trace)` immediately before `json.MarshalIndent`. The helper
+walks `trace.MaskedFields` (the *list* of fields the run promised to mask)
+and replaces each with the `<masked>` sentinel:
+
+| `MaskedFields` entry | Action |
+|---|---|
+| `"request"` | `trace.Request = "<masked>"` (raw request stays only in memory) |
+| `"operation_intent"` | passed through; resource_scope was already masked by `SanitizeOperationIntent` |
+| `"generator.command"` | each `iterations[].generator.command = "<masked>"` |
+| `"generator.result_excerpt"` | each `iterations[].generator.result_excerpt = "<masked>"` |
+
+Anything NOT in `MaskedFields` is persisted verbatim. The masking is the
+*enforcement* side of the contract declared by `MaskedFields`; the field is
+a promise, the helper makes it true.
+
+### 14.5 Summary — the three guarantees
+
+| Guarantee | Enforced by | Failure mode |
+|---|---|---|
+| Critic never sees raw user wording, ARNs, or credentials | `SanitizeRequest` → `trace.SanitizedRequest` | `ExitUsage` (fail-closed) |
+| Critic scores are well-formed and bounded `[0, 1]` | `embed.CriticOutputSchema` + `schema.ValidateFile` | `ExitUsage` (reject + log) |
+| Persisted trace never leaks masked fields | `applyMaskFields` in `PersistTrace` | `PersistTrace` returns error; trace not written |
+
+### 14.6 Reference — files defining this contract
+
+| File | Role |
+|---|---|
+| `hwcloud-skillcheck/internal/gcl/sanitizer.go` (`SanitizeRequest`, `SanitizeOperationIntent`, `MaskResourceID`, `MaskSecrets`) | Boundary 1 |
+| `hwcloud-skillcheck/internal/gcl/runner.go` (`Run`, `PersistTrace`, `applyMaskFields`) | Boundaries 1 + 4 |
+| `hwcloud-skillcheck/internal/embed/schemas/operation_intent.schema.json` | Boundary 3 |
+| `hwcloud-skillcheck/internal/embed/schemas/critic_output.schema.json` | Boundary 2 |
+| `hwcloud-skillcheck/internal/embed/embed.go` (`OperationIntentSchema`, `CriticOutputSchema`) | Boundary 2 + 3 — schema accessors |
+| `hwcloud-skillcheck/internal/schema/schema.go` (`ValidateFile`) | generic validator reused at Boundary 2 |

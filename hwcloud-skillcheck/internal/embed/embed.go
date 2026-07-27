@@ -14,10 +14,12 @@ var fixtureFS embed.FS
 
 // Schema files, exposed as byte slices for direct use by validators.
 var (
-	TraceSchema       = mustRead(schemaFS, "schemas/trace.schema.json")
-	SummarySchema     = mustRead(schemaFS, "schemas/summary.schema.json")
-	AlarmPlanSchema   = mustRead(schemaFS, "schemas/alarm-plan.schema.json")
-	EvalQueriesSchema = mustRead(schemaFS, "schemas/eval-queries.schema.json")
+	TraceSchema           = mustRead(schemaFS, "schemas/trace.schema.json")
+	SummarySchema         = mustRead(schemaFS, "schemas/summary.schema.json")
+	AlarmPlanSchema       = mustRead(schemaFS, "schemas/alarm-plan.schema.json")
+	EvalQueriesSchema     = mustRead(schemaFS, "schemas/eval-queries.schema.json")
+	OperationIntentSchema = mustRead(schemaFS, "schemas/operation_intent.schema.json")
+	CriticOutputSchema    = mustRead(schemaFS, "schemas/critic_output.schema.json")
 )
 
 // Fixture files used by --self-check secret scans.
