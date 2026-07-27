@@ -44,6 +44,8 @@ func Execute() error {
 		return runSnapshot(args)
 	case "critic":
 		return runCritic(args)
+	case "golden":
+		return runGolden(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
