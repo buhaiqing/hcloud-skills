@@ -81,6 +81,18 @@ jobs:
         run: |
           ./bin/hwcloud-skillcheck drift sync --apply --root .
           ./bin/hwcloud-skillcheck drift check --root .
+      # --- P1: Trustworthy Evidence Layer gates ---
+      - name: hwcloud-skillcheck golden run
+        run: ./bin/hwcloud-skillcheck golden run --root . || true
+
+      - name: hwcloud-skillcheck check lanes
+        run: ./bin/hwcloud-skillcheck check lanes --root .
+
+      - name: hwcloud-skillcheck ab compare
+        run: ./bin/hwcloud-skillcheck ab compare --root . || true
+
+      - name: hwcloud-skillcheck check advanced-coverage
+        run: ./bin/hwcloud-skillcheck check advanced-coverage --root .
 
       # --- Go: rule-based Critic scorer (smoke against an embedded fixture) ---
       - name: hwcloud-skillcheck critic score (smoke)

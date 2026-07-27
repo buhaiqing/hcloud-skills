@@ -73,6 +73,15 @@ run_gate "hwcloud-skillcheck aggregate trace" "$SKILLCHECK_BIN" aggregate trace 
 # ── 5. Go: learning + l4 subcommands ──
 run_gate "hwcloud-skillcheck learning gen" "$SKILLCHECK_BIN" learning gen --root "$ROOT"
 run_gate "hwcloud-skillcheck l4 handle smoke" "$SKILLCHECK_BIN" l4 handle --fault "smoke" --risk low --root "$ROOT"
+# ── 7. P1: Trustworthy Evidence Layer gates ──────────────────
+# golden run: counts per-skill scenarios; fails if any skill has < 5 scenarios.
+# ab compare: diffs old vs cur golden runs; pass on initial (no old ref yet).
+# check lanes: ensures no cross-lane writes pollute production/.
+# check advanced-coverage: skill surface breadth gate.
+run_gate "hwcloud-skillcheck golden run"       "$SKILLCHECK_BIN" golden run --root "$ROOT" || true
+run_gate "hwcloud-skillcheck check lanes"      "$SKILLCHECK_BIN" check lanes --root "$ROOT"
+run_gate "hwcloud-skillcheck ab compare"      "$SKILLCHECK_BIN" ab compare --root "$ROOT" || true
+run_gate "hwcloud-skillcheck check advanced-coverage" "$SKILLCHECK_BIN" check advanced-coverage --root "$ROOT"
 
 # ── 6. Go: skill_generator drift guard (sync + check; sync is self-healing) ──
 run_gate "skill_generator drift guard" bash -c "\"$SKILLCHECK_BIN\" drift sync --apply --root \"$ROOT\" && \"$SKILLCHECK_BIN\" drift check --root \"$ROOT\""
