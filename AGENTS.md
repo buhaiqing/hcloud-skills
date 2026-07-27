@@ -131,8 +131,11 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
             仅本仓库适用？     → 项目级 AGENTS.md（本文件）
             是某 skill 专属可调用的能力？ → 独立 Skill 文件（经 generator）
 3. 写入   → 可执行、有示例、有边界、先 grep 现有 AGENTS.md 确认未覆盖（不重复）
-4. 门禁   → 写入前查 wc -l，本文件 ≥500 行先精简再写（见 AGENTS.md 行数门禁）
-5. 复用   → 下次同类任务，Agent 读 AGENTS.md 即获得该资产 → 复利生效
+4. **门禁** → 写入前查 wc -l，本文件 ≥500 行先精简再写（见 AGENTS.md 行数门禁）
+5. **复用** → 下次同类任务，Agent 读 AGENTS.md 即获得该资产 → 复利生效
+
+**Before starting GCL / Harness work, also re-read "Hard-Won Lessons" below**
+(L1–L8) — every rule there was paid for in a real failure.
 ```
 
 ### Skill 侧钩子（让每个 Skill 自带沉淀意识）
@@ -441,3 +444,50 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
    - 补丁版本：Bug 修复或小改进
 
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
+
+## Hard-Won Lessons (P0 收尾 + P1 规划阶段, 2026-07-27)
+
+From the P0 trust-boundary close-out (commits `2b935ea`, `99996a2`, `deaf3b8`)
+and the P1+P2 spec/plan cycle. **Each rule is a fix for a real failure that
+wasted ≥30 min in this cycle.** Re-read before starting any new GCL / Harness
+work.
+
+### L1. "Reuse L4" is a lie when there's an import cycle
+**Problem**: spec said "reuse `l4.HighRiskVerbs` in gcl". `l4` imports `gcl`, so `gcl` cannot import `l4` — `import cycle not allowed`.
+**Fix**: copy the regex into `gcl` as `gclHighRiskVerbs` / `gclHighRiskCommands`, then add a build-time sync test (`internal/l4/gcl_sync_test.go`) that fails CI on drift. **Cost of drift** = silent trust-boundary leak. **Cost of check** = 30 lines.
+**Rule**: when brainstorming says "reuse X", verify the import graph allows it *before* promising reuse.
+
+### L2. `t.TempDir()` is not stable across calls
+**Problem**: each call returns a NEW subdirectory. If `writeScript(t,…)` uses `t.TempDir()` and `readFile` also calls `t.TempDir()`, the read path is a different directory and the file is "not found".
+**Fix**: cache the path per `*testing.T` via `sync.Map` keyed by the test pointer; `t.Cleanup(func() { scriptPaths.Delete(t) })` to release on test end. See `internal/gcl/critic_schema_test.go:scriptForTest` for the canonical implementation.
+**Rule**: any test helper that exposes a path needs to cache per-test, not per-call.
+
+### L3. Shell heredoc trap for JSON test scripts
+**Problem**: a script like `printf '%s' {"scores":{…}}` is broken: the shell does brace expansion on the unquoted JSON, mangling it before `printf` runs. Result: `decode-error` from the subprocess with no obvious cause.
+**Fix**: heredoc with a single-quoted delimiter escapes both brace and parameter expansion: `cat <<'PAYLOAD_EOF' … PAYLOAD_EOF`.
+**Rule**: any test fixture containing `{` `}` `:` `$` in an unquoted context is a bug. Single-quote the heredoc delimiter (`<<'EOF'`) is the safe default.
+
+### L4. `cmd.StdinPipe()` + `cmd.Output()` deadlocks unless you close stdin first
+**Problem**: `exec.CommandContext` + `StdinPipe()` + `Output()` blocks forever if the child reads stdin and the parent never closes the pipe. The 60s context eventually fires with empty stdout → `decode-error`.
+**Fix**: `Write(genBytes)` then `Close()` then `Output()`. `defer in.Close()` after `Output()` is too late.
+**Rule**: any `exec.Cmd` with `StdinPipe()` MUST close the pipe before the call that waits for completion.
+
+### L5. Edit-tool thrash accumulates orphan syntax
+**Problem**: 4+ sequential `edit` tool calls on the same file (especially with brace nesting) almost always produce orphan `}` / duplicate `}` / deleted-line ghost. Re-running `go build` shows syntax errors that the latest `edit` did not introduce.
+**Fix**: (a) after every 2 edits on the same file, `read` it and grep for `^{` `}$` balance. (b) if structure is broken beyond simple repair, `git checkout HEAD -- <file>` and redo from scratch — the first clean rewrite is faster than untangling. (c) the `edit` tool's "auto-repair" warnings are real — re-read after each.
+**Rule**: edit-tool = single-shot per file. Multi-step edits to the same file should be batched into one large `write` instead.
+
+### L6. Test names must match the spec, not the implementation
+**Problem**: the P0 spec listed `TestConfirmationRegistryOneTime` (no underscore) as the A8 acceptance test. The shipped test was `TestConfirmationRegistry_OneTimeConsumption` — different name, same behavior. The test passed green, but the spec criterion was not directly observable.
+**Fix**: ship a `TestP1Acceptance_AuditsAllCriteria` (P1 plan Task 11) that walks the repo's `_test.go` files and asserts the spec-named test strings exist. CI fails if a criterion lacks a named test.
+**Rule**: spec criteria are contracts. The test name is part of the contract, not just a convenience. **Even passing tests do not satisfy a spec criterion — the test name must match.**
+
+### L7. The spec review gate is the user's, not yours
+**Problem**: when `brainstorming` is invoked, the HARD-GATE says: do NOT implement, do NOT call writing-plans, until the user approves the spec. In the P1+P2 cycle the agent marked the spec "self-reviewed" and was about to "self-approve" to keep momentum. The user had to say "now approve spec" to break the gate. That's the correct flow.
+**Fix**: in todos, mark the user-review task `block(reason: "awaiting user approval")` — explicitly NOT in `done` state. The block label makes it visible to the system that this is a human checkpoint.
+**Rule**: when a `block` label exists in the todo, the next phase's work (writing-plans, implementation) MUST wait. Unblocking without user input = process violation.
+
+### L8. Pre-existing flaky tests get conflated with new failures
+**Problem**: in the P0 cycle, two tests were red on a clean checkout (before any P0 work): `TestConfirmationRegistry_ConcurrentSafety` (flaky goroutine race) and `TestHandleFault_DecisionAutoProceed` (L4 fixture drift). After P0, both were still red. A naive reader would assume they were P0 regressions. The truth: they pre-date the spec.
+**Fix**: in every commit message, **explicitly call out** pre-existing failures (`"TestX failure is pre-existing, not caused by this commit"`). Add a `// KNOWN-FLAKY: <reason>` comment above the test so `go test -run` can filter them.
+**Rule**: a "red" test in CI is a signal, not a verdict. Every commit message should distinguish regressions from pre-existing noise.
