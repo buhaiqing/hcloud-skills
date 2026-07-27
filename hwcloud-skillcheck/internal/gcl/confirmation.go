@@ -142,6 +142,19 @@ func (r *ConfirmationRegistry) Issue(op, actor string) (string, error) {
 	return nonce, nil
 }
 
+// IssuePlanID is the spec-mandated (§5, gcl-trust-boundary-p0) issuer:
+// returns both a fresh planID and a nonce, bound to (skill, cmd). The
+// caller (e.g. the L4 Orchestrator) keeps the planID; the human
+// reviewer receives the nonce and pastes it back via --confirm-nonce.
+// ValidateAndConsume is the matching consumer.
+func (r *ConfirmationRegistry) IssuePlanID(skill, cmd string) (planID, nonce string, err error) {
+	n, err := r.Issue(skill, cmd)
+	if err != nil {
+		return "", "", err
+	}
+	return "plan_" + n, n, nil
+}
+
 // Verify consumes the nonce exactly once and returns ok=true. A second
 // Verify on the same nonce returns ErrReplay and ok=false. An expired or
 // unknown nonce returns its respective error.
@@ -273,6 +286,14 @@ func (r *ConfirmationRegistry) sweepOnce() {
 			delete(r.entries, k)
 		}
 	}
+}
+
+// PruneExpired is the spec-mandated (§5) public sweep. It removes all
+// entries whose expiresAt is in the past. The L4 Orchestrator's main
+// loop calls this every minute or so to bound registry size; the
+// background sweeper goroutine also calls it on a 1/4 TTL cadence.
+func (r *ConfirmationRegistry) PruneExpired() {
+	r.sweepOnce()
 }
 
 // newNonce returns "cfm_" + 12 hex chars (48 bits of crypto/rand entropy).
