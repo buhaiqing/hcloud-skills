@@ -5,22 +5,13 @@ name: Build hwcloud-skillcheck
 # with `working-directory: hwcloud-skillcheck`. On a `v*` tag push, the matrix
 # artifacts are published as a GitHub Release so external users can download a
 # standalone binary with no Go toolchain (see docs/superpowers/specs/hwcloud-skillcheck-cli.md).
+#
+# Day-to-day CI (gofmt/vet/test + skill validation) lives in validate-skills.yml.
+# This workflow runs only on version tags to avoid duplicating that gate on every push.
 
 on:
   push:
-    branches: [main, master]
     tags: ["v*"]
-    paths:
-      - "hwcloud-skillcheck/**"
-      - ".github/workflows/build-skillcheck.yml"
-      - "hwcloud-skillcheck/go.mod"
-      - "hwcloud-skillcheck/go.sum"
-  pull_request:
-    paths:
-      - "hwcloud-skillcheck/**"
-      - ".github/workflows/build-skillcheck.yml"
-      - "hwcloud-skillcheck/go.mod"
-      - "hwcloud-skillcheck/go.sum"
 
 permissions:
   contents: write # needed to publish release assets on tag push

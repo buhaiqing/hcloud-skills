@@ -534,8 +534,8 @@ GOOS=darwin  GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64  .
 GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
 ```
 
-CI 工作流（`.github/workflows/release.yml`）在 `v*` tag push 时自动运行，
-构建同样的 5 平台矩阵，并通过 `softprops/action-gh-release` 上传二进制与 SHA256SUMS。
+CI 工作流（`.github/workflows/build-skillcheck.yml`）在 `v*` tag push 时自动运行，
+构建 6 平台矩阵，并通过 `softprops/action-gh-release` 上传二进制到 GitHub Release。
 
 ### 验证安装
 

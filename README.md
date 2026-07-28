@@ -552,9 +552,9 @@ GOOS=darwin  GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64  .
 GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
 ```
 
-The CI workflow (`.github/workflows/release.yml`) runs automatically on
-`v*` tag push, builds the same 5-platform matrix, and uploads the
-binaries + SHA256SUMS to the GitHub Release via `softprops/action-gh-release`.
+The CI workflow (`.github/workflows/build-skillcheck.yml`) runs automatically on
+`v*` tag push, builds a 6-platform matrix, and uploads the binaries to the
+GitHub Release via `softprops/action-gh-release`.
 
 ## References
 
