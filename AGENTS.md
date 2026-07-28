@@ -207,38 +207,6 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 - Tests live next to source as Go `_test.go` files; `go test ./...` runs them. Subagent-driven-development + race detector are how new functionality is verified before commit.
 - CI runs `hwcloud-skillcheck validate --root .` plus `go test ./... -race`; local dev MUST run the same suite before pushing.
 
-> **As of 2026-07-26, zero Python scripts remain in `scripts/`.** All 17 scripts
-
-When asking the user a multiple-choice question — through `AskUserQuestion`, free-form
-prose, or any other channel — every option beyond the first MUST be accompanied by:
-
-1. **A recommended option.** Pick the one you (the agent) would choose in the user's
-   shoes given the evidence in scope, and label it as the recommendation
-   (`(Recommended)` in `AskUserQuestion`; `**推荐:A**` or similar in prose).
-2. **The reasoning.** One to three short lines that connect the recommendation to
-   the evidence: which finding is the highest priority, which option closes the
-   loop fastest, what trade-off the other options accept.
-
-**Why this is a rule, not a default.** Most option-lists defer the call to the user.
-That pushes the cognitive cost of every decision onto one person who has less
-context than the agent that produced the trade-off list. The user has delegated the
-investigation; they hired the agent's judgment, not its menu. The recommendation
-should still be defensible — the user can override freely — but it should not be
-absent.
-
-**Acceptance test before sending a question:** if you delete the user from the
-room, would you still know which option to take? If yes, state it. If no (pure
-preference with no evidence), ask without a recommendation and say so.
-
-**Exceptions** (when to ask without a recommendation):
-- Personal preference (color scheme, naming, library choice with no measurable
-  impact).
-- Decisions locked behind missing context the user has but you don't (e.g., team
-  conventions, customer SLA).
-- Decisions where the user previously declared the answer (re-confirming is noise).
-
-In every other case: lead with the recommendation.
-
 ## Test Hermeticity — Runtime-State Tests (P0)
 
 Tests touching the real repo (`Path(__file__).resolve().parents[1]`) are **not hermetic by default** — they require state that doesn't exist on a fresh CI checkout (e.g. `audit-results/`, `.agents/skills/huaweicloud-skill-generator/`). Rules:
@@ -279,12 +247,6 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | Inventing API fields/CLI flags | Cross-reference against OpenAPI or verified CLI output |
 | Printing/logging real credentials | Mask with `***` / `<masked>` |
 | Skipping safety gate on destructive ops | Add explicit confirmation step |
-
-
-- ECS → VPC (subnet), CES (metrics), ELB (load balancing)
-- RDS → ECS (CloudShell), CES (performance metrics)
-- All products → IAM (permission issues), CTS (audit trails), BSS (billing)
-
 ## Sources of Truth
 
 1. OpenAPI + official docs > forums/chat
@@ -320,8 +282,6 @@ hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-qual
 ### Relationship to build-time self-reflection
 
 Build-time 2-round self-reflection and runtime GCL are independent gates. A clean self-reflection does not exempt runtime scoring; a passing GCL rubric does not exempt sloppy skill updates.
-
-Build-time 2-round self-reflection and runtime GCL are independent gates.
 
 ### GCL changelog
 
@@ -410,7 +370,64 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
 
-## Hard-Won Lessons (P0 + P1 + P2 + CI维护, 2026-07-27 → 2026-07-28)
+## Post-Push CI Monitoring Loop (强制 — 每次 push 后必跑)
+
+After every successful `git push` to remote, the agent MUST monitor the resulting CI run end-to-end and auto-recover from any failure. This is a **recurring operational work item**, not a one-shot. Pair with the **Commit Gate** at the top of this file (pre-push) — together they bracket the full pre-push / push / post-push / fix cycle.
+
+Note on terminology: the user refers to "GitLab Hub CI". The current CI platform for this repo is **GitHub Actions** (`.github/workflows/*.yml`). The loop below generalizes to any push-triggered CI (GitHub Actions / GitLab CI / Jenkins / Drone). Substitute the API surface and CLI tool as needed — the loop semantics are platform-agnostic.
+
+### Trigger
+
+- `git push origin <branch>` exits 0
+- Pushed branch has at least one CI workflow file
+
+### Loop (max 3 attempts, then escalate to user)
+
+1. **Watch** — poll CI run status until terminal (`success` / `failure` / `cancelled` / `timeout`).
+2. **Detect** — if `conclusion = failure`, identify which job(s) failed (the GitHub UI's red X markers).
+3. **Fetch logs** — `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` (auth via `GITHUB_TOKEN`; follow the 302 redirect to the signed S3 URL).
+4. **Analyze** — classify the failure into one of: `test` / `build` / `lint` / `deps` / `config` / `external` / `unknown`. Use the classifier as a stable tag for `git log --grep`.
+5. **Fix** — apply a minimal-delta change addressing the root cause. Match the local `go test ./...` gate first; never push a fix that fails locally.
+6. **Re-deploy** — `git commit -m "fix(ci): <one-line>"` + `git push` → restart loop from step 1.
+7. **Distill** — if the fix reveals a new reusable pattern, add it to AGENTS.md via the CADL mechanism. The classifier tag from step 4 becomes the lesson topic.
+
+### API surface (GitHub Actions — substitute for other CIs)
+
+```bash
+# List recent runs for the pushed commit (use the head SHA from `git rev-parse HEAD`)
+GET /repos/{owner}/{repo}/actions/runs?head_sha=<sha>
+
+# Get a specific job's logs (returns 302 → signed S3 URL → follow)
+GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs
+
+# CLI shortcut (preferred when available)
+gh run watch <run-id> --exit-status
+gh run view <run-id> --log-failed
+```
+
+### Stop conditions (escalate to user)
+
+- **3 failed attempts in a row** — likely needs human judgment (security/CVE, third-party API change, infra outage, design ambiguity).
+- **Non-self-recoverable failure** — anything the agent's toolset can't fix (cloud account misconfiguration, OIDC/secret rotation, force-push required).
+- **Token / rate-limit** — `GITHUB_TOKEN` expired or the API returns 401/403/429.
+- **User opt-out** — branch tagged with `[skip ci-monitor]` in commit message, or user has explicitly disabled the loop for this branch.
+
+### Evidence recording (commit message format)
+
+Every auto-fix MUST include the run id and failure classifier in the commit body so the history is grep-able:
+
+```
+fix(ci): <one-line summary>
+
+Classifier: <test|build|lint|deps|config|external|unknown>
+CI run:     <run-id>
+Job:        <job-name> (id: <job-id>)
+Signature:  <one-line failure fingerprint>
+Fix:        <one-line description>
+```
+
+`git log --grep "fix(ci):" --grep "CI run:"` then surfaces the full auto-recovery history in one query.
+## Hard-Won Lessons (P0 + P1 + P2 + CI维护 + CI监控, 2026-07-27 → 2026-07-28)
 
 ### L9. Restricted macOS Go cache
 When Go build/test hits a read-only `~/Library/Caches/go-build` error, set `GOCACHE=/tmp/hcloud-go-cache`; this changes only compiler cache location and keeps the source tree untouched.
@@ -515,3 +532,8 @@ From the P0 trust-boundary close-out and P1+P2 spec/plan cycle. Each rule below 
 **Problem**: `TestExternalCritic_TimeoutContext` set a 50ms ctx; the helper completed *before* the deadline, so `Score` reached the success path. The test payload omitted the optional `mode` field (the `critic_output` schema only requires `scores`), so `result.Mode = wire.Mode = ""` — the test's `if got.Mode == ""` assertion failed even though the call returned correctly.
 **Fix**: in the success branch of `ExternalCritic.Score`, default `result.Mode = "unconfigured"` when `wire.Mode == ""`. Mirrors the `defaultResult.Mode = "unconfigured"` already used for the early-return "no path configured" case. `Unconfigured` is now the canonical "Critic returned a valid payload but didn't tell us its mode" state.
 **Rule**: when a JSON schema marks a field as optional, the consumer must still defend against it being absent. The schema describes what is *allowed*; the consumer chooses what to *assume* when fields are missing. Document the assumed default in the field's Go doc-comment.
+
+### L22. After every push, run the post-push CI monitoring loop
+**Problem**: a green local `git push` can still fail CI; without a watch loop, the agent declares "done" before the remote actually accepts the change, leaving red builds in `main`.
+**Fix**: see the "Post-Push CI Monitoring Loop" section above. The loop watches → fetches logs → analyzes → fixes → re-pushes, with max 3 attempts before escalating to the user. Auto-fixes must include the CI run id and a failure classifier in the commit message.
+**Rule**: every `git push` MUST be followed by `gh run watch <run-id> --exit-status` (or equivalent) until terminal status. "Pushed, now waiting for the user" is NOT a valid end-state.
