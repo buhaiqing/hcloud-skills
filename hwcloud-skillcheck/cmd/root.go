@@ -60,6 +60,8 @@ func Execute() error {
 		return runRouter(args)
 	case "memory":
 		return runMemoryInspect(args)
+	case "trust":
+		return runTrust(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -104,6 +106,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck telemetry confusion --root <dir>              derive router intent confusion matrix")
 	fmt.Fprintln(w, "  hwcloud-skillcheck router <info|embed-test|calibrate> --root <dir>   inspect, preflight-test, or offline-calibrate router configuration")
 	fmt.Fprintln(w, "  hwcloud-skillcheck memory inspect --root <dir>                     inspect L4 outcome and context memory")
+	fmt.Fprintln(w, "  hwcloud-skillcheck trust stats --root <dir>                       trust_source{from=...} cutover counters (ADR-0009)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate --root <dir>                            run all A-class checks (total entry)")
 }
 
@@ -204,5 +207,19 @@ func runSnapshot(args []string) error {
 		return runSnapshotCLI(args[1:])
 	default:
 		return fmt.Errorf("snapshot: unknown subcommand %q", args[0])
+	}
+}
+
+// runTrust dispatches `hwcloud-skillcheck trust <subcommand>`. Currently
+// only `stats` (ADR-0009 Phase 2 cutover counter) is exposed.
+func runTrust(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("trust: missing subcommand (use 'stats')")
+	}
+	switch args[0] {
+	case "stats":
+		return runTrustStats(args[1:])
+	default:
+		return fmt.Errorf("trust: unknown subcommand %q", args[0])
 	}
 }
