@@ -496,7 +496,7 @@ git commit -m "feat(l4): ContextMemory.Load with first-run + session rotation"
   - `func (m *ContextMemory) CloseTask(taskID string) error`
 - Each follows the `Load → modify → Save` pattern under the mutex.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestContextMemory_RecordTask_PrependsAndCapsAt20(t *testing.T) {
@@ -585,12 +585,12 @@ func TestContextMemory_SetPreference_AddsAndDeletes(t *testing.T) {
 
 (Add `fmt` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Record|TestContextMemory_Close|TestContextMemory_SetPreference' -v`
 Expected: all FAIL with `undefined: (*ContextMemory).RecordTask` (and friends).
 
-- [ ] **Step 3: Implement the four mutation methods**
+- [x] **Step 3: Implement the four mutation methods**
 
 Append to `context_memory.go`:
 
@@ -667,17 +667,17 @@ func (m *ContextMemory) CloseTask(taskID string) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Record|TestContextMemory_Close|TestContextMemory_SetPreference' -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Run the full l4 test suite — nothing else should break**
+- [x] **Step 5: Run the full l4 test suite — nothing else should break**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -v`
 Expected: PASS for all tests, including the existing `persistence_test.go`, `orchestrator_test.go`, `topology_test.go`, `trust_test.go`, `rbac_test.go`, `outcome_memory_test.go` (from ADR-0007), `self_healing_test.go` (from ADR-0007).
 
-- [ ] **Step 6: Lint and vet**
+- [x] **Step 6: Lint and vet**
 
 Run:
 ```bash
@@ -685,7 +685,7 @@ cd hwcloud-skillcheck && go vet ./... && gofmt -l .
 ```
 Expected: empty output from both.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
@@ -1022,3 +1022,4 @@ NO UNRESOLVED DECISIONS
 - Task 1 (Data model + constants) — committed 08e198e
 - Task 2 (ContextMemory struct + atomic Save) — committed afed6e4
 - Task 3 (Load + first-run + session rotation) — committed e51d76a
+- Task 4 (Mutation API: RecordTask/RecordError/SetPreference/CloseTask) — committed eb0abdb
