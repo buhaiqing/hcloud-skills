@@ -45,7 +45,8 @@ tasks:
   release-build:
     cmds:
       - test -n "{{.VERSION}}"
-      - git diff --quiet || { echo "error: working tree is dirty; commit changes first"; exit 1; }
+      - 'git diff --quiet'
+      - 'git diff --cached --quiet'
       - rm -rf {{.RELEASE_DIR}}
       - mkdir -p {{.RELEASE_DIR}}
       - cd {{.MODULE}} && for target in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
@@ -65,6 +66,8 @@ tasks:
   release:
     cmds:
       - test -n "{{.VERSION}}"
+      - 'git diff --quiet'
+      - 'git diff --cached --quiet'
       - git tag "v{{.VERSION}}"
       - git push origin "v{{.VERSION}}"
 
