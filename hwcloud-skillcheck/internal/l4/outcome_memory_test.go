@@ -133,3 +133,26 @@ func TestOutcomeMemory_MatchOutcomes_Lookback(t *testing.T) {
 		t.Fatalf("want [fresh], got %+v", got)
 	}
 }
+
+func TestOutcomeMemory_PruneOlderThan(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	old := OutcomeRecord{ID: "old", Timestamp: "2020-01-01T00:00:00Z", Skill: "s", Action: "x", Outcome: "failure"}
+	fresh := OutcomeRecord{ID: "fresh", Timestamp: "2026-07-01T00:00:00Z", Skill: "s", Action: "x", Outcome: "success"}
+	_ = mem.Record(old)
+	_ = mem.Record(fresh)
+
+	cutoff, _ := time.Parse(time.RFC3339, "2025-01-01T00:00:00Z")
+	dropped, err := mem.PruneOlderThan(cutoff)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if dropped != 1 {
+		t.Fatalf("want 1 dropped, got %d", dropped)
+	}
+
+	got, _ := mem.RecentOutcomes("s", "x", 10)
+	if len(got) != 1 || got[0].ID != "fresh" {
+		t.Fatalf("want [fresh], got %+v", got)
+	}
+}

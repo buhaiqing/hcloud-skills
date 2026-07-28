@@ -37,13 +37,18 @@ type OutcomeMemory struct {
 }
 
 // NewOutcomeMemory ensures <root>/.l4-memory/ exists and returns a store
-// pointing at <root>/.l4-memory/outcomes.jsonl.
+// pointing at <root>/.l4-memory/outcomes.jsonl. Auto-prunes records older
+// than 90 days on first open.
 func NewOutcomeMemory(root string) (*OutcomeMemory, error) {
 	dir := filepath.Join(root, ".l4-memory")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("outcome memory: mkdir: %w", err)
 	}
-	return &OutcomeMemory{path: filepath.Join(dir, "outcomes.jsonl")}, nil
+	mem := &OutcomeMemory{path: filepath.Join(dir, "outcomes.jsonl")}
+	if _, err := mem.PruneOlderThan(time.Now().Add(-90 * 24 * time.Hour)); err != nil {
+		return nil, fmt.Errorf("outcome memory: initial prune: %w", err)
+	}
+	return mem, nil
 }
 
 // Record appends one OutcomeRecord as a single JSON line.
@@ -147,4 +152,82 @@ func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookbac
 		return match[i].Timestamp > match[j].Timestamp
 	})
 	return match, nil
+}
+
+// PruneOlderThan drops records whose Timestamp is strictly before cutoff.
+// Returns the number of records removed. Safe to call on an empty file.
+// Holds m.mu across the entire read→write→rename sequence to prevent
+// data loss: a concurrent Record() between readAll and rename would
+// otherwise be silently dropped when the rename overwrites the file.
+func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	raw, err := os.ReadFile(m.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("outcome memory: prune read: %w", err)
+	}
+	if len(raw) == 0 {
+		return 0, nil
+	}
+	kept := make([]OutcomeRecord, 0, 16)
+	dropped := 0
+	for _, line := range bytes.Split(raw, []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		var r OutcomeRecord
+		if err := json.Unmarshal(line, &r); err != nil {
+			dropped++
+			continue
+		}
+		ts, err := time.Parse(time.RFC3339, r.Timestamp)
+		if err != nil || ts.Before(cutoff) {
+			dropped++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if dropped == 0 {
+		return 0, nil
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(m.path), "outcomes-*.jsonl.tmp")
+	if err != nil {
+		return dropped, fmt.Errorf("outcome memory: prune tmp: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	for _, r := range kept {
+		line, err := json.Marshal(r)
+		if err != nil {
+			tmp.Close()
+			cleanup()
+			return dropped, fmt.Errorf("outcome memory: prune marshal: %w", err)
+		}
+		if _, err := tmp.Write(append(line, '\n')); err != nil {
+			tmp.Close()
+			cleanup()
+			return dropped, fmt.Errorf("outcome memory: prune write: %w", err)
+		}
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return dropped, fmt.Errorf("outcome memory: prune sync: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return dropped, fmt.Errorf("outcome memory: prune close: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		cleanup()
+		return dropped, fmt.Errorf("outcome memory: prune chmod: %w", err)
+	}
+	if err := os.Rename(tmpName, m.path); err != nil {
+		cleanup()
+		return dropped, fmt.Errorf("outcome memory: prune rename: %w", err)
+	}
+	return dropped, nil
 }
