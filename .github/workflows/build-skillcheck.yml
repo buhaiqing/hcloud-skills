@@ -10,7 +10,17 @@ on:
   push:
     branches: [main, master]
     tags: ["v*"]
+    paths:
+      - "hwcloud-skillcheck/**"
+      - ".github/workflows/build-skillcheck.yml"
+      - "hwcloud-skillcheck/go.mod"
+      - "hwcloud-skillcheck/go.sum"
   pull_request:
+    paths:
+      - "hwcloud-skillcheck/**"
+      - ".github/workflows/build-skillcheck.yml"
+      - "hwcloud-skillcheck/go.mod"
+      - "hwcloud-skillcheck/go.sum"
 
 permissions:
   contents: write # needed to publish release assets on tag push
