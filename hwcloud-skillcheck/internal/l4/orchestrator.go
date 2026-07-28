@@ -33,6 +33,10 @@ type HandleFaultInput struct {
 	TrustData       map[string]any
 	MetricValues    []float64
 	MetricThreshold *float64
+	// ContextMem records the orchestrator's lifecycle events across
+	// invocations. When nil, a fresh ContextMemory is created from
+	// the resolved root directory.
+	ContextMem *ContextMemory
 }
 
 // TopologyResult is the public topology block in the orchestrator output.
@@ -411,12 +415,63 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 
 	decision := "human_review_required"
 	executionTask := (*TaskState)(nil)
+
+	// Context memory: instantiate from input or default to <root>/.l4-memory.
+	cm := in.ContextMem
+	if cm == nil {
+		var err error
+		cm, err = NewContextMemory(root)
+		if err != nil {
+			// Don't fail the whole run for context-memory init failure;
+			// skip recording for this invocation.
+			cm = nil
+		}
+	}
+
 	if gclRes.OverallSafety && trustRes.AutoApprove {
 		decision = "auto_proceed"
 		// Build task from plan and run execution loop with persistence + RBAC.
 		task := BuildTaskFromPlan(plan, in.Fault, root)
 		_ = PersistTask(root, task.ID, task)
+
+		// Record task creation in context memory.
+		if cm != nil {
+			primary := primarySkillFromPlan(plan)
+			_ = cm.RecordTask(TaskSummary{
+				TaskID:       task.ID,
+				Fault:        task.Fault,
+				StartedAt:    task.CreatedAt,
+				Status:       string(TaskStatusRunning),
+				PrimarySkill: primary,
+			})
+		}
+
 		executionTask = RunExecutionLoop(root, task, plan, matched)
+
+		// Record final task status and record each failed step as an error.
+		if cm != nil {
+			_ = cm.RecordTask(TaskSummary{
+				TaskID:       executionTask.ID,
+				Fault:        executionTask.Fault,
+				StartedAt:    executionTask.CreatedAt,
+				FinishedAt:   executionTask.UpdatedAt,
+				Status:       string(executionTask.Status),
+				PrimarySkill: primarySkillOfTask(executionTask),
+			})
+			_ = cm.CloseTask(executionTask.ID)
+			for _, r := range executionTask.Results {
+				if !r.Success && r.Error != "" {
+					_ = cm.RecordError(ErrorSummary{
+						Timestamp:  r.FinishedAt,
+						Skill:      primarySkillOfTask(executionTask),
+						Action:     r.Command,
+						ErrorClass: "unknown",
+						ErrorMsg:   r.Error,
+					})
+				}
+			}
+		}
+
 		// Update decision based on execution result.
 		switch executionTask.Status {
 		case TaskStatusCompleted:
@@ -425,6 +480,19 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			decision = "failed"
 		case TaskStatusAborted:
 			decision = "aborted"
+		}
+	} else {
+		// Not auto-approved; still record the request so future runs have
+		// context for similar faults.
+		if cm != nil {
+			_ = cm.RecordTask(TaskSummary{
+				TaskID:       faultID,
+				Fault:        in.Fault,
+				StartedAt:    startedAt,
+				FinishedAt:   NowISO(),
+				Status:       "human_review_required",
+				PrimarySkill: primarySkillFromPlan(plan),
+			})
 		}
 	}
 	return &OrchestratorOutput{

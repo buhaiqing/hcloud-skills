@@ -44,8 +44,7 @@
   - `type TaskSummary struct { ... }`
   - `type ErrorSummary struct { ... }`
 
-- [ ] **Step 1: Write failing tests**
-
+- [x] **Step 1: Write failing tests**
 In `context_memory_test.go`:
 
 ```go
@@ -92,13 +91,11 @@ func TestContextSchema_Constant(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
-
+- [x] **Step 2: Run tests to verify they fail**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContext_' -v`
 Expected: both FAIL with `undefined: Context`.
 
-- [ ] **Step 3: Implement data types in `context_memory.go`**
-
+- [x] **Step 3: Implement data types in `context_memory.go`**
 ```go
 package l4
 
@@ -155,13 +152,11 @@ type ErrorSummary struct {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
+- [x] **Step 4: Run tests to verify they pass**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContext_' -v`
 Expected: PASS for both.
 
-- [ ] **Step 5: Commit**
-
+- [x] **Step 5: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
 git commit -m "feat(l4): Context data types + schema constants"
@@ -181,8 +176,7 @@ git commit -m "feat(l4): Context data types + schema constants"
   - `func NewContextMemory(root string) (*ContextMemory, error)`
   - `func (m *ContextMemory) Save(c *Context) error` — atomic write via tmp+rename
 
-- [ ] **Step 1: Write failing tests**
-
+- [x] **Step 1: Write failing tests**
 ```go
 func TestContextMemory_Save_CreatesFileWithMode0600(t *testing.T) {
     dir := t.TempDir()
@@ -227,13 +221,11 @@ func TestContextMemory_Save_AtomicNoTempLeftBehind(t *testing.T) {
 
 (Add `os`, `path/filepath`, `strings` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
-
+- [x] **Step 2: Run tests to verify they fail**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Save' -v`
 Expected: FAIL with `undefined: NewContextMemory`.
 
-- [ ] **Step 3: Implement NewContextMemory + Save**
-
+- [x] **Step 3: Implement NewContextMemory + Save**
 Append to `context_memory.go`:
 
 ```go
@@ -304,13 +296,11 @@ func (m *ContextMemory) Save(c *Context) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
+- [x] **Step 4: Run tests to verify they pass**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Save' -v`
 Expected: both PASS.
 
-- [ ] **Step 5: Commit**
-
+- [x] **Step 5: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
 git commit -m "feat(l4): ContextMemory with atomic Save (tmp+rename, 0600)"
@@ -328,8 +318,7 @@ git commit -m "feat(l4): ContextMemory with atomic Save (tmp+rename, 0600)"
 - Produces:
   - `func (m *ContextMemory) Load() (*Context, error)` — returns zero-value with fresh session_id if file absent; errors on unknown schema; rotates session if `created_at` older than `SessionRotateAfter`
 
-- [ ] **Step 1: Write failing tests**
-
+- [x] **Step 1: Write failing tests**
 ```go
 func TestContextMemory_Load_FirstRunReturnsFreshContext(t *testing.T) {
     dir := t.TempDir()
@@ -397,13 +386,11 @@ func TestContextMemory_Load_RotatesExpiredSession(t *testing.T) {
 
 (Add `time`, `strings` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
-
+- [x] **Step 2: Run tests to verify they fail**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Load' -v`
 Expected: all FAIL with `undefined: (*ContextMemory).Load`.
 
-- [ ] **Step 3: Implement Load**
-
+- [x] **Step 3: Implement Load**
 Append to `context_memory.go`:
 
 ```go
@@ -468,13 +455,11 @@ func newSessionID() string {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
+- [x] **Step 4: Run tests to verify they pass**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Load' -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
-
+- [x] **Step 5: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
 git commit -m "feat(l4): ContextMemory.Load with first-run + session rotation"
@@ -496,8 +481,7 @@ git commit -m "feat(l4): ContextMemory.Load with first-run + session rotation"
   - `func (m *ContextMemory) CloseTask(taskID string) error`
 - Each follows the `Load → modify → Save` pattern under the mutex.
 
-- [ ] **Step 1: Write failing tests**
-
+- [x] **Step 1: Write failing tests**
 ```go
 func TestContextMemory_RecordTask_PrependsAndCapsAt20(t *testing.T) {
     dir := t.TempDir()
@@ -585,13 +569,11 @@ func TestContextMemory_SetPreference_AddsAndDeletes(t *testing.T) {
 
 (Add `fmt` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
-
+- [x] **Step 2: Run tests to verify they fail**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Record|TestContextMemory_Close|TestContextMemory_SetPreference' -v`
 Expected: all FAIL with `undefined: (*ContextMemory).RecordTask` (and friends).
 
-- [ ] **Step 3: Implement the four mutation methods**
-
+- [x] **Step 3: Implement the four mutation methods**
 Append to `context_memory.go`:
 
 ```go
@@ -667,26 +649,22 @@ func (m *ContextMemory) CloseTask(taskID string) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
-
+- [x] **Step 4: Run tests to verify they pass**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Record|TestContextMemory_Close|TestContextMemory_SetPreference' -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Run the full l4 test suite — nothing else should break**
-
+- [x] **Step 5: Run the full l4 test suite — nothing else should break**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -v`
 Expected: PASS for all tests, including the existing `persistence_test.go`, `orchestrator_test.go`, `topology_test.go`, `trust_test.go`, `rbac_test.go`, `outcome_memory_test.go` (from ADR-0007), `self_healing_test.go` (from ADR-0007).
 
-- [ ] **Step 6: Lint and vet**
-
+- [x] **Step 6: Lint and vet**
 Run:
 ```bash
 cd hwcloud-skillcheck && go vet ./... && gofmt -l .
 ```
 Expected: empty output from both.
 
-- [ ] **Step 7: Commit**
-
+- [x] **Step 7: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
 git commit -m "feat(l4): ContextMemory mutation API (task, error, pref, close)"
@@ -718,16 +696,14 @@ Scope of this task is **minimal** — just record lifecycle events. Do NOT
 yet consume context in the orchestrator's decision logic (that's a
 follow-up).
 
-- [ ] **Step 1: Read current `orchestrator.go`**
-
+- [x] **Step 1: Read current `orchestrator.go`**
 Read `hwcloud-skillcheck/internal/l4/orchestrator.go`. Identify:
 - The `HandleFaultInput` struct definition (probably lines 50–90).
 - The `HandleFault` function body (around line 133).
 - The exact line where `BuildTaskFromPlan` is called.
 - The line where the resulting `task` is finalized (`CompleteTask` / `FailTask`).
 
-- [ ] **Step 2: Write the failing integration test**
-
+- [x] **Step 2: Write the failing integration test**
 In `orchestrator_context_test.go`:
 
 ```go
@@ -778,13 +754,11 @@ func TestOrchestrator_RecordsTaskLifecycleViaHandleFault(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
-
+- [x] **Step 3: Run test to verify it fails**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestOrchestrator_RecordsTaskLifecycleViaHandleFault -v`
 Expected: FAIL — `ContextMem` field doesn't exist on `HandleFaultInput`, or `HandleFault` doesn't read it.
 
-- [ ] **Step 4: Add `ContextMem` field to `HandleFaultInput`**
-
+- [x] **Step 4: Add `ContextMem` field to `HandleFaultInput`**
 In `orchestrator.go`:
 
 ```go
@@ -797,8 +771,7 @@ type HandleFaultInput struct {
 }
 ```
 
-- [ ] **Step 5: Instantiate and use ContextMemory in `HandleFault`**
-
+- [x] **Step 5: Instantiate and use ContextMemory in `HandleFault`**
 At the top of `HandleFault` body (after root resolution, before `BuildTaskFromPlan`):
 
 ```go
@@ -860,26 +833,22 @@ for _, r := range task.Results {
 }
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
-
+- [x] **Step 6: Run test to verify it passes**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestOrchestrator_RecordsTaskLifecycleViaHandleFault -v`
 Expected: PASS.
 
-- [ ] **Step 7: Run the full test suite**
-
+- [x] **Step 7: Run the full test suite**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -v`
 Expected: all PASS. The nil-`ContextMem` path must be back-compat with existing callers.
 
-- [ ] **Step 8: Lint and vet**
-
+- [x] **Step 8: Lint and vet**
 Run:
 ```bash
 cd hwcloud-skillcheck && go vet ./... && gofmt -l .
 ```
 Expected: empty output.
 
-- [ ] **Step 9: Commit**
-
+- [x] **Step 9: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/orchestrator.go hwcloud-skillcheck/internal/l4/orchestrator_context_test.go
 git commit -m "feat(l4): wire ContextMemory into HandleFault lifecycle"
@@ -900,8 +869,7 @@ first non-empty `Skill` field and return it.
 - Consumes: full API from Tasks 1–5
 - Produces: a test that simulates two separate "process runs" against the same `<root>` and verifies state survives
 
-- [ ] **Step 1: Write the test**
-
+- [x] **Step 1: Write the test**
 ```go
 package l4
 
@@ -951,13 +919,11 @@ func TestContextMemory_PersistsAcrossRuns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
-
+- [x] **Step 2: Run test to verify it passes**
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestContextMemory_PersistsAcrossRuns -v`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
-
+- [x] **Step 3: Commit**
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_e2e_test.go
 git commit -m "test(l4): ContextMemory end-to-end persistence across runs"
@@ -1015,4 +981,17 @@ Which approach?
 
 - **M1–M5** — see outcome-memory plan §GSTACK REVIEW REPORT for full details.
 
+<<<<<<< HEAD
 NO UNRESOLVED DECISIONS
+=======
+NO UNRESOLVED DECISIONS
+
+## Progress
+
+- Task 1 (Data model + constants) — committed 08e198e
+- Task 2 (ContextMemory struct + atomic Save) — committed afed6e4
+- Task 3 (Load + first-run + session rotation) — committed e51d76a
+- Task 4 (Mutation API: RecordTask/RecordError/SetPreference/CloseTask) — committed eb0abdb
+- Task 5 (Wire ContextMemory into HandleFault) — committed 773e3ea
+- Task 6 (E2E persistence-across-runs test) — committed 4d0c15a
+>>>>>>> feature/cross-call-memory
