@@ -356,7 +356,11 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			}
 		}
 	}
-	score := ComputeTrustScore(trustHistory)
+	var firstAction string
+	if plan != nil && len(plan.Steps) > 0 {
+		firstAction = plan.Steps[0].Action
+	}
+	score := LookupTrust(primarySkillFromPlan(plan), firstAction, mem, trustHistory)
 	eval := EvaluateOperation(score, risk, in.Fault)
 	trustRes := TrustResult{
 		TrustLevel:            score.Level,

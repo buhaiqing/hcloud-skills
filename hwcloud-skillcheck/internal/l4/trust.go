@@ -58,6 +58,36 @@ type TrustSourceCounter struct {
 // DefaultTrustSource is the process-wide counter for trust lookups.
 var DefaultTrustSource = &TrustSourceCounter{}
 
+// LookupTrust is the Phase 2 cutover entry point. Prefers the
+// outcome-memory path when mem is non-nil AND populated for (skill,
+// action); falls back to the curated legacy []OpHistory slice otherwise.
+// Always increments DefaultTrustSource so `trust stats` reflects each
+// lookup. `skill==""` or `action==""` forces the legacy path — there is
+// no outcome-memory key to look up.
+//
+// Why "prefer outcome-memory only when populated": the ADR-0007
+// orchestrator auto-creates an empty OutcomeMemory for every invocation.
+// A blanket "mem != nil => outcome-memory" rule would silently
+// drop legacy trust_history.json data during the cutover window, which
+// is the exact behavior Phase 2 is trying to surface via the counter
+// rather than ship unnoticed.
+func LookupTrust(skill, action string, mem *OutcomeMemory, legacy []OpHistory) TrustScore {
+	if mem != nil && skill != "" && action != "" {
+		if recent, err := mem.RecentOutcomes(skill, action, trustOutcomeMaxRecords); err == nil && len(recent) > 0 {
+			score := ComputeTrustScoreFromOutcome(skill, action, mem, "")
+			MarkLastOutcomeLookup()
+			if DefaultTrustSource != nil {
+				DefaultTrustSource.Record("outcome_memory")
+			}
+			return score
+		}
+	}
+	if DefaultTrustSource != nil {
+		DefaultTrustSource.Record("op_history")
+	}
+	return ComputeTrustScore(legacy)
+}
+
 // Record increments the counter for the named source. Unknown sources are
 // ignored (no panic) so callers can pass through free-form labels safely.
 func (t *TrustSourceCounter) Record(from string) {
