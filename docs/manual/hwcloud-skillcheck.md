@@ -1,6 +1,6 @@
 # hwcloud-skillcheck CLI Manual
 
-`hwcloud-skillcheck` is the hcloud-skills validation tool. This manual covers B-Class commands (GCL contracts, audit-results guard, and the GCL runtime runner).
+`hwcloud-skillcheck` is the hcloud-skills validation tool. This manual covers every shipped subcommand, grouped by command family: `validate`, `check`, `scan`, `aggregate`, `lint`, `gcl`, `learning`, `l4`, `drift`, `critic`, `ab`, `manifest`, `telemetry`, `router`, and `memory`.
 
 ## Global Flags
 
@@ -75,6 +75,51 @@ Validates the `audit-results/` directory protection contract:
 - `audit-results/` directory has mode `0700` (owner-only)
 - No tracked git files inside `audit-results/`
 - `docs/gcl-spec.md` contains fragments: `audit-results/`, `GCL`, `gitignore`
+
+Exit codes: `0` pass, `1` fail.
+
+### `hwcloud-skillcheck validate schema <kind> --file <path>`
+
+Validates a JSON instance against one of the embedded schemas. `kind` is one of `trace`, `summary`, `alarm-plan`, or `eval-queries`. Use `-` for `--file` to read the instance from stdin. The `eval-queries` kind auto-detects array vs object format and dispatches to the matching `$def`.
+
+| Flag | Description |
+|------|-------------|
+| `--file <path>` | Instance JSON file path (`-` for stdin, required) |
+
+```
+hwcloud-skillcheck validate schema trace       --file audit-results/gcl-trace-20260727-120000.json
+hwcloud-skillcheck validate schema eval-queries --file huaweicloud-ecs-ops/assets/eval_queries.json
+```
+
+Exit codes: `0` valid, `1` schema errors, `2` parse error.
+
+### `hwcloud-skillcheck validate frontmatter --root <dir>`
+
+Validates the YAML frontmatter of every `SKILL.md` under `--root`. Checks required top-level keys (`name`, `description`, `compatibility`, `license`), `metadata.version`, `metadata.last_updated`, `cli_applicability` enum (`dual-path|cli-first|cli-only|sdk-only`), and `name == <skill-dir>` consistency.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+
+Exit codes: `0` pass, `1` fail.
+
+### `hwcloud-skillcheck validate eval-queries --root <dir>`
+
+Validates `assets/eval_queries.json` for each skill under `--root`. Each file is parsed and dispatched to one of four shape-specific `$def`s (`activateArrayEntry`, `matchArrayEntry`, `triggerArrayEntry`, `smokeArrayEntry`, `structuredObject`, `matchObject`, `triggerObject`) based on its top-level keys.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+
+Exit codes: `0` pass, `1` fail.
+
+### `hwcloud-skillcheck validate product-assessment --root <dir>`
+
+Validates the Worker Output Contract JSON example embedded in every `references/well-architected-assessment.md` under `--root`. Checks for the `Worker Output Contract` heading, presence of a fenced JSON block, required top-level fields (`skill_id`, `product`, `region`, `scope`, `assessment_date`, `status`, `partial`, `resource_count`, `pillars`, `recommendations`, `trace`, `errors`), `status` enum (`OK|PARTIAL|ERROR`), pillar keys (`reliability|security|cost|efficiency`), per-pillar status enum (`assessed|not_assessed|skipped`), `skill_id == <skill-dir>`, and that `trace.commands` does not carry an unmasked secret reference.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
 
 Exit codes: `0` pass, `1` fail.
 
