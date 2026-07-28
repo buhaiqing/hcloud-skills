@@ -332,6 +332,16 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **Schema versioning** | `schema="context-memory/v1"`。新字段一律带默认值；版本只升不降。无 migration machinery | ADR-0008 §Decision |
 | **Atomic write** | tmp 文件 + `os.Rename`。进程在写中途被 kill 时旧文件完好 | ADR-0008 §Decision |
 
+### Real Executor（ADR-0010）
+
+| 术语 | 定义 | 文档 |
+|------|------|------|
+| **`Executor` (interface)** | 抽象层，让 `RunExecutionLoop` 不直接依赖 `os/exec`。两个实现：`StubExecutor`（测试用，返回预配置结果）、`RealExecutor`（生产用，包 `os/exec.CommandContext`）。Run signature: `Run(candidate string, timeout time.Duration) (exitCode int, stdout string, err error)` | ADR-0010 §Decision |
+| **`StubExecutor`** | 测试用 `Executor` 实现。`Outcomes []StubStep` 索引 = plan 步号。超出预配置范围返回 `(0, "", nil)`。用于 `RunExecutionLoopWithHealing` 的 retry 路径测试 | ADR-0010 §Decision |
+| **`RealExecutor`** | 生产用 `Executor` 实现。`bash -c candidate`，捕获 stdout/stderr（capped at `MaxBytes`，默认 1 MB）。默认 timeout 60s。env 默认 `os.Environ()`。当 `Run` 参数 timeout=0 时回退到 receiver 的 `Timeout` | ADR-0010 §Decision |
+| **`limitedBuffer`** | `io.Writer` 实现，cap 一旦到达就静默丢弃字节；OS pipe 因此对子进程施加 backpressure（限制 run-away 进程） | ADR-0010 §Decision |
+| **Dry-run gate** | `RunExecutionLoop` 中 GCL structural critic 的 PASS/ACCEPT 判定门。Not PASS/ACCEPT → 记录 `SKIPPED` 步并 continue；PASS/ACCEPT → 调 `Executor.Run` 拿真实 exit code | ADR-0010 §Decision |
+
 ### Trust from Outcome Memory（ADR-0009）
 
 | 术语 | 定义 | 文档 |
@@ -343,6 +353,10 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **error_recovery weight (new formula)** | 旧：curator 推断。新：`count(RetryCount > 0 AND Outcome == "success") / count(RetryCount > 0)` | ADR-0009 §Compute algorithm |
 | **trustCache** | 进程内 `map[skill]*TrustScore`。`Record()` 增量更新。cache key 含 policy hash | ADR-0009 §Decision |
 | **Outcome → trust inputs mapping** | `Outcome` → outcome（`blocked` 算失败）；`Timestamp` → ts；`Risk` → risk_level；`RetryCount > 0` → had_retry；`error_class` **不映射** | ADR-0009 §Data flow |
+| **`ComputeTrustScoreFromOutcome(skill, action, mem, policyHash)`** | Phase 2 新增的 trust 计算路径。从 `OutcomeMemory` 读 `RecentOutcomes(skill, action, 100)`，把 `Outcome` 映射为 success/failure（`blocked` 算 failure），用相同权重 (0.35/0.20/0.20/0.15/0.10) 算 composite score | ADR-0009 §Decision |
+| **`TrustSourceCounter`** | 监控切over 进度的进程内计数器。`FromOutcomeMemory atomic.Uint64` + `FromOpHistory atomic.Uint64`。通过 `trust stats` CLI 暴露 | ADR-0009 §Migration |
+| **`trust stats` subcommand** | 暴露 `TrustSourceCounter` 当前值 + 最近一次 outcome-memory 查询时间 | ADR-0009 §Migration |
+| **`LookupTrust(skill, action, mem)`** | Phase 2 默认 trust 查询路径。`mem != nil` 时走 outcome-memory + 记录 source 为 `outcome_memory`；否则回退到 `ComputeTrustScore([]OpHistory)` + 记录 `op_history` | ADR-0009 §Decision |
 
 ### 其他常用术语
 
@@ -354,6 +368,9 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **L4 Orchestrator** | `hwcloud-skillcheck/internal/l4/`。执行多 step 任务、持久化 checkpoint、做 RBAC + GCL + topology + trust + healing 决策 |
 | **Topology Graph** | 静态 + 动态的 skill→resource→resource→skill 依赖图。`internal/l4/topology.go` |
 | **CADL** | Compound-Asset Distillation Loop。从执行经验中沉淀 reusable 资产的机制（见 AGENTS.md §CADL） |
+| **`memory inspect` subcommand** | `hwcloud-skillcheck memory inspect --root .` 打印 outcome-memory 文件位置 + 记录数 + 最近 5 条 + context-memory 全部字段（session_id / created_at / recent_tasks / open_tasks / recent_errors / preferences） | `outcome_memory.go` + `context_memory.go` |
+| **Healing decision structured log** | `slog.Info("healing_decision", "skill", ..., "action", ..., "hook", "PreExecHook|PostFailureHook", "decision_action", ..., "decision_reason", ...)` — 每次 hook 返回非 proceed 时输出一行 | `self_healing.go` |
+| **HealingMetrics atomic counters** | `DefaultHealingMetrics.PreExecSkip` / `PostFailureRetry` / `PostFailureEscalate` 三个 `atomic.Uint64`，用于监控告警 | `self_healing.go`, `metrics.go` |
 
 ### 实现注意事项 (Implementation notes — reviewer-facing)
 
