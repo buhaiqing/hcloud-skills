@@ -237,6 +237,8 @@ gcl-quality-summary-*.json
 **/gcl-quality-summary-*.json
 gcl-alarm-plan-*.json
 **/gcl-alarm-plan-*.json
+failure_patterns.json
+**/failure_patterns.json
 
 # Allow embed fixtures (committed into binary via //go:embed)
 !skillcheck/internal/embed/fixtures/*.json
