@@ -309,3 +309,55 @@ hwcloud-skillcheck learning trace report    --root . --skill huaweicloud-rds-ops
 ```
 
 Exit codes: `0` ok, `1` missing required flags or file errors.
+
+## `hwcloud-skillcheck l4` Subcommands
+
+### `hwcloud-skillcheck l4 handle --fault <text>`
+
+Closed-loop L4 orchestrator entry point. Classifies the fault, derives an affected resource, applies trust scoring, optional predictive breach-time calculation, and emits a structured remediation plan as JSON on stdout (or to `--output`). Designed to be called from external incident-response flows; no destructive side effects.
+
+| Flag | Description |
+|------|-------------|
+| `--fault <text>` | Fault description (e.g. `RDS connection timeout`, required) |
+| `--root <dir>` | Repo root (default `.`) |
+| `--resource <id>` | Affected resource (e.g. `rds:instance`); auto-derived from the fault text when empty |
+| `--risk <level>` | Operation risk: `low\|medium\|high\|critical` (default `medium`) |
+| `--skills <s1,s2>` | Comma-separated primary skills |
+| `--trust-data <json\|@path>` | JSON literal or `@path` to a file containing trust history |
+| `--metric-values <v1,v2,...>` | Comma-separated numeric series for predictive breach-time trend |
+| `--metric-threshold <float>` | Threshold for breach-time prediction (float) |
+| `--output <path>` | Write the result JSON to this path instead of stdout |
+
+```
+hwcloud-skillcheck l4 handle --fault "RDS connection timeout" --resource rds:instance --risk high
+hwcloud-skillcheck l4 handle --fault "ECS CPU at 95%" --metric-values 60,72,81,89,94 --metric-threshold 90 --output /tmp/l4-plan.json
+```
+
+Exit codes: `0` plan emitted, `1` missing `--fault` or parse error.
+
+## `hwcloud-skillcheck drift` Subcommands
+
+Verifies that the runtime copy of each skill (the working tree) matches its canonical (HEAD) copy, and reconciles drift when it does not.
+
+### `hwcloud-skillcheck drift check --root <dir>`
+
+Diff-checks every `huaweicloud-*-ops/` under `--root` against HEAD. Reports each file that differs, is missing on either side, or has a permission mismatch. Prints `OK: runtime copy matches canonical` when clean.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--json` | Emit JSON report |
+
+Exit codes: `0` no drift, `1` drift detected.
+
+### `hwcloud-skillcheck drift sync --root <dir>`
+
+Reconciles drift. Default is dry-run (no writes); pass `--apply` to actually overwrite the runtime copy with the canonical HEAD copy. `--dry-run=false` is implicit when `--apply` is set.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--dry-run` | Default `true`; print planned actions without writing |
+| `--apply` | Apply changes (overrides `--dry-run`) |
+
+Exit codes: `0` no drift or sync succeeded, `1` sync errored.
