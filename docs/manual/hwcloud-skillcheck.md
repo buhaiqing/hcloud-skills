@@ -202,3 +202,55 @@ Validates TE-7 advanced-section coverage: every `huaweicloud-*-ops/SKILL.md` und
 | `--json` | Emit JSON report |
 
 Exit codes: `0` pass, `1` any skill missing the advanced section.
+
+## `hwcloud-skillcheck scan` Subcommands
+
+### `hwcloud-skillcheck scan secret <kind> --root <dir>`
+
+Scans GCL artifacts under `--root/audit-results/` for credential leaks (AWS keys, AK/SK, bearer tokens, private-key blocks, etc.). `kind` is one of `trace`, `summary`, or `alarm-plan`, which selects the matching glob (`gcl-trace-*.json`, `gcl-quality-summary-*.json`, `gcl-alarm-plan-*.json`). Pass explicit file paths as positional arguments after the kind to scan a specific artifact instead of the glob. With no artifacts and no explicit input, the command returns ok (allow-empty behavior).
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--latest` | When no explicit input, scan only the lexicographically latest artifact |
+| `--include-fixture` | Append the healthy fixture (`scripts/fixtures/gcl-{quality-summary,alarm-plan}-healthy.json`) to the scan set for CI smoke |
+| `--self-check` | Scan embedded fixtures instead of the repo; verifies the binary itself is leak-free |
+| `--json` | Emit JSON report |
+
+```
+hwcloud-skillcheck scan secret trace       --root . --latest
+hwcloud-skillcheck scan secret summary    --root . --include-fixture --json
+hwcloud-skillcheck scan secret alarm-plan --self-check
+```
+
+Exit codes: `0` no leaks (or no artifacts), `1` at least one artifact leaked secrets.
+
+## `hwcloud-skillcheck aggregate` Subcommands
+
+### `hwcloud-skillcheck aggregate trace --root <dir>`
+
+Aggregates every `audit-results/gcl-trace-*.json` under `--root` into a quality summary JSON with totals (per `final.status` bucket and overall `pass_rate`), per-dimension average rubric scores (`correctness`, `safety`, `idempotency`, `traceability`, `spec_compliance`), per-skill buckets, and the list of source trace paths. Parsing is fan-out across `runtime.NumCPU()` workers. With no traces found, exits `0` and emits a WARN by default; pass `--require-traces` to fail the gate (and fall back to the embedded healthy fixture so the parsing path still runs end-to-end). `--self-check` aggregates the embedded healthy trace fixture without needing repo files.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--since-hours <N>` | Only include traces modified within the last `N` hours (`-1` disables, default) |
+| `--output <file>` | Write summary JSON to `file` instead of stdout (relative paths resolve against `--root`) |
+| `--require-traces` | Fail (exit `1`) instead of WARN when no traces exist; also falls back to the embedded fixture |
+| `--self-check` | Aggregate the embedded trace fixture instead of the repo |
+
+Exit codes: `0` summary produced (or WARN with no traces), `1` `--require-traces` failed or self-check sanity check failed.
+
+## `hwcloud-skillcheck lint` Subcommands
+
+### `hwcloud-skillcheck lint go --root <dir>`
+
+Runs `gofmt -l` and `go vet ./...` against the Go module at `--root`. Pass `--fix` to also invoke `gofmt -w` and rewrite any files that need formatting. The `go` and `gofmt` binaries must be on `PATH`; this is an opt-in command that never blocks the A-class checks.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Go module root (default `.`) |
+| `--fix` | Rewrite files with `gofmt -w` after listing offenders |
+| `--quiet` | Suppress the per-run banner; only report failures |
+
+Exit codes: `0` clean, `1` one or more `gofmt` / `go vet` issues.
