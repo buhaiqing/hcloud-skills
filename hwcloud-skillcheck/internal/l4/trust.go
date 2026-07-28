@@ -1,12 +1,8 @@
 package l4
 
 import (
-	"encoding/json"
 	"math"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -15,91 +11,228 @@ import (
 // trust scoring (covers ~MinSamples*10 without scanning unbounded history).
 const trustOutcomeMaxRecords = 100
 
-// ComputeTrustScoreFromOutcome reads OutcomeRecord history for
-// (skill, action) and returns the composite TrustScore using the same
-// weights as the OpHistory-based path. Falls back to a zero-history score
-// when mem is nil or no records are present (same semantics as
-// ComputeTrustScore(nil)). policyHash is reserved for cache invalidation
-// across HealingPolicy changes per ADR-0009 §Consequences.
+// ComputeTrustScoreFromOutcome is the Phase 4 canonical scoring entry
+// (ADR-0009 §Migration). It reads OutcomeRecord history for (skill,
+// action) and returns the composite TrustScore computed directly from
+// those records — no OpHistory shim, no curator back-fill. policyHash
+// is reserved for cache invalidation across HealingPolicy changes
+// (ADR-0009 §Consequences); ignored today.
 func ComputeTrustScoreFromOutcome(skill, action string, mem *OutcomeMemory, policyHash string) TrustScore {
 	if mem == nil {
-		return ComputeTrustScore(nil)
+		return zeroTrustScore()
 	}
 	recent, err := mem.RecentOutcomes(skill, action, trustOutcomeMaxRecords)
 	if err != nil || len(recent) < 1 {
-		return ComputeTrustScore(nil)
+		return zeroTrustScore()
 	}
-	hist := make([]OpHistory, 0, len(recent))
-	for _, r := range recent {
-		// Per ADR-0009 §"Mapping OutcomeRecord → trust inputs": RBAC denied
-		// ("blocked") is a bad outcome and counts as failure for trust.
-		outcome := r.Outcome
-		if outcome == "blocked" {
-			outcome = "failure"
-		}
-		hist = append(hist, OpHistory{
-			Outcome:   outcome,
-			Timestamp: r.Timestamp,
-			RiskLevel: r.Risk,
-			HadRetry:  r.RetryCount > 0,
-		})
-	}
-	return ComputeTrustScore(hist)
+	return computeTrustScore(recent)
 }
 
-// TrustSourceCounter tracks how trust lookups decided between the new
-// outcome-memory path and the legacy OpHistory path during the Phase 2
-// cutover. Exposed via `hwcloud-skillcheck trust stats`.
-//
-// DeprecationCount (Phase 3) increments whenever the legacy []OpHistory
-// path is invoked — by LookupTrust's fall-back branch or by
-// ComputeTrustScoreFromOpHistory callers. Lets us watch the cutover
-// drain to zero before Phase 4 deletes the legacy code paths.
+// computeTrustScore is the per-record scoring core. Single-pass-ish:
+// five components share the same input slice, but each needs a
+// different accumulation pattern (variance needs the mean first; the
+// error_recovery scan needs the original index). Keep them as plain
+// loops instead of helper functions — this is the only caller and
+// inlining saves one slice header + one frame per component.
+func computeTrustScore(records []OutcomeRecord) TrustScore {
+	if len(records) == 0 {
+		return zeroTrustScore()
+	}
+
+	// success_rate + first pass for consistency's mean.
+	successes := 0
+	for _, r := range records {
+		if isSuccess(r) {
+			successes++
+		}
+	}
+	successRate := float64(successes) / float64(len(records))
+
+	// consistency: 1 - sqrt(variance of 0/1 outcomes). Two passes by
+	// design — variance needs the mean first.
+	consistency := 0.5
+	if len(records) >= 3 {
+		mean := successRate
+		var variance float64
+		for _, r := range records {
+			d := -mean
+			if isSuccess(r) {
+				d = 1.0 - mean
+			}
+			variance += d * d
+		}
+		variance /= float64(len(records))
+		val := 1.0 - math.Sqrt(variance)
+		if val < 0 {
+			val = 0
+		}
+		consistency = val
+	}
+
+	// recency: time-decayed success rate (30-day half-life per
+	// RecencyHalfLifeDays).
+	now := time.Now().UTC()
+	wsum := 0.0
+	wtot := 0.0
+	for _, r := range records {
+		var ageDays float64
+		if r.Timestamp != "" {
+			if t, err := parseISO(r.Timestamp); err == nil {
+				ageDays = math.Max(0, now.Sub(t).Hours()/24.0)
+			} else {
+				ageDays = RecencyHalfLifeDays
+			}
+		} else {
+			ageDays = RecencyHalfLifeDays
+		}
+		w := math.Exp(-0.693 * ageDays / RecencyHalfLifeDays)
+		score := 0.0
+		if isSuccess(r) {
+			score = 1.0
+		}
+		wsum += w * score
+		wtot += w
+	}
+	recency := wsum / math.Max(wtot, 1e-10)
+
+	// complexity_mastery: success rate over high/critical records.
+	n := 0
+	s := 0
+	for _, r := range records {
+		if r.Risk == "high" || r.Risk == "critical" {
+			n++
+			if isSuccess(r) {
+				s++
+			}
+		}
+	}
+	complexityMastery := 0.5
+	if n > 0 {
+		complexityMastery = float64(s) / float64(n)
+	}
+
+	// error_recovery: fraction of (failed + retried) records that are
+	// immediately followed by a success.
+	recoveries := 0
+	opportunities := 0
+	for i, r := range records {
+		if !isSuccess(r) && r.RetryCount > 0 {
+			opportunities++
+			if i+1 < len(records) && isSuccess(records[i+1]) {
+				recoveries++
+			}
+		}
+	}
+	errorRecovery := 0.7
+	if opportunities > 0 {
+		errorRecovery = float64(recoveries) / float64(opportunities)
+	}
+
+	components := map[string]float64{
+		"success_rate":       successRate,
+		"consistency":        consistency,
+		"recency":            recency,
+		"complexity_mastery": complexityMastery,
+		"error_recovery":     errorRecovery,
+	}
+	weighted := 0.0
+	for k, w := range TrustWeights {
+		weighted += components[k] * w
+	}
+	return finalizeTrustScore(weighted, components, len(records))
+}
+
+// isSuccess: only literal "success" counts; everything else (failure,
+// blocked, unknown) is treated as not-success. Per ADR-0009 §"Mapping
+// OutcomeRecord → trust inputs", RBAC-denied ("blocked") is a bad
+// outcome and is excluded from success counts here.
+func isSuccess(r OutcomeRecord) bool {
+	return r.Outcome == "success"
+}
+
+// zeroTrustScore returns the empty-history score (was
+// ComputeTrustScore(nil) pre-Phase-4).
+func zeroTrustScore() TrustScore {
+	components := map[string]float64{
+		"success_rate":       0,
+		"consistency":        0.5,
+		"recency":            0,
+		"complexity_mastery": 0.5,
+		"error_recovery":     0.7,
+	}
+	// 0.35*0 + 0.20*0.5 + 0.20*0 + 0.15*0.5 + 0.10*0.7 = 0.245
+	weighted := 0.0
+	for k, w := range TrustWeights {
+		weighted += components[k] * w
+	}
+	return finalizeTrustScore(weighted, components, 0)
+}
+
+// finalizeTrustScore clips, rounds, and assigns the tier. Shared by
+// both zero and populated paths so the level-lookup rules live in
+// exactly one place.
+func finalizeTrustScore(weighted float64, components map[string]float64, n int) TrustScore {
+	if weighted < 0 {
+		weighted = 0
+	}
+	if weighted > 1 {
+		weighted = 1
+	}
+	score := math.Round(weighted*10000) / 10000
+	level := "L0_new"
+	for _, l := range TrustLevels {
+		if score >= l.Def.MinScore {
+			level = l.Key
+			break
+		}
+	}
+	rounded := map[string]float64{}
+	for k, v := range components {
+		rounded[k] = math.Round(v*10000) / 10000
+	}
+	return TrustScore{
+		Score:              score,
+		Level:              level,
+		LevelDescription:   lookupTrust(level).Description,
+		ConfirmationPolicy: lookupTrust(level).Confirmation,
+		MaxAutoRisk:        lookupTrust(level).MaxAutoRisk,
+		Components:         rounded,
+		HistorySize:        n,
+		ComputedAt:         NowISO(),
+	}
+}
+
+// TrustSourceCounter tracks outcome-memory trust lookups. Phase 4
+// removed FromOpHistory and DeprecationCount — the legacy paths are
+// gone, so there is only one source left. Exposed via
+// `hwcloud-skillcheck trust stats`.
 type TrustSourceCounter struct {
 	FromOutcomeMemory atomic.Uint64
-	FromOpHistory     atomic.Uint64
-	DeprecationCount  atomic.Uint64
 }
 
 // DefaultTrustSource is the process-wide counter for trust lookups.
 var DefaultTrustSource = &TrustSourceCounter{}
 
-// LookupTrust is the Phase 2 cutover entry point. Prefers the
-// outcome-memory path when mem is non-nil AND populated for (skill,
-// action); falls back to the curated legacy []OpHistory slice otherwise.
-// Always increments DefaultTrustSource so `trust stats` reflects each
-// lookup. `skill==""` or `action==""` forces the legacy path — there is
-// no outcome-memory key to look up.
-//
-// Why "prefer outcome-memory only when populated": the ADR-0007
-// orchestrator auto-creates an empty OutcomeMemory for every invocation.
-// A blanket "mem != nil => outcome-memory" rule would silently
-// drop legacy trust_history.json data during the cutover window, which
-// is the exact behavior Phase 2 is trying to surface via the counter
-// rather than ship unnoticed.
-func LookupTrust(skill, action string, mem *OutcomeMemory, legacy []OpHistory) TrustScore {
+// LookupTrust is the canonical trust lookup. Always routes through
+// outcome memory; no legacy fall-back (ADR-0009 §Migration Phase 4).
+// Stamps the last-lookup time and increments FromOutcomeMemory when
+// the memory had records to score; a nil mem or empty result yields
+// the zero-history score without bumping the counter.
+func LookupTrust(skill, action string, mem *OutcomeMemory) TrustScore {
 	if mem != nil && skill != "" && action != "" {
 		if recent, err := mem.RecentOutcomes(skill, action, trustOutcomeMaxRecords); err == nil && len(recent) > 0 {
-			score := ComputeTrustScoreFromOutcome(skill, action, mem, "")
 			MarkLastOutcomeLookup()
 			if DefaultTrustSource != nil {
 				DefaultTrustSource.Record("outcome_memory")
 			}
-			return score
 		}
 	}
-	if DefaultTrustSource != nil {
-		DefaultTrustSource.Record("op_history")
-		// Phase 3: this branch hits the deprecated ComputeTrustScore path.
-		// Bump DeprecationCount so `trust stats` reflects every legacy
-		// lookup the cutover hasn't reached yet.
-		DefaultTrustSource.RecordDeprecation()
-	}
-	return ComputeTrustScore(legacy)
+	return ComputeTrustScoreFromOutcome(skill, action, mem, "")
 }
 
-// Record increments the counter for the named source. Unknown sources are
-// ignored (no panic) so callers can pass through free-form labels safely.
+// Record increments the counter for the named source. Unknown sources
+// are ignored (no panic) so callers can pass through free-form labels
+// safely. Phase 4 only recognizes "outcome_memory".
 func (t *TrustSourceCounter) Record(from string) {
 	if t == nil {
 		return
@@ -107,22 +240,7 @@ func (t *TrustSourceCounter) Record(from string) {
 	switch from {
 	case "outcome_memory":
 		t.FromOutcomeMemory.Add(1)
-	case "op_history":
-		t.FromOpHistory.Add(1)
 	}
-}
-
-// RecordDeprecation bumps the Phase 3 deprecation counter. Called from
-// every site that still invokes the legacy ComputeTrustScore([]OpHistory)
-// path (the LookupTrust fall-back branch and the
-// ComputeTrustScoreFromOpHistory wrapper). The counter is what we
-// watch to confirm the cutover is complete before Phase 4 deletes the
-// legacy code paths.
-func (t *TrustSourceCounter) RecordDeprecation() {
-	if t == nil {
-		return
-	}
-	t.DeprecationCount.Add(1)
 }
 
 var LastOutcomeLookup atomic.Pointer[string]
@@ -179,92 +297,6 @@ var TrustWeights = map[string]float64{
 // RecencyHalfLifeDays is the exponential decay half-life.
 const RecencyHalfLifeDays = 30.0
 
-// OpHistory is a single record in the trust history.
-type OpHistory struct {
-	Outcome   string `json:"outcome"`
-	Timestamp string `json:"timestamp,omitempty"`
-	RiskLevel string `json:"risk_level,omitempty"`
-	HadRetry  bool   `json:"had_retry,omitempty"`
-}
-
-// ComputeSuccessRate is successes / total.
-func ComputeSuccessRate(h []OpHistory) float64 {
-	if len(h) == 0 {
-		return 0
-	}
-	s := 0
-	for _, x := range h {
-		if x.Outcome == "success" {
-			s++
-		}
-	}
-	return float64(s) / float64(len(h))
-}
-
-// ComputeConsistency is 1 - sqrt(variance of 0/1 outcomes).
-//
-// Two passes over h are required (you can't compute variance without
-// first knowing the mean), but the intermediate []float64 the prior
-// implementation allocated was unnecessary work — a success-count
-// accumulator lets us keep the passes in-line and drop the temporary
-// (saving ~8 bytes × len(h) on a 10k-entry history).
-func ComputeConsistency(h []OpHistory) float64 {
-	if len(h) < 3 {
-		return 0.5
-	}
-	successes := 0
-	for _, x := range h {
-		if x.Outcome == "success" {
-			successes++
-		}
-	}
-	mean := float64(successes) / float64(len(h))
-	var variance float64
-	for _, x := range h {
-		d := -mean
-		if x.Outcome == "success" {
-			d = 1.0 - mean
-		}
-		variance += d * d
-	}
-	variance /= float64(len(h))
-	val := 1.0 - math.Sqrt(variance)
-	if val < 0 {
-		val = 0
-	}
-	return val
-}
-
-// ComputeRecency is time-decayed success rate.
-func ComputeRecency(h []OpHistory) float64 {
-	if len(h) == 0 {
-		return 0
-	}
-	now := time.Now().UTC()
-	wsum := 0.0
-	wtot := 0.0
-	for _, x := range h {
-		var ageDays float64
-		if x.Timestamp != "" {
-			if t, err := parseISO(x.Timestamp); err == nil {
-				ageDays = math.Max(0, now.Sub(t).Hours()/24.0)
-			} else {
-				ageDays = RecencyHalfLifeDays
-			}
-		} else {
-			ageDays = RecencyHalfLifeDays
-		}
-		w := math.Exp(-0.693 * ageDays / RecencyHalfLifeDays)
-		score := 0.0
-		if x.Outcome == "success" {
-			score = 1.0
-		}
-		wsum += w * score
-		wtot += w
-	}
-	return wsum / math.Max(wtot, 1e-10)
-}
-
 func parseISO(s string) (time.Time, error) {
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05Z", "2006-01-02"} {
 		if t, err := time.Parse(layout, s); err == nil {
@@ -274,48 +306,7 @@ func parseISO(s string) (time.Time, error) {
 	return time.Time{}, os.ErrInvalid
 }
 
-// ComputeComplexityMastery is success rate over high/critical operations.
-//
-// Prior implementation built a temporary `complex []OpHistory` slice
-// only to drop it two lines later and re-iterate, costing ~16 bytes
-// per entry × count. Fold the work into a single pass that tracks
-// (n, successCount) inline.
-func ComputeComplexityMastery(h []OpHistory) float64 {
-	n := 0
-	s := 0
-	for _, x := range h {
-		if x.RiskLevel == "high" || x.RiskLevel == "critical" {
-			n++
-			if x.Outcome == "success" {
-				s++
-			}
-		}
-	}
-	if n == 0 {
-		return 0.5
-	}
-	return float64(s) / float64(n)
-}
-
-// ComputeErrorRecovery is fraction of failures followed by a success.
-func ComputeErrorRecovery(h []OpHistory) float64 {
-	recoveries := 0
-	opportunities := 0
-	for i, x := range h {
-		if x.Outcome == "failure" && x.HadRetry {
-			opportunities++
-			if i+1 < len(h) && h[i+1].Outcome == "success" {
-				recoveries++
-			}
-		}
-	}
-	if opportunities == 0 {
-		return 0.7
-	}
-	return float64(recoveries) / float64(opportunities)
-}
-
-// TrustScore is the result of ComputeTrustScore.
+// TrustScore is the result of ComputeTrustScoreFromOutcome.
 type TrustScore struct {
 	Score              float64            `json:"score"`
 	Level              string             `json:"level"`
@@ -325,69 +316,6 @@ type TrustScore struct {
 	Components         map[string]float64 `json:"components"`
 	HistorySize        int                `json:"history_size"`
 	ComputedAt         string             `json:"computed_at"`
-}
-
-// ComputeTrustScoreFromOpHistory is the Phase 3 entry point for callers
-// that still operate on the curator-pipeline []OpHistory slice (the
-// trust_history.json back-fill path). It delegates to the deprecated
-// ComputeTrustScore and bumps DeprecationCount so we can monitor
-// callers that haven't migrated to ComputeTrustScoreFromOutcome yet.
-//
-// Phase 4 deletes ComputeTrustScore; this wrapper will be removed in
-// the same commit (ADR-0009 §Migration).
-func ComputeTrustScoreFromOpHistory(h []OpHistory) TrustScore {
-	if DefaultTrustSource != nil {
-		DefaultTrustSource.RecordDeprecation()
-	}
-	return ComputeTrustScore(h)
-}
-
-// ComputeTrustScore returns the composite trust score + level.
-//
-// Deprecated: use ComputeTrustScoreFromOutcome. Phase 4 (ADR-0009
-// §Migration) will remove this function and the OpHistory type. New
-// callers must accept OutcomeMemory and call
-// ComputeTrustScoreFromOutcome directly.
-func ComputeTrustScore(h []OpHistory) TrustScore {
-	components := map[string]float64{
-		"success_rate":       ComputeSuccessRate(h),
-		"consistency":        ComputeConsistency(h),
-		"recency":            ComputeRecency(h),
-		"complexity_mastery": ComputeComplexityMastery(h),
-		"error_recovery":     ComputeErrorRecovery(h),
-	}
-	weighted := 0.0
-	for k, w := range TrustWeights {
-		weighted += components[k] * w
-	}
-	if weighted < 0 {
-		weighted = 0
-	}
-	if weighted > 1 {
-		weighted = 1
-	}
-	score := math.Round(weighted*10000) / 10000
-	level := "L0_new"
-	for _, l := range TrustLevels {
-		if score >= l.Def.MinScore {
-			level = l.Key
-			break
-		}
-	}
-	rounded := map[string]float64{}
-	for k, v := range components {
-		rounded[k] = math.Round(v*10000) / 10000
-	}
-	return TrustScore{
-		Score:              score,
-		Level:              level,
-		LevelDescription:   lookupTrust(level).Description,
-		ConfirmationPolicy: lookupTrust(level).Confirmation,
-		MaxAutoRisk:        lookupTrust(level).MaxAutoRisk,
-		Components:         rounded,
-		HistorySize:        len(h),
-		ComputedAt:         NowISO(),
-	}
 }
 
 func lookupTrust(key string) TrustLevel {
@@ -448,89 +376,4 @@ func EvaluateOperation(score TrustScore, opRisk, opType string) EvalResult {
 		RequiresConfirmation: !auto,
 		EvaluatedAt:          NowISO(),
 	}
-}
-
-// LoadTrustData reads trust_history.json or returns a fresh scaffold.
-func LoadTrustData(root, skill string) map[string]any {
-	skillID := skill
-	if !strings.HasPrefix(skill, "huaweicloud-") {
-		skillID = "huaweicloud-" + skill + "-ops"
-	}
-	path := filepath.Join(root, skillID, "assets", "trust_history.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return map[string]any{
-			"schema":     "trust-history/v1",
-			"skill_id":   skillID,
-			"operations": map[string]any{},
-			"meta": map[string]any{
-				"created_at":        NowISO(),
-				"total_evaluations": 0,
-			},
-		}
-	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return map[string]any{
-			"schema":     "trust-history/v1",
-			"skill_id":   skillID,
-			"operations": map[string]any{},
-			"meta": map[string]any{
-				"created_at":        NowISO(),
-				"total_evaluations": 0,
-			},
-		}
-	}
-	return out
-}
-
-// SaveTrustData persists trust_history.json back to disk.
-func SaveTrustData(root, skill string, data map[string]any) (string, error) {
-	skillID := skill
-	if !strings.HasPrefix(skill, "huaweicloud-") {
-		skillID = "huaweicloud-" + skill + "-ops"
-	}
-	dir := filepath.Join(root, skillID, "assets")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	p := filepath.Join(dir, "trust_history.json")
-	buf, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(p, append(buf, '\n'), 0o644); err != nil {
-		return "", err
-	}
-	return p, nil
-}
-
-// Helpers exposed for orchestrator (alphabetical to avoid sort drift).
-
-func opHistorySlice(v any) []OpHistory {
-	raw, _ := v.([]any)
-	if raw == nil {
-		return nil
-	}
-	out := make([]OpHistory, 0, len(raw))
-	for _, x := range raw {
-		if m, ok := x.(map[string]any); ok {
-			var h OpHistory
-			if s, ok := m["outcome"].(string); ok {
-				h.Outcome = s
-			}
-			if s, ok := m["timestamp"].(string); ok {
-				h.Timestamp = s
-			}
-			if s, ok := m["risk_level"].(string); ok {
-				h.RiskLevel = s
-			}
-			if b, ok := m["had_retry"].(bool); ok {
-				h.HadRetry = b
-			}
-			out = append(out, h)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Timestamp < out[j].Timestamp })
-	return out
 }

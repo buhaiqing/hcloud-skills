@@ -1,6 +1,6 @@
 // Package cmd — `trust stats` subcommand.
 //
-// Exposes the ADR-0009 Phase 2 cutover counter as a Prometheus-style
+// Exposes the outcome-memory trust-lookup counter as a Prometheus-style
 // scrape. Read-only, no flag besides --root (for symmetry with sibling
 // subcommands).
 package cmd
@@ -21,17 +21,15 @@ func runTrustStats(args []string) error {
 		return err
 	}
 	c := l4.DefaultTrustSource
-	var mem, hist uint64
+	var mem uint64
 	if c != nil {
 		mem = c.FromOutcomeMemory.Load()
-		hist = c.FromOpHistory.Load()
 	}
 	last := l4.SnapshotLastOutcomeLookup()
 	if last == "" {
 		last = "(never)"
 	}
 	fmt.Fprintf(os.Stdout, "trust_source{from=\"outcome_memory\"}: %d\n", mem)
-	fmt.Fprintf(os.Stdout, "trust_source{from=\"op_history\"}:      %d\n", hist)
 	fmt.Fprintf(os.Stdout, "last_outcome_lookup:                  %s\n", last)
 	return nil
 }

@@ -303,70 +303,16 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	}
 	gclRes.PassedSteps = passCount
 
-	// Step 5 — Trust
-	//
-	// Back-fill only — Phase 4 will remove the curator pipeline
-	// (trust_history.json ingest) per ADR-0009 §Migration. New trust
-	// scores come from OutcomeMemory via LookupTrust; this legacy branch
-	// stays so existing on-disk trust_history.json data continues to
-	// seed trust during the cutover window.
-	trustHistory := []OpHistory{}
-	if in.TrustData != nil {
-		if ops, ok := in.TrustData["history"].([]any); ok {
-			for _, x := range ops {
-				if m, ok := x.(map[string]any); ok {
-					h := OpHistory{}
-					if s, ok := m["outcome"].(string); ok {
-						h.Outcome = s
-					}
-					if s, ok := m["risk_level"].(string); ok {
-						h.RiskLevel = s
-					}
-					if s, ok := m["timestamp"].(string); ok {
-						h.Timestamp = s
-					}
-					if b, ok := m["had_retry"].(bool); ok {
-						h.HadRetry = b
-					}
-					trustHistory = append(trustHistory, h)
-				}
-			}
-		}
-	} else if primary := primarySkillFromPlan(plan); primary != "" {
-		// Fallback: load trust_history.json from disk for the primary skill
-		// (mirrors Python's cmd_handle: trust_data defaults to <root>/<skill>/assets/trust_history.json).
-		if data := LoadTrustData(root, primary); data != nil {
-			if ops, ok := data["operations"].(map[string]any); ok {
-				for _, list := range ops {
-					if arr, ok := list.([]any); ok {
-						for _, x := range arr {
-							if m, ok := x.(map[string]any); ok {
-								h := OpHistory{}
-								if s, ok := m["outcome"].(string); ok {
-									h.Outcome = s
-								}
-								if s, ok := m["risk_level"].(string); ok {
-									h.RiskLevel = s
-								}
-								if s, ok := m["timestamp"].(string); ok {
-									h.Timestamp = s
-								}
-								if b, ok := m["had_retry"].(bool); ok {
-									h.HadRetry = b
-								}
-								trustHistory = append(trustHistory, h)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	// Step 5 — Trust (Phase 4: outcome-memory only, per ADR-0009 §Migration).
+	// The pre-Phase-4 trust_history.json curator pipeline is gone;
+	// trust now comes from mem.RecentOutcomes(skill, action) via
+	// LookupTrust. in.TrustData is preserved on the input struct for
+	// back-compat with older callers but is no longer consulted.
 	var firstAction string
 	if plan != nil && len(plan.Steps) > 0 {
 		firstAction = plan.Steps[0].Action
 	}
-	score := LookupTrust(primarySkillFromPlan(plan), firstAction, mem, trustHistory)
+	score := LookupTrust(primarySkillFromPlan(plan), firstAction, mem)
 	eval := EvaluateOperation(score, risk, in.Fault)
 	trustRes := TrustResult{
 		TrustLevel:            score.Level,

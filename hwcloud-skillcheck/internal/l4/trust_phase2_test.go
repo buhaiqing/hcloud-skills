@@ -81,19 +81,17 @@ func TestComputeTrustScoreFromOutcome_Mixed(t *testing.T) {
 	}
 }
 
-// TestTrustSourceCounter_Record verifies the counter increments for known
-// sources and silently ignores unknown ones.
+// TestTrustSourceCounter_Record verifies the counter increments for the
+// one remaining source (outcome_memory, post-Phase-4) and silently
+// ignores unknown sources.
 func TestTrustSourceCounter_Record(t *testing.T) {
 	c := &TrustSourceCounter{}
 	c.Record("outcome_memory")
 	c.Record("outcome_memory")
-	c.Record("op_history")
+	c.Record("op_history") // unknown post-Phase-4, must be ignored
 	c.Record("unknown")
 	if c.FromOutcomeMemory.Load() != 2 {
 		t.Errorf("FromOutcomeMemory=%d, want 2", c.FromOutcomeMemory.Load())
-	}
-	if c.FromOpHistory.Load() != 1 {
-		t.Errorf("FromOpHistory=%d, want 1", c.FromOpHistory.Load())
 	}
 	// nil receiver must not panic.
 	defer func() {

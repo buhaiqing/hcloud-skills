@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- runtime_orchestrator (the closed-loop handler) ---
@@ -92,36 +93,42 @@ func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	// "VPC subnet unreachable" matches the first FaultRule pattern (contains
 	// "unreachable") and only huaweicloud-vpc-ops has the required "connectivity"
 	// capability. ECS has "diagnostics" but not "connectivity", so vpc-ops wins.
-	skillDir := root + "/huaweicloud-vpc-ops/assets"
-	if err := mkdirAll(skillDir); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	//
+	// Phase 4: trust_history.json is no longer read by the orchestrator.
+	// Trust comes from OutcomeMemory; pre-seed it with enough successes to
+	// push trust past the L4 threshold.
+	mem, err := NewOutcomeMemory(root)
+	if err != nil {
+		t.Fatalf("NewOutcomeMemory: %v", err)
 	}
-	seed := `{
-		"schema": "trust-history/v1",
-		"skill_id": "huaweicloud-vpc-ops",
-		"operations": {
-			"resize-instance": [
-				{"outcome": "success", "timestamp": "2026-07-26T00:00:00Z", "risk_level": "low"},
-				{"outcome": "success", "timestamp": "2026-07-25T00:00:00Z", "risk_level": "low"},
-				{"outcome": "success", "timestamp": "2026-07-24T00:00:00Z", "risk_level": "low"},
-				{"outcome": "success", "timestamp": "2026-07-23T00:00:00Z", "risk_level": "medium"},
-				{"outcome": "success", "timestamp": "2026-07-22T00:00:00Z", "risk_level": "high"}
-			]
-		},
-		"meta": {"created_at": "2026-07-20T00:00:00Z", "total_evaluations": 5}
-	}`
-	if err := writeFileImpl(skillDir+"/trust_history.json", seed); err != nil {
-		t.Fatalf("seed trust: %v", err)
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		ts := now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
+		if err := mem.Record(OutcomeRecord{
+			ID:        "vpc" + ts,
+			Timestamp: ts,
+			Skill:     "huaweicloud-vpc-ops",
+			// Plan.Steps[0].Action for the unreachable fault is
+			// "diagnose_and_remediate" (orchestration.go) — must match
+			// exactly for LookupTrust's (skill, action) key.
+			Action:  "diagnose_and_remediate",
+			Outcome: "success",
+			Risk:    "medium",
+		}); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
 	}
 	out := HandleFault(HandleFaultInput{
 		Root:     root,
 		Fault:    "VPC subnet unreachable",
 		Resource: "vpc:subnet",
 		Risk:     "low",
+		Mem:      mem,
 	}, nil)
-	// Trust must be loaded from disk and AutoApprove must be true for low risk.
+	// Trust must be loaded from OutcomeMemory and AutoApprove must be true
+	// for low risk with a populated success history.
 	if out.Trust.TrustLevel == "L0_new" {
-		t.Errorf("trust fallback did not load disk file: level=%s score=%v", out.Trust.TrustLevel, out.Trust.CompositeScore)
+		t.Errorf("trust fallback did not load outcome memory: level=%s score=%v", out.Trust.TrustLevel, out.Trust.CompositeScore)
 	}
 	if !out.Trust.AutoApprove {
 		t.Errorf("AutoApprove=false for L4 trust (level=%s score=%v)", out.Trust.TrustLevel, out.Trust.CompositeScore)
