@@ -118,51 +118,69 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ## 复利资产沉淀机制（Compound-Asset Distillation Loop, CADL）
 
-**这不是一条规范，而是一套工作闭环——任何实质任务完成后，Agent 必须走完「提取 → 判定落点 → 写入 → 门禁」才能结束。目的是让每次踩坑、每次评审、每次跨 skill 协作都变成下一次的可复用资产，形成复利。**
+**目的**：让少量高价值决策规则产生复利——下次同类任务**不读代码、不重复踩坑**也能走对。
+**默认不写。** 大多数任务的正确终点是：测试绿、CI 绿、代码/配置即文档——**不是**再抄一遍到 AGENTS.md。
 
-### 为什么是机制而非规范
+### 价值取向（什么值得沉淀）
 
-单条规则（如"记得写 AGENTS.md"）会被忽略，因为无触发、无闭环。CADL 把沉淀变成工作流的**必经出口**：任务不做沉淀 = 任务未完成。
+复利资产 ≠ 经验日记。写入前必须满足 **「四问全过」**：
 
-### 触发条件（满足任一即必须走 CADL，不局限 CodeGraph）
+| # | 问题 | 过栏 |
+|---|------|------|
+| 1 | **复用半径** — 未来还有多少任务会碰到？ | ≥3 次同类场景，或跨 skill / 跨模块 |
+| 2 | **失败成本** — 如果不写，会怎样？ | silent wrong（看起来绿、实际错）或 ≥30min 排查 |
+| 3 | **抽象层级** — 这是决策规则还是操作手册？ | 决策规则（遇到 X → 做 Y）；不是标准库/工具官方文档可查到的事实 |
+| 4 | **可执行性** — agent 读完能立刻改变行为吗？ | 一条 Rule 即可约束；不需要再读 200 行上下文 |
 
-- 多步 / 跨文件任务完成
-- 跨 Skill 协作（用了 delegation matrix 或并行 agent）
-- 评审 / 修复循环（如 Generic Critic Loop、GCL、self-review）
-- 发现 repo 缺陷 / 坑（即使不在本次 scope，也记）
-- 验证中发现预存 FAIL 并归因
-- 用户给出可复用的工作流偏好（如"用双写子命令绕过 CLI bug"）
+**任一不过 → 不写入 AGENTS.md。** 落点降级：
+
+| 情况 | 落点 |
+|------|------|
+| 已用测试 / CI / ADR / workflow 门禁 | ** nowhere ** — 代码即文档，不写 |
+| 仅本仓库、但高价值 | 本节「复利资产」或上方规范章节 |
+| 跨仓库通用 | 用户级 `~/.config/opencode/AGENTS.md` |
+| 某 skill 专属 | skill 的 `references/`，不经 AGENTS.md |
+
+### 明确不写入（反模式）
+
+- **已修复的一次性 bug** — 测试或 CI 已覆盖，下次 red 即信号
+- **标准实践** — gofmt、heredoc 引号、`StdinPipe` 先 Close、optional JSON 设默认值
+- **环境小技巧** — `GOCACHE=/tmp/...`、action 版本号；写进 commit/PR 即可
+- **与现有条目重复** — 写入前 `grep AGENTS.md`；重复 = 噪音
+- **纯叙事** — 「某次 CI 红了然后修了」无 Rule 可提取
+
+### 触发条件（任务结束时检查）
+
+满足任一 → 走沉淀**判定**（不是判定 = 必须写）：
+
+- 多步 / 跨文件 / 跨 skill 任务完成
+- 评审或修复循环（GCL、self-review、CI auto-recover）
+- 发现 silent wrong 或架构级坑
+- 用户给出可复用的工作流偏好
 
 ### 闭环步骤
 
 ```
-1. 提取   → 从刚完成的任务中抽象出可复用模式：
-            踩坑避免 / 评审维度 / 协作模式 / 验证命令 / 复用 helper
-            格式："问题 → 反模式 → 正确做法（含代码示例）"
-2. 落点判定 → 离开本仓库还有用？ → 用户级 ~/.config/opencode/AGENTS.md
-            仅本仓库适用？     → 项目级 AGENTS.md（本文件）
-            是某 skill 专属可调用的能力？ → 独立 Skill 文件（经 generator）
-3. 写入   → 可执行、有示例、有边界、先 grep 现有 AGENTS.md 确认未覆盖（不重复）
-4. **门禁** → 写入前查 wc -l，本文件 ≥500 行先精简再写（见 AGENTS.md 行数门禁）
-5. **复用** → 下次同类任务，Agent 读 AGENTS.md 即获得该资产 → 复利生效
-
-**Before starting GCL / Harness work, also re-read "Hard-Won Lessons" below**
-(L1–L8) — every rule there was paid for in a real failure.
+1. 提取   → 能否写成一条 Rule？不能 → 停止
+2. 四问   → 全过？不过 → 停止（或降级到 ADR / commit message）
+3. grep   → 已有覆盖？→ 停止
+4. 落点   → 复利资产 / 规范章节 / ADR / skill references
+5. 门禁   → AGENTS.md ≥500 行时，加一条必须删或合并一条（见下行数预算）
+6. 复用   → 下次同类任务读 AGENTS.md 即生效
 ```
+
+### 行数预算
+
+AGENTS.md 是 **agent 上下文税**，不是 wiki。硬上限意识：
+
+- **规范 + 门禁**（Pre-flight、Dual-Copy、TE、GCL 指针）：保留，这是 repo 的操作系统
+- **术语表**：索引 ADR，不复制 API 面（详见 `docs/architecture/`）
+- **复利资产**： curated，目标 **≤12 条**；超出则 prune 最弱条目
 
 ### Skill 侧钩子
 
-- `huaweicloud-skill-generator` 生成每个 skill 时，在 SKILL.md 末尾注入一行提示，召唤 CADL 意识。
-- Agent 在任意 skill 调用结束前，主动检查 CADL 触发条件，而非等用户提醒。
-
-### 反模式（违反 CADL）
-
-| 反模式 | 正确做法 |
-|---|---|
-| 任务做完就结束，不沉淀 | 走完 CADL 闭环再交付 |
-| 把一次性上下文当资产写进 AGENTS.md | 只沉淀跨任务可复用的模式 |
-| 重复已有条目 | 写入前 grep 确认未覆盖 |
-| 只在 CodeGraph 相关任务才沉淀 | 评审/修复/协作/验证都触发 |
+- Agent 任务结束前主动做沉淀**判定**；用户未要求时不批量写条目
+- `huaweicloud-skill-generator` 在 SKILL.md 末尾保留一行 CADL 提示即可
 
 ## Skill Update Rule: 2-Round Self-Reflection
 
@@ -284,109 +302,27 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 
 ## 术语表 (Glossary)
 
-项目核心概念速查。新人 onboarding / 跨 skill 协作时遇到陌生术语，先来这里。
+> **索引，非副本。** 字段级 API → ADR（`docs/architecture/`）与源码（`internal/l4/`）。
 
-### 架构成熟度
+| 术语 | 一句话 | 详见 |
+|------|--------|------|
+| **L3→L4 / L4→L5** | Agent 成熟度跃迁；L4 = outcome memory + healing；L5 = trust 单一来源 | ADR-0007~0009 |
+| **Outcome Memory** | 跨任务 step 结果 JSONL（`.l4-memory/outcomes.jsonl`），self-healing 底座 | ADR-0007 |
+| **Context Memory** | 跨调用 agent 状态 JSON（`.l4-memory/context.json`），atomic write | ADR-0008 |
+| **Trust Score / Phase 1–4** | 历史-derived 可信度；Phase 4 后单一来源 = outcome memory | ADR-0009 |
+| **Executor / RealExecutor** | `RunExecutionLoop` 与 subprocess 的 interface seam | ADR-0010 |
+| **GCL** | Generator + Critic 双 Agent 闭环质量门控 | `docs/gcl-spec.md` |
+| **L4 Orchestrator** | 多 step 执行 + RBAC + GCL + topology + trust + healing | `internal/l4/` |
+| **RBAC** | 按 `RBACRisk` 做操作前权限决策 | `internal/l4/rbac.go` |
+| **Topology Graph** | skill→resource 静态+动态依赖图 | `internal/l4/topology.go` |
+| **CADL** | 复利资产沉淀机制（见上文 §CADL） | 本节 |
+| **Dual-Copy Trap** | generator 根副本 vs `.agents/skills/` 运行时副本；见 CA-10 | 上文 §Dual-Copy |
 
-| 术语 | 定义 | 文档 |
-|------|------|------|
-| **Gartner Agentic AI 成熟度** | 业界用于评估 AI Agent 自治能力的 5 级模型（L1 手动 / L2 对话 / L3 任务自动化 / L4 领域自治 / L5 自演化） | （外部参考） |
-| **L3 → L4 跃迁** | 本项目当前目标：从「等人类触发才执行」进化到「领域内自治 + 自愈」。判据：跨调用 outcome memory + healing hooks | ADR-0007 / ADR-0008 |
-| **L4 → L5 跃迁** | 下一阶段：trust score 由 outcome memory 实时驱动，curated `OpHistory` 退役。判据：`trust_source{from="outcome_memory"}` 持续 1 个 release | ADR-0009 |
+**L4 实现约束**（改 healing/trust/executor 前必读）：
 
-### Outcome Memory 与 Self-healing（ADR-0007）
-
-| 术语 | 定义 |
-|------|------|
-| **Outcome Memory** | L4 orchestrator 持久化的「执行结果日志」。每一步 step 的 outcome（success/failure/blocked）追加到 `<root>/.l4-memory/outcomes.jsonl`。跨任务、跨进程存活。是 self-healing 的数据底座。 |
-| **OutcomeRecord** | 一行 JSONL 记录。包含 `id`（uuid v4）、`ts`（ISO-8601 UTC）、`task_id`、`skill`、`action`、`context_hash`（sha256）、`outcome`、`error_class`（transient/permanent/unknown）、`error_msg`（≤200 字符）、`retry_count`、`duration_ms`、`risk`、`rbac_decision`、`gcl_decision` |
-| **ContextHash** | `OutcomeRecord.context_hash` 字段的取值。= `sha256(candidate_command)` 的 hex 前 N 字节。把「同一类命令」归到一起，避免「命令带时间戳/ID」导致无法匹配 |
-| **OutcomeMemory.RecentOutcomes(skill, action, n)** | 按时间倒序返回最近 n 条 `(skill, action)` 匹配的记录。n≤0 返回全部 |
-| **OutcomeMemory.MatchOutcomes(skill, action, contextHash, lookback)** | 返回 `(skill, action, contextHash)` 三元匹配、且 `ts >= now - lookback` 的记录 |
-| **OutcomeMemory.PruneOlderThan(cutoff)** | 删除 `ts < cutoff` 的记录。`NewOutcomeMemory` 启动时自动跑一次（cutoff = now - 90 天） |
-| **HealingPolicy** | 配置 pre-exec / post-failure 行为的策略 struct。零值 = 不自愈（安全默认）。字段：`MaxRetries`、`RetryBackoff`、`DestructiveVerbs`、`FailureRateSkipThreshold`、`MinSamples`、`LookbackWindow` |
-| **HealingDecision** | pre/post hook 的返回类型。`Action ∈ {proceed, skip, retry, escalate}` + `Reason` |
-| **PreExecHook(step, mem, p)** | 执行 step 前的钩子。命中「最近 N 次失败率 ≥ 阈值」时返回 `skip`。`mem==nil` 或 `p` 零值时返回 `proceed` |
-| **PostFailureHook(step, result, retryCount, mem, p)** | step 失败后的钩子。transient 错误（匹配 `timeout/401/429/503/token expired/connection reset`）且 `retryCount < MaxRetries` 且非 destructive → `retry`；否则 `escalate` |
-| **Destructive Verbs** | `HealingPolicy.DestructiveVerbs` 默认列表：`delete, terminate, destroy, drop, remove`。匹配这些动词的 step 永远不会被自愈重试 |
-| **Transient Pattern** | `isTransient(errMsg)` 内部识别的子串集合（大小写不敏感）：`timeout / token expired / 401 / 429 / 503 / connection reset` |
-| **`OutcomeMemory` (type)** | struct holding `path` (`<root>/.l4-memory/outcomes.jsonl`) + `sync.Mutex`。构造时 `PruneOlderThan(now-90d)` | ADR-0007 §Decision |
-| **`OutcomeMemory.Record(r)`** | 追加一行 `OutcomeRecord` 到 JSONL。原子按行写入。调用方填 `id` (uuid v4) + `ts` (ISO-8601 UTC) | ADR-0007 §FR-1 |
-| **Zero-value safety** | `OutcomeMemory=nil` 或 `HealingPolicy{}`（零值）时两个 hook 必须返回 `proceed` | ADR-0007 §Consequences |
-
-### Cross-call Memory（ADR-0008）
-
-| 术语 | 定义 |
-|------|------|
-| **Context Memory** | 跨调用 agent 状态。持久化在 `<root>/.l4-memory/context.json`，单 JSON 文档（非 append log），原子写（tmp+rename）。与 Outcome Memory 是同一目录下的两份独立文件 |
-| **Context 文档结构** | `schema=context-memory/v1` + `session_id`（uuid v4）+ `created_at/last_updated` + `recent_tasks`（cap 20）+ `open_tasks`（cap 50）+ `recent_errors`（cap 20）+ `preferences`（flat map） |
-| **Session Rotation** | 当 `created_at` 距今超过 `SessionRotateAfter`（24h）时，`Load` 自动生成新 `session_id` 并刷新 `created_at`；`recent_tasks/recent_errors/preferences` 保留 |
-| **TaskSummary** | `Context.RecentTasks` 中的元素。包含 `task_id/fault/started_at/finished_at/status/primary_skill` |
-| **ErrorSummary** | `Context.RecentErrors` 中的元素。包含 `ts/skill/action/error_class/error_msg` |
-| **ContextMemory.RecordTask(t)** | 头部插入一条 TaskSummary，超 cap 时尾部截断。若 `status ∈ {running, paused}` 同步插入 `open_tasks` |
-| **ContextMemory.RecordError(e)** | 头部插入一条 ErrorSummary，超 cap 时尾部截断 |
-| **ContextMemory.SetPreference(k, v)** | 设置 `preferences[k]=v`；`v==""` 时删除键 |
-| **ContextMemory.CloseTask(taskID)** | 从 `open_tasks` 移除指定 taskID |
-| **`ContextMemory` (type)** | struct holding `path` (`<root>/.l4-memory/context.json`) + `sync.Mutex` + in-memory `Context` 文档 | ADR-0008 §Decision |
-| **`ContextMemory.Load()`** | 启动时调用一次。读 JSON；`created_at` 超过 24h 时 rotate session | ADR-0008 §Decision |
-| **Schema versioning** | `schema="context-memory/v1"`。新字段一律带默认值；版本只升不降。无 migration machinery | ADR-0008 §Decision |
-| **Atomic write** | tmp 文件 + `os.Rename`。进程在写中途被 kill 时旧文件完好 | ADR-0008 §Decision |
-
-### Real Executor（ADR-0010）
-
-| 术语 | 定义 | 文档 |
-|------|------|------|
-| **`Executor` (interface)** | 抽象层，让 `RunExecutionLoop` 不直接依赖 `os/exec`。两个实现：`StubExecutor`（测试用，返回预配置结果）、`RealExecutor`（生产用，包 `os/exec.CommandContext`）。Run signature: `Run(candidate string, timeout time.Duration) (exitCode int, stdout string, err error)` | ADR-0010 §Decision |
-| **`StubExecutor`** | 测试用 `Executor` 实现。`Outcomes []StubStep` 索引 = plan 步号。超出预配置范围返回 `(0, "", nil)`。用于 `RunExecutionLoopWithHealing` 的 retry 路径测试 | ADR-0010 §Decision |
-| **`RealExecutor`** | 生产用 `Executor` 实现。`bash -c candidate`，捕获 stdout/stderr（capped at `MaxBytes`，默认 1 MB）。默认 timeout 60s。env 默认 `os.Environ()`。当 `Run` 参数 timeout=0 时回退到 receiver 的 `Timeout` | ADR-0010 §Decision |
-| **`limitedBuffer`** | `io.Writer` 实现，cap 一旦到达就静默丢弃字节；OS pipe 因此对子进程施加 backpressure（限制 run-away 进程） | ADR-0010 §Decision |
-| **Dry-run gate** | `RunExecutionLoop` 中 GCL structural critic 的 PASS/ACCEPT 判定门。Not PASS/ACCEPT → 记录 `SKIPPED` 步并 continue；PASS/ACCEPT → 调 `Executor.Run` 拿真实 exit code | ADR-0010 §Decision |
-
-### Trust from Outcome Memory（ADR-0009）
-
-| 术语 | 定义 | 文档 |
-|------|------|------|
-| **Trust Phase 1 (coexist)** | 同 release 并存 `ComputeTrustScore([]OpHistory)` 与 `ComputeTrustScoreFromOutcome([]OutcomeRecord)`。新调用点走 outcome-memory 路径 | ADR-0009 §Migration |
-| **Trust Phase 2 (cutover)** | 默认新调用点走 outcome-memory 路径。配指标 `trust_source{from="outcome_memory"}` 监控切换 | ADR-0009 §Migration |
-| **Trust Phase 3 (deprecate)** | `ComputeTrustScore([]OpHistory)` 标 deprecated。curator pipeline 转为 back-fill | ADR-0009 §Migration |
-| **Trust Phase 4 (remove)** | 移除 curator pipeline。trust 单一来源 = outcome memory | ADR-0009 §Migration |
-| **error_recovery weight (new formula)** | 旧：curator 推断。新：`count(RetryCount > 0 AND Outcome == "success") / count(RetryCount > 0)` | ADR-0009 §Compute algorithm |
-| **trustCache** | 进程内 `map[skill]*TrustScore`。`Record()` 增量更新。cache key 含 policy hash | ADR-0009 §Decision |
-| **Outcome → trust inputs mapping** | `Outcome` → outcome（`blocked` 算失败）；`Timestamp` → ts；`Risk` → risk_level；`RetryCount > 0` → had_retry；`error_class` **不映射** | ADR-0009 §Data flow |
-| **`ComputeTrustScoreFromOutcome(skill, action, mem, policyHash)`** | Phase 2 新增的 trust 计算路径。从 `OutcomeMemory` 读 `RecentOutcomes(skill, action, 100)`，把 `Outcome` 映射为 success/failure（`blocked` 算 failure），用相同权重 (0.35/0.20/0.20/0.15/0.10) 算 composite score | ADR-0009 §Decision |
-| **`TrustSourceCounter`** | 监控切over 进度的进程内计数器。`FromOutcomeMemory atomic.Uint64` + `FromOpHistory atomic.Uint64`。通过 `trust stats` CLI 暴露 | ADR-0009 §Migration |
-| **`trust stats` subcommand** | 暴露 `TrustSourceCounter` 当前值 + 最近一次 outcome-memory 查询时间 | ADR-0009 §Migration |
-| **`LookupTrust(skill, action, mem)`** | Phase 2 默认 trust 查询路径。`mem != nil` 时走 outcome-memory + 记录 source 为 `outcome_memory`；否则回退到 `ComputeTrustScore([]OpHistory)` + 记录 `op_history` | ADR-0009 §Decision |
-
-### 其他常用术语
-
-| 术语 | 定义 |
-|------|------|
-| **GCL（Generator-Critic-Loop）** | Generator + Critic 双 Agent 闭环质量门控机制。详见 `docs/gcl-spec.md` |
-| **RBAC** | Role-Based Access Control。skill 操作前的权限检查，按 `RBACRisk ∈ {none,low,medium,high,critical}` 决策 allowed/denied。详见 `internal/l4/rbac.go` |
-| **Trust Score** | history-derived score（success_rate / consistency / recency / complexity_mastery / error_recovery，权重 0.35 / 0.20 / 0.20 / 0.15 / 0.10）。Phase 1 之后：从 outcome memory 读取；之前：从 curated `OpHistory` 读取 | `internal/l4/trust.go`, ADR-0009 |
-| **L4 Orchestrator** | `hwcloud-skillcheck/internal/l4/`。执行多 step 任务、持久化 checkpoint、做 RBAC + GCL + topology + trust + healing 决策 |
-| **Topology Graph** | 静态 + 动态的 skill→resource→resource→skill 依赖图。`internal/l4/topology.go` |
-| **CADL** | Compound-Asset Distillation Loop。从执行经验中沉淀 reusable 资产的机制（见 AGENTS.md §CADL） |
-| **`memory inspect` subcommand** | `hwcloud-skillcheck memory inspect --root .` 打印 outcome-memory 文件位置 + 记录数 + 最近 5 条 + context-memory 全部字段（session_id / created_at / recent_tasks / open_tasks / recent_errors / preferences） | `outcome_memory.go` + `context_memory.go` |
-| **Healing decision structured log** | `slog.Info("healing_decision", "skill", ..., "action", ..., "hook", "PreExecHook|PostFailureHook", "decision_action", ..., "decision_reason", ...)` — 每次 hook 返回非 proceed 时输出一行 | `self_healing.go` |
-| **HealingMetrics atomic counters** | `DefaultHealingMetrics.PreExecSkip` / `PostFailureRetry` / `PostFailureEscalate` 三个 `atomic.Uint64`，用于监控告警 | `self_healing.go`, `metrics.go` |
-
-### 实现注意事项 (Implementation notes — reviewer-facing)
-
-1. **`p.IsZero()` is the only zero-value gate.** `HealingPolicy{}` 零值必须安全 — 两个 hook 都 `p.IsZero()` → `proceed`。sum-based check 加新字段就 silently break。
-2. **`Executor` interface seam.** 本迭代只交付 `StubExecutor`（测试用）。真实 Hive CLI 绑定在 ADR-0010。不要 new `RealExecutor`，不要改 interface 签名。
-3. **`ExtractHighRiskVerbs()` is the single source of truth.** destructive verb 列表统一从一个 helper 取。`HealingPolicy.DestructiveVerbs` 默认值是该列表的拷贝。hook 内不要重写。
-4. **`Verb` field on `TaskStep`.** destructive 匹配走 `step.Verb`，不走 `step.Action` 的 substring。Action 是 command 字符串，Verb 是结构化的首 token。
-
-### Open follow-ups
-
-| # | Item | Why deferred |
-|---|------|--------------|
-| 1 | **ADR-0010: Real Executor + subprocess semantics** | Hive CLI 绑定 + timeout + 结构化输出捕获。Seam 已就位 |
-| 2 | **L5 trajectory: trust score from outcome memory** | ADR-0009 phases 驱动。Phase 1 同 branch 交付；2-4 后续 ADR |
-| 3 | **Healing decision observability** | 单独 ADR：结构化日志 + `healing_decisions_total{action,reason}` + `memory inspect` 子命令 |
-| 4 | **`EnsureMemoryDir()` shared helper** | ADR-0007 + ADR-0008 都 mkdir `.l4-memory` (0700)。等第三个 caller 出现再抽 (YAGNI) |
+1. `HealingPolicy` 零值安全 → 只以 `p.IsZero()` 判断，不用 sum-based check
+2. destructive verb 列表只从 `ExtractHighRiskVerbs()` 取；匹配走 `TaskStep.Verb` 非 `Action` 子串
+3. 改 `Executor` interface 或 bypass → 新 ADR
 
 ---
 
@@ -505,170 +441,48 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
 
-## Post-Push CI Monitoring Loop (强制 — 每次 push 后必跑)
+## Post-Push CI Monitoring（强制 — 每次 push 后必跑）
 
-After every successful `git push` to remote, the agent MUST monitor the resulting CI run end-to-end and auto-recover from any failure. This is a **recurring operational work item**, not a one-shot. Pair with the **Commit Gate** at the top of this file (pre-push) — together they bracket the full pre-push / push / post-push / fix cycle.
+与文首 **Commit Gate**（push 前 `go test`）配对。平台：GitHub Actions（`.github/workflows/*.yml`）。
 
-Note on terminology: the user refers to "GitLab Hub CI". The current CI platform for this repo is **GitHub Actions** (`.github/workflows/*.yml`). The loop below generalizes to any push-triggered CI (GitHub Actions / GitLab CI / Jenkins / Drone). Substitute the API surface and CLI tool as needed — the loop semantics are platform-agnostic.
+1. **`git push` 成功** → watch CI 到终态（`gh run watch --exit-status` 或 Actions UI / API 等价物）
+2. **CI 失败** → 本地 `go test ./...` 先绿 → 最小 fix → `fix(ci): …` commit → 再 push
+3. **最多 3 轮** auto-recover；仍失败 → 升级用户
+4. **fix commit** body 含 classifier + run id（模板见 `docs/deployment-guide.md` §4.3）
+5. **沉淀** — 仅当 fix 提取出通过 CADL 四问的决策规则时写入「复利资产」
 
-### Trigger
+> 操作细节（API、log 拉取、escalation 条件、commit 模板）→ **`docs/deployment-guide.md` §4.3**
+## 复利资产（Curated — 开始 GCL / Harness / L4 工作前速读）
 
-- `git push origin <branch>` exits 0
-- Pushed branch has at least one CI workflow file
+> 每条均通过 CADL 四问。完整踩坑叙事在 ADR / commit / PR，此处只留 **Rule**。
+> 开始 GCL / Harness / L4 工作前速读本节即可。
 
-### Loop (max 3 attempts, then escalate to user)
+### CA-1. 承诺 reuse 前先验 import graph
+**Rule**: spec 说「reuse X」→ 先确认无 import cycle；有 cycle → 复制 + sync test 门禁，不硬 import。
 
-1. **Watch** — poll CI run status until terminal (`success` / `failure` / `cancelled` / `timeout`).
-2. **Detect** — if `conclusion = failure`, identify which job(s) failed (the GitHub UI's red X markers).
-3. **Fetch logs** — `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` (auth via `GITHUB_TOKEN`; follow the 302 redirect to the signed S3 URL).
-4. **Analyze** — classify the failure into one of: `test` / `build` / `lint` / `deps` / `config` / `external` / `unknown`. Use the classifier as a stable tag for `git log --grep`.
-5. **Fix** — apply a minimal-delta change addressing the root cause. Match the local `go test ./...` gate first; never push a fix that fails locally.
-6. **Re-deploy** — `git commit -m "fix(ci): <one-line>"` + `git push` → restart loop from step 1.
-7. **Distill** — if the fix reveals a new reusable pattern, add it to AGENTS.md via the CADL mechanism. The classifier tag from step 4 becomes the lesson topic.
+### CA-2. Edit-tool 多轮 patch = 语法孤儿
+**Rule**: 同一文件 ≥2 次 edit → 必须 read 验结构；嵌套乱 → `git checkout -- <file>` 整文件 rewrite，比逐行修快。
 
-### API surface (GitHub Actions — substitute for other CIs)
+### CA-3. Spec 审批门在人类，不在 agent
+**Rule**: spec/plan 阶段存在 user-approval checkpoint → todo 标 `block`，未获用户明示「approve」前禁止进入 implementation。
 
-```bash
-# List recent runs for the pushed commit (use the head SHA from `git rev-parse HEAD`)
-GET /repos/{owner}/{repo}/actions/runs?head_sha=<sha>
+### CA-4. 「GREEN 但不符合 spec」= 语义债
+**Rule**: 契约字段用 proxy/heuristic 凑绿 → 在 set-site 标 `// heuristic: see CA-4` + spec changelog 记 gap；否则 Critic 会被假绿误导。
 
-# Get a specific job's logs (returns 302 → signed S3 URL → follow)
-GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs
+### CA-5. Sandbox 无公网 — 设计 offline-first
+**Rule**: 新依赖先查 vendor / module cache / 可达性；不可达 → offline-mode 或显式 blocker，不假设 `go get` 能跑。
 
-# CLI shortcut (preferred when available)
-gh run watch <run-id> --exit-status
-gh run view <run-id> --log-failed
-```
+### CA-6. `go test` / CI 里 `os.Args[0]` 不可信
+**Rule**: 找源码树 → `os.Args[0]` 与 `os.Getwd()` 双路径向上 walk；Linux CI build cache 下 args[0] 不在 repo 内。
 
-### Stop conditions (escalate to user)
+### CA-7. CLI `--root` 必须 cwd-tolerant
+**Rule**: 「repo root」类 flag → walk up 找标志文件（generator、`SKILL.md` 等），不能只 `filepath.Abs(".")`。
 
-- **3 failed attempts in a row** — likely needs human judgment (security/CVE, third-party API change, infra outage, design ambiguity).
-- **Non-self-recoverable failure** — anything the agent's toolset can't fix (cloud account misconfiguration, OIDC/secret rotation, force-push required).
-- **Token / rate-limit** — `GITHUB_TOKEN` expired or the API returns 401/403/429.
-- **User opt-out** — branch tagged with `[skip ci-monitor]` in commit message, or user has explicitly disabled the loop for this branch.
+### CA-8. CLI 产出物默认不进 git
+**Rule**: 文件是 subcommand **输出**且非手改 → `.gitignore` + loader 自 seed；timestamp-only diff = 不该 track 的信号。
 
-### Evidence recording (commit message format)
+### CA-9. 多 workflow 重叠 → 按 trigger 职责拆分
+**Rule**: 审计 step 重叠；「每次 commit」与「release artifact」用不同 trigger 事件拆分。`paths:` 只减文档噪音，不治架构重复。
 
-Every auto-fix MUST include the run id and failure classifier in the commit body so the history is grep-able:
-
-```
-fix(ci): <one-line summary>
-
-Classifier: <test|build|lint|deps|config|external|unknown>
-CI run:     <run-id>
-Job:        <job-name> (id: <job-id>)
-Signature:  <one-line failure fingerprint>
-Fix:        <one-line description>
-```
-
-`git log --grep "fix(ci):" --grep "CI run:"` then surfaces the full auto-recovery history in one query.
-## Hard-Won Lessons (P0 + P1 + P2 + CI维护 + CI监控, 2026-07-27 → 2026-07-28)
-
-### L9. Restricted macOS Go cache
-When Go build/test hits a read-only `~/Library/Caches/go-build` error, set `GOCACHE=/tmp/hcloud-go-cache`; this changes only compiler cache location and keeps the source tree untouched.
-
-From the P0 trust-boundary close-out and P1+P2 spec/plan cycle. Each rule below is a fix for a real failure that wasted ≥30 min. Re-read before starting any new GCL / Harness work.
-
-### L1. "Reuse L4" is a lie when there's an import cycle
-**Problem**: spec said "reuse `l4.HighRiskVerbs` in gcl". `l4` imports `gcl`, so `gcl` cannot import `l4` — `import cycle not allowed`.
-**Fix**: copy the regex into `gcl` as `gclHighRiskVerbs` / `gclHighRiskCommands`, then add a build-time sync test (`internal/l4/gcl_sync_test.go`) that fails CI on drift. (30-line check; silent trust-boundary leak is the cost of skipping it.)
-**Rule**: when brainstorming says "reuse X", verify the import graph allows it *before* promising reuse.
-
-### L2. `t.TempDir()` is not stable across calls
-**Problem**: each call returns a NEW subdirectory. If `writeScript(t,…)` uses `t.TempDir()` and `readFile` also calls `t.TempDir()`, the read path is a different directory and the file is "not found".
-**Fix**: cache the path per `*testing.T` via `sync.Map` keyed by the test pointer; `t.Cleanup(func() { scriptPaths.Delete(t) })` to release on test end. See `internal/gcl/critic_schema_test.go:scriptForTest` for the canonical implementation.
-**Rule**: any test helper that exposes a path needs to cache per-test, not per-call.
-
-### L3. Shell heredoc trap for JSON test scripts
-**Problem**: a script like `printf '%s' {"scores":{…}}` is broken: the shell does brace expansion on the unquoted JSON, mangling it before `printf` runs. Result: `decode-error` from the subprocess with no obvious cause.
-**Fix**: heredoc with a single-quoted delimiter escapes both brace and parameter expansion: `cat <<'PAYLOAD_EOF' … PAYLOAD_EOF`.
-**Rule**: any test fixture containing `{` `}` `:` `$` in an unquoted context is a bug. Single-quote the heredoc delimiter (`<<'EOF'`) is the safe default.
-
-### L4. `cmd.StdinPipe()` + `cmd.Output()` deadlocks unless you close stdin first
-**Problem**: `exec.CommandContext` + `StdinPipe()` + `Output()` blocks forever if the child reads stdin and the parent never closes the pipe. The 60s context eventually fires with empty stdout → `decode-error`.
-**Fix**: `Write(genBytes)` then `Close()` then `Output()`. `defer in.Close()` after `Output()` is too late.
-**Rule**: any `exec.Cmd` with `StdinPipe()` MUST close the pipe before the call that waits for completion.
-
-### L5. Edit-tool thrash accumulates orphan syntax
-**Problem**: 4+ sequential `edit` tool calls on the same file (especially with brace nesting) almost always produce orphan `}` / duplicate `}` / deleted-line ghost. Re-running `go build` shows syntax errors that the latest `edit` did not introduce.
-**Fix**: (a) after every 2 edits on the same file, `read` it and grep for `^{` `}$` balance. (b) if structure is broken beyond simple repair, `git checkout HEAD -- <file>` and redo from scratch — the first clean rewrite is faster than untangling. (c) the `edit` tool's "auto-repair" warnings are real — re-read after each.
-**Rule**: edit-tool = single-shot per file. Multi-step edits to the same file should be batched into one large `write` instead.
-
-### L6. Test names must match the spec, not the implementation
-**Problem**: the P0 spec listed `TestConfirmationRegistryOneTime` (no underscore) as the A8 acceptance test. The shipped test was `TestConfirmationRegistry_OneTimeConsumption` — different name, same behavior. The test passed green, but the spec criterion was not directly observable.
-**Fix**: ship a `TestP1Acceptance_AuditsAllCriteria` (P1 plan Task 11) that walks the repo's `_test.go` files and asserts the spec-named test strings exist. CI fails if a criterion lacks a named test.
-**Rule**: spec criteria are contracts. The test name is part of the contract, not just a convenience. **Even passing tests do not satisfy a spec criterion — the test name must match.**
-
-### L7. The spec review gate is the user's, not yours
-**Problem**: when `brainstorming` is invoked, the HARD-GATE says: do NOT implement, do NOT call writing-plans, until the user approves the spec. In the P1+P2 cycle the agent marked the spec "self-reviewed" and was about to "self-approve" to keep momentum. The user had to say "now approve spec" to break the gate. That's the correct flow.
-**Fix**: in todos, mark the user-review task `block(reason: "awaiting user approval")` — explicitly NOT in `done` state. The block label makes it visible to the system that this is a human checkpoint.
-**Rule**: when a `block` label exists in the todo, the next phase's work (writing-plans, implementation) MUST wait. Unblocking without user input = process violation.
-
-### L8. Pre-existing flaky tests get conflated with new failures
-**Problem**: in the P0 cycle, two tests were red on a clean checkout (before any P0 work): `TestConfirmationRegistry_ConcurrentSafety` (flaky goroutine race) and `TestHandleFault_DecisionAutoProceed` (L4 fixture drift). After P0, both were still red. A naive reader would assume they were P0 regressions. The truth: they pre-date the spec.
-**Fix**: in every commit message, **explicitly call out** pre-existing failures (`"TestX failure is pre-existing, not caused by this commit"`). Add a `// KNOWN-FLAKY: <reason>` comment above the test so `go test -run` can filter them.
-**Rule**: a "red" test in CI is a signal, not a verdict. Every commit message should distinguish regressions from pre-existing noise.
-### L10. P2 EntityMatch heuristic is a proxy, not the spec contract
-**Problem**: `router.ConfidenceGate.EntityMatch` (`router.go:computeGate`) is derived from `ManifestScore >= 0.8 → "strong"`, `>= 0.4 → "weak"`, else `"absent"`. Spec §4.2.3 defines the field as "Whether a typed entity from the request matched a skill input/lexicon entry" — semantically different from the overlap-ratio proxy shipped today.
-**Fix**: when wiring the real entity recognizer (lexicon.products/actions/resources lookup), update `computeGate` to query it. Until then, mark the field `// heuristic: see L10` near its set-site, and document the gap in the spec changelog ("v0.3.0 partial GREEN").
-**Cost of not flagging**: a green-build narrative hides a real semantic gap that will surprise a Critic reviewing a low-overlap request.
-**Rule**: any time a contract field is "good enough for GREEN but not for spec", leave a L-numbered lesson near the set site so the next implementer (or Critic) can find it in 10 seconds.
-### L11. Sandbox network is sealed — design for offline-mode, not for "I'll just download it"
-**Problem**: sandbox cannot reach `github.com`, `goproxy.cn`, `proxy.golang.org`; only local stub hosts resolve.
-**Fix**: when a task requires a network-bound dep, do ONE of: (1) vendor into `hwcloud-skillcheck/vendor/`, (2) implement offline-mode, (3) document the blocker with unlock conditions.
-**Rule**: before committing to "use SDK X", verify X is vendored, in module cache, or reachable. Otherwise plan for offline-mode first.
-
-### L12. Every sandbox/provider needs a user-facing preflight
-**Problem**: provider configuration failures surface as opaque errors, leading to repeated edit/restart cycles and credential-in-config mistakes.
-**Fix**: implement side-effect-free `Preflight(ProviderConfig) PreflightReport` that aggregates all errors before network/native calls, with plain-language Message and actionable Fix.
-**Rule**: a new sandbox provider is incomplete until invalid config is covered by preflight tests and the user manual has copy-paste fixes.
-
-### L13. Env-var dependency injection must sync test fixture + injection channel
-**Problem**: `TestSafetyClass_UnknownValue` created `sanitizer.go` scaffold but did not set `SKILLCHECK_ROOT` — code under test searched the build cache path instead of the scaffold dir.
-**Fix**: when a test creates a fixture file that a production function reads via env var, always `t.Setenv("VAR_NAME", tmp)` in the same test that creates the file.
-**Rule**: fixture creation and dependency injection are a contract — both must exist together or neither works.
-
-### L14. Subprocess Mode = exit code, not decode intent
-**Problem**: `TestExternalCritic_DecodeError` asserted `Mode=="decode-error"` but the helper exited non-zero (no stdout), producing `subprocess-error` — the test named the intention not the outcome.
-**Fix**: subprocess exit ≠ 0 → `out` is empty → `Mode` should reflect subprocess error, not json.Unmarshal failure. Assert the actual code path, not the hoped-for path.
-**Rule**: test assertion names must match what the code actually does, not what you intend it to do. "NonZeroExit" not "DecodeError".
-
-### L15. CI Linux `go test` makes `os.Args[0]`/Executable unusable for source-tree walking
-**Problem**: `checkSafetyClassCode(skillcheckRoot)` used `filepath.Dir(os.Args[0])` to find the source tree — worked on macOS compiled binary, failed on Linux CI where `go test` puts args[0] in `~/.cache/go-build/...`.
-**Fix**: walk up from both `os.Args[0]` AND `os.Getwd()`; stop when `sanitizer.go` is found. `cwd` fallback is the reliable anchor for CI.
-**Rule**: `os.Args[0]`/`os.Executable()` are not reliable in `go test` / build-cache environments. Always fall back to `cwd` walking.
-
-### L16. Programmatic Go file edits require gofmt verification before commit
-**Problem**: sed/python/`edit` tool inserted code with extra blank lines; macOS gofmt passed, Linux CI gofmt failed → CI red on a clean commit.
-**Fix**: after any programmatic edit (sed, python, edit tool), always run `gofmt -l <file>` locally and `gofmt -w <file>` to auto-fix before commit.
-**Rule**: `go build` passing locally is insufficient; CI gofmt gate is authoritative. Always verify before push.
-
-### L17. CLI `--root` flag must resolve from any cwd
-**Problem**: `hwcloud-skillcheck validate generator-contract --root .` failed (0/22) when invoked from `hwcloud-skillcheck/` (the module dir) but passed 24/24 from the repo root. `filepath.Abs(".")` resolved to the module dir, where the generator files don't live.
-**Fix**: add `resolveContractRoot(start)` that walks up the directory tree (bounded 6 hops) and returns the first ancestor containing any file from the required-files map. Mirror the existing `findSkillcheckRoot` os.Args[0]/cwd-fallback pattern.
-**Rule**: any CLI flag that names a "repo root" must be cwd-tolerant. Users will run the tool from wherever their shell lands, not from the canonical dir.
-
-### L18. Suppress inner-validator stdout during go test
-**Problem**: `go test -v` for negative-path tests (`TestSafetyClass_InvalidValueInTrace`, `TestResourceScope_RawIDRejected`) printed the inner validator's `FAIL traces: ...` / `FAIL schema: ...` lines before the test's `--- PASS:` verdict. Readers confused the noise for test failures.
-**Fix**: gate the human-readable print blocks on `!isQuiet()` where `isQuiet()` reads `SKILLCHECK_QUIET=1` at call time. Add `TestMain` in `_test.go` that sets the env var for the whole test binary. `err` and `--json` output are unaffected.
-**Rule**: when a CLI tool is invoked by its own test, silence the human-readable output. Tests assert on the return value, not on stdout.
-
-### L19. Runtime data files don't belong in git
-**Problem**: `huaweicloud-*-ops/assets/failure_patterns.json` was tracked in git, producing timestamp-only commits every time `hwcloud-skillcheck learning trace aggregate` ran (e.g. `last_aggregation: 2026-07-28T07:02:07Z → 08:49:08Z`). Same family as the already-gitignored `audit-results/gcl-trace-*.json`.
-**Fix**: `git rm --cached` the existing tracked copies (preserve on disk), add the pattern to `.gitignore`. The loader (`LoadFailurePatterns` in `internal/learning/trace.go`) auto-seeds a fresh scaffold when missing, so first run recreates the file.
-**Rule**: if a file is the *output* of a CLI subcommand and is *not* hand-authored, it should be gitignored. Test by running the generator fresh on an empty repo — if the file reappears, it doesn't belong in git.
-
-### L20. CI workflows need explicit `cache-dependency-path` and current action majors
-**Problem**: `actions/setup-go@v5` failed with `Restore cache failed: Dependencies file is not found in /home/runner/... Supported file pattern: go.sum` because the cache step searched the workspace root while the module lived in `hwcloud-skillcheck/`. Separately, `actions/checkout@v4` and `setup-go@v5` triggered `Node.js 20 is deprecated... being forced to run on Node.js 24`.
-**Fix**: (1) add `cache-dependency-path: <module-dir>/go.sum` to every `setup-go` step. (2) bump action majors: `checkout v4→v5`, `setup-go v5→v6`, `upload-artifact v4→v7`, `download-artifact v4→v8`, `softprops/action-gh-release v2→v3`.
-**Rule**: Go modules in a subdirectory need explicit `cache-dependency-path`. Audit action majors quarterly or whenever GitHub announces a runtime deprecation.
-
-### L21. Optional wire-schema fields need code-level defaults
-**Problem**: `TestExternalCritic_TimeoutContext` set a 50ms ctx; the helper completed *before* the deadline, so `Score` reached the success path. The test payload omitted the optional `mode` field (the `critic_output` schema only requires `scores`), so `result.Mode = wire.Mode = ""` — the test's `if got.Mode == ""` assertion failed even though the call returned correctly.
-**Fix**: in the success branch of `ExternalCritic.Score`, default `result.Mode = "unconfigured"` when `wire.Mode == ""`. Mirrors the `defaultResult.Mode = "unconfigured"` already used for the early-return "no path configured" case. `Unconfigured` is now the canonical "Critic returned a valid payload but didn't tell us its mode" state.
-**Rule**: when a JSON schema marks a field as optional, the consumer must still defend against it being absent. The schema describes what is *allowed*; the consumer chooses what to *assume* when fields are missing. Document the assumed default in the field's Go doc-comment.
-
-### L22. After every push, run the post-push CI monitoring loop
-**Problem**: a green local `git push` can still fail CI; without a watch loop, the agent declares "done" before the remote actually accepts the change, leaving red builds in `main`.
-**Fix**: see the "Post-Push CI Monitoring Loop" section above. The loop watches → fetches logs → analyzes → fixes → re-pushes, with max 3 attempts before escalating to the user. Auto-fixes must include the CI run id and a failure classifier in the commit message.
-**Rule**: every `git push` MUST be followed by `gh run watch <run-id> --exit-status` (or equivalent) until terminal status. "Pushed, now waiting for the user" is NOT a valid end-state.
+### CA-10. Dual-Copy Trap（generator 双副本）
+**Rule**: 只改 `huaweicloud-skill-generator/` 根副本；改后 `hwcloud-skillcheck drift sync --apply --root .`，CI `drift check` 会拦漂移。

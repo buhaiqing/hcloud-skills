@@ -333,7 +333,7 @@ The repository includes two CI workflows that serve as reference for external in
 - Runs drift guard (sync + check canonical/runtime copy equality)
 - Runs critic scorer smoke test
 
-**build-skillcheck.yml** — runs on push/PR + tags `v*`:
+**build-skillcheck.yml** — runs on tags `v*` only (daily CI is validate-skills):
 - Cross-platform build matrix (6 platform/arch combinations)
 - Tests + lint on ubuntu-latest
 - On tag push: publishes artifacts to GitHub Release
@@ -416,13 +416,66 @@ All binaries are:
 ### 4.2 Workflow: build-skillcheck.yml
 
 **File**: `.github/workflows/build-skillcheck.yml`
-**Triggers**: `push` to `main`/`master`, `pull_request`, tags `v*`
+**Triggers**: tags `v*` only (cross-platform release; daily gate is validate-skills)
 
 | Job | Depends On | Purpose |
 |-----|-----------|---------|
 | `test` | — | gofmt + vet + test (fast feedback) |
 | `build` | `test` | Cross-platform matrix build (6 variants) |
 | `release` | `build` | Publish to GitHub Releases (tag push only) |
+
+### 4.3 Post-Push CI Monitoring Loop
+
+Agent 在每次 `git push` 后必须监控 CI 到终态。AGENTS.md 保留 5 条硬规则；本节是操作手册。
+
+**Trigger**: `git push` 成功且分支有 CI workflow。
+
+**Loop** (max 3 attempts, then escalate):
+
+1. **Watch** — poll until terminal (`success` / `failure` / `cancelled` / `timeout`)
+2. **Detect** — identify failed job(s)
+3. **Fetch logs** — GitHub Actions job logs (302 → signed URL)
+4. **Analyze** — classify: `test` / `build` / `lint` / `deps` / `config` / `external` / `unknown`
+5. **Fix** — minimal delta; local `go test ./...` green before re-push
+6. **Re-deploy** — `fix(ci): …` commit + push → restart from step 1
+7. **Distill** — CADL 四问全过才写入 AGENTS.md「复利资产」
+
+**GitHub Actions API / CLI**:
+
+```bash
+# List runs for pushed commit
+gh run list --commit $(git rev-parse HEAD)
+
+# Watch to completion
+gh run watch <run-id> --exit-status
+
+# Failed job logs
+gh run view <run-id> --log-failed
+```
+
+REST equivalents: `GET /repos/{owner}/{repo}/actions/runs?head_sha=<sha>`;
+`GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs`.
+
+**Escalate to user when**:
+
+- 3 consecutive auto-fix attempts failed
+- Non-self-recoverable (OIDC/secrets, force-push, external outage)
+- `gh`/token 401/403/429
+- Commit message contains `[skip ci-monitor]`
+
+**Auto-fix commit body template**:
+
+```
+fix(ci): <one-line summary>
+
+Classifier: <test|build|lint|deps|config|external|unknown>
+CI run:     <run-id>
+Job:        <job-name> (id: <job-id>)
+Signature:  <one-line failure fingerprint>
+Fix:        <one-line description>
+```
+
+Grep history: `git log --grep "fix(ci):" --grep "CI run:"`.
 
 ---
 
