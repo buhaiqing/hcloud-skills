@@ -1,9 +1,14 @@
 package l4
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -59,9 +64,108 @@ func (s *StubExecutor) Run(candidate string, timeout time.Duration) (int, string
 	return out.ExitCode, out.Stdout, out.Err
 }
 
-// RunExecutionLoop executes the planned steps with persistence and RBAC checks.
-// Returns the task state after execution completes.
-func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched []MatchedSkill) *TaskState {
+// RealExecutor shells out via os/exec. Captures stdout/stderr (capped),
+// returns exit code. Default timeout 60s; configurable. Captures capped at
+// MaxBytes (default 1 MiB) per stream to prevent OOM on runaway output.
+type RealExecutor struct {
+	Env      []string      // os.Environ() by default; override for tests
+	Timeout  time.Duration // per-step timeout default when caller passes 0
+	MaxBytes int           // stdout/stderr capture cap (default 1 << 20)
+}
+
+// NewRealExecutor constructs a RealExecutor with production defaults.
+func NewRealExecutor() *RealExecutor {
+	return &RealExecutor{
+		Env:      os.Environ(),
+		Timeout:  60 * time.Second,
+		MaxBytes: 1 << 20,
+	}
+}
+
+// limitedBuffer is a bytes.Buffer wrapper that drops writes past its limit,
+// matching the protection io.LimitWriter would give us. Added as a local
+// helper so both stdout and stderr cap independently.
+type limitedBuffer struct {
+	buf bytes.Buffer
+	max int64
+	n   int64
+}
+
+func newLimitedBuffer(max int64) *limitedBuffer {
+	return &limitedBuffer{max: max}
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	remaining := b.max - b.n
+	if remaining <= 0 {
+		return len(p), nil // drop, but pretend success so cmd.Run doesn't error
+	}
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+	n, err := b.buf.Write(p)
+	b.n += int64(n)
+	return n, err
+}
+
+func (b *limitedBuffer) String() string { return b.buf.String() }
+
+// Compile-time guard: limitedBuffer must implement io.Writer for exec.Cmd.
+var _ io.Writer = (*limitedBuffer)(nil)
+
+// Run executes candidate via `bash -c` to support multi-arg commands.
+// Returns (exitCode, mergedStdoutAndStderr, err). err is non-nil for non-zero
+// exits or timeouts. timeout=0 uses the receiver's Timeout.
+func (r *RealExecutor) Run(candidate string, timeout time.Duration) (int, string, error) {
+	if timeout <= 0 {
+		timeout = r.Timeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "-c", candidate)
+	if r.Env != nil {
+		cmd.Env = r.Env
+	}
+
+	max := r.MaxBytes
+	if max <= 0 {
+		max = 1 << 20
+	}
+	stdoutBuf := newLimitedBuffer(int64(max))
+	stderrBuf := newLimitedBuffer(int64(max))
+	cmd.Stdout = stdoutBuf
+	cmd.Stderr = stderrBuf
+
+	err := cmd.Run()
+	output := stdoutBuf.String() + stderrBuf.String()
+
+	// Distinguish timeout from a regular non-zero exit.
+	if ctx.Err() == context.DeadlineExceeded {
+		return 0, output, ctx.Err()
+	}
+
+	exitCode := 0
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		exitCode = exitErr.ExitCode()
+		return exitCode, output, err
+	}
+	return exitCode, output, err
+}
+
+// RunExecutionLoop executes the planned steps with persistence, RBAC, GCL,
+// and the supplied Executor. Pass nil for exec to default to NewRealExecutor()
+// (which shells out via os/exec). Returns the task state after all steps.
+//
+// ADR-0010: GCL dry-run gate short-circuits to a SKIPPED result when the
+// structural critic does not PASS / ACCEPT; otherwise the executor is run
+// and its exit code determines Success.
+func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched []MatchedSkill, exec Executor) *TaskState {
+	if exec == nil {
+		exec = NewRealExecutor()
+	}
+
 	// Build known skills map.
 	knownSkills := map[string]bool{}
 	for _, m := range matched {
@@ -160,14 +264,43 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 			return task
 		}
 
-		// Step 3: Record step as pending (will be updated after actual execution).
-		// For now, mark as passed the GCL check.
+		// Step 3: Dry-run gate (GCL structural critic).
+		// If the gate denies the step, record SKIPPED and continue.
+		if gclBody.Decision != "PASS" && gclBody.Decision != "ACCEPT" {
+			task.Results = append(task.Results, StepResult{
+				Step:         step.Step,
+				Command:      candidate,
+				StartedAt:    NowISO(),
+				FinishedAt:   NowISO(),
+				Success:      false,
+				Error:        "skipped: GCL=" + gclBody.Decision,
+				RBACApproved: rbacDec.Allowed,
+				RBACReason:   rbacDec.Reason,
+				GCLDecision:  gclBody.Decision,
+				GCLScores:    crit.Scores,
+			})
+			task.CurrentStep++
+			_ = PersistTask(root, task.ID, task)
+			continue
+		}
+
+		// Step 4: Real execution via os/exec.
+		startedAt := NowISO()
+		exitCode, output, execErr := exec.Run(candidate, 0)
+		finishedAt := NowISO()
+		var errStr string
+		if execErr != nil {
+			errStr = execErr.Error()
+		}
 		result := StepResult{
 			Step:         step.Step,
 			Command:      candidate,
-			StartedAt:    NowISO(),
-			FinishedAt:   NowISO(),
-			Success:      gclBody.Decision == "PASS" || gclBody.Decision == "ACCEPT",
+			StartedAt:    startedAt,
+			FinishedAt:   finishedAt,
+			ExitCode:     exitCode,
+			Success:      execErr == nil && exitCode == 0,
+			Output:       output,
+			Error:        errStr,
 			RBACApproved: rbacDec.Allowed,
 			RBACReason:   rbacDec.Reason,
 			GCLDecision:  gclBody.Decision,
@@ -184,10 +317,14 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 }
 
 // RunExecutionLoopWithHealing is the production call path. Self-healing is
-// bypassed when mem is nil, p.IsZero() is true, or exec is nil (no executor
-// wired). Otherwise it consults OutcomeMemory pre-exec (skip-on-bad-history)
-// and post-failure (retry-on-transient / escalate-on-permanent).
+// bypassed when mem is nil or p.IsZero() is true. exec may be nil — when so,
+// it defaults to NewRealExecutor() (ADR-0010). Otherwise it consults
+// OutcomeMemory pre-exec (skip-on-bad-history) and post-failure
+// (retry-on-transient / escalate-on-permanent).
 func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPlan, matched []MatchedSkill, mem *OutcomeMemory, p HealingPolicy, exec Executor) *TaskState {
+	if exec == nil {
+		exec = NewRealExecutor()
+	}
 	for {
 		if task.CurrentStep >= len(task.Steps) {
 			CompleteTask(task)
@@ -275,15 +412,23 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 			GCLScores:    crit.Scores,
 		}
 
-		// If an executor is wired, actually run it and capture exit code / err.
-		if exec != nil {
+		// Dry-run gate (GCL structural critic). Skip-on-deny.
+		if gclBody.Decision != "PASS" && gclBody.Decision != "ACCEPT" {
+			result.Success = false
+			result.Error = "skipped: GCL=" + gclBody.Decision
+		} else {
+			// Run for real via Executor (defaults to RealExecutor when nil).
 			code, stdout, runErr := exec.Run(candidate, time.Duration(plan.MaxTotalTimeoutSeconds)*time.Second)
 			result.ExitCode = code
+			result.Output = stdout
 			if runErr != nil {
 				result.Error = runErr.Error()
 				result.Success = false
+			} else if code != 0 {
+				result.Success = false
+			} else {
+				result.Success = true
 			}
-			result.Output = stdout
 		}
 
 		// POST-FAILURE HOOK: retry transient errors, escalate permanent.
