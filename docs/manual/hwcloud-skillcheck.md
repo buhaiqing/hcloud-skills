@@ -254,3 +254,58 @@ Runs `gofmt -l` and `go vet ./...` against the Go module at `--root`. Pass `--fi
 | `--quiet` | Suppress the per-run banner; only report failures |
 
 Exit codes: `0` clean, `1` one or more `gofmt` / `go vet` issues.
+
+## `hwcloud-skillcheck learning` Subcommands
+
+The `learning` family rebuilds per-skill `failure_patterns.json` and the generator `common-pitfalls.md` from GCL trace history. The default target skills are the top-frequency ones (RDS / VPC / ELB / CCE).
+
+### `hwcloud-skillcheck learning gen --root <dir>`
+
+Regenerates `failure_patterns.json` plus `remediation-playbooks.json` for every top-frequency skill under `--root`. Idempotent: re-running produces the same artifact bytes when no input traces have changed.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Repo root (default `.`) |
+
+Exit codes: `0` artifacts written, `1` generation error.
+
+### `hwcloud-skillcheck learning trace aggregate --root <dir> --skill <id>`
+
+Scans `audit-results/gcl-trace-*.json` for `--skill`, extracts failure patterns, deduplicates against the existing `failure_patterns.json`, and writes the merged result. Use `--dry-run` to preview without writing.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Repo root (default `.`) |
+| `--skill <id>` | Skill id (e.g. `huaweicloud-ecs-ops`, required) |
+| `--since-hours <N>` | Only include traces newer than `N` hours (`0` = all, default) |
+| `--dry-run` | Print counts and would-be writes; do not modify files |
+
+### `hwcloud-skillcheck learning trace learn --root <dir> --skill <id> --trace <path>`
+
+Loads a single `gcl-trace-*.json`, extracts its failure pattern (no-op for PASS traces), and merges it into the per-skill `failure_patterns.json`. If the `(category, error_message_regex, command_pattern)` triple already exists, increments counters and timestamps; otherwise appends a new entry with the next sequential `id`. Use `--dry-run` to preview.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Repo root (default `.`) |
+| `--skill <id>` | Skill id (required) |
+| `--trace <path>` | Path to `gcl-trace-*.json` (relative paths resolve against `--root`, required) |
+| `--dry-run` | Print action without writing |
+
+### `hwcloud-skillcheck learning trace report --root <dir> --skill <id>`
+
+Prints a human-readable summary of the failure knowledge base for `--skill`: total pattern count, last aggregation timestamp, source-trace count, and a per-category breakdown. Pass `--json` to emit the full structured record (skill + patterns + meta) on stdout.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Repo root (default `.`) |
+| `--skill <id>` | Skill id (required) |
+| `--json` | Emit JSON instead of human-readable text |
+
+```
+hwcloud-skillcheck learning gen                                   --root .
+hwcloud-skillcheck learning trace aggregate --root . --skill huaweicloud-rds-ops --since-hours 24
+hwcloud-skillcheck learning trace learn     --root . --skill huaweicloud-rds-ops --trace audit-results/gcl-trace-20260727-120000.json
+hwcloud-skillcheck learning trace report    --root . --skill huaweicloud-rds-ops --json
+```
+
+Exit codes: `0` ok, `1` missing required flags or file errors.
