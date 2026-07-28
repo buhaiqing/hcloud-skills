@@ -58,6 +58,8 @@ func Execute() error {
 		return runDrift(args)
 	case "router":
 		return runRouter(args)
+	case "memory":
+		return runMemoryInspect(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -101,6 +103,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck manifest gen --root <dir> --out <dir>         auto-generate capability_manifest.json per skill")
 	fmt.Fprintln(w, "  hwcloud-skillcheck telemetry confusion --root <dir>              derive router intent confusion matrix")
 	fmt.Fprintln(w, "  hwcloud-skillcheck router <info|embed-test|calibrate> --root <dir>   inspect, preflight-test, or offline-calibrate router configuration")
+	fmt.Fprintln(w, "  hwcloud-skillcheck memory inspect --root <dir>                     inspect L4 outcome and context memory")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate --root <dir>                            run all A-class checks (total entry)")
 }
 
