@@ -254,5 +254,8 @@ failure_patterns.json
 # Build artifacts
 /bin/
 
-# Embedding model files (large, vendor-supplied)
-deps/embed/
+# Embedding model files (large, vendor-supplied). The lock-file SHA256SUMS is
+# committed so TestDependencyLock can verify the lock contract in CI without
+# re-downloading the model artifacts.
+deps/embed/*
+!deps/embed/SHA256SUMS

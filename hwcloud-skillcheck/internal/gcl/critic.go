@@ -143,11 +143,18 @@ func (e ExternalCritic) Score(ctx context.Context, gen GeneratorOutput) CriticRe
 		return defaultResult
 	}
 
+	// Default Mode to "unconfigured" when the wire payload omits it. The
+	// critic_output schema only requires `scores`; mode is optional. Callers
+	// (e.g. TestExternalCritic_TimeoutContext) assert Mode is populated
+	// even on partial / no-timeout paths, so we must never return Mode="".
 	result := CriticResult{
 		Scores:      wire.Scores,
 		Suggestions: wire.Suggestions,
 		Blocking:    wire.Blocking,
 		Mode:        wire.Mode,
+	}
+	if result.Mode == "" {
+		result.Mode = "unconfigured"
 	}
 	if result.Suggestions == nil {
 		result.Suggestions = []string{}
