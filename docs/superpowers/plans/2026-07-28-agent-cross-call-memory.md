@@ -328,7 +328,7 @@ git commit -m "feat(l4): ContextMemory with atomic Save (tmp+rename, 0600)"
 - Produces:
   - `func (m *ContextMemory) Load() (*Context, error)` — returns zero-value with fresh session_id if file absent; errors on unknown schema; rotates session if `created_at` older than `SessionRotateAfter`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestContextMemory_Load_FirstRunReturnsFreshContext(t *testing.T) {
@@ -397,12 +397,12 @@ func TestContextMemory_Load_RotatesExpiredSession(t *testing.T) {
 
 (Add `time`, `strings` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Load' -v`
 Expected: all FAIL with `undefined: (*ContextMemory).Load`.
 
-- [ ] **Step 3: Implement Load**
+- [x] **Step 3: Implement Load**
 
 Append to `context_memory.go`:
 
@@ -468,12 +468,12 @@ func newSessionID() string {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Load' -v`
 Expected: all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
@@ -1021,3 +1021,4 @@ NO UNRESOLVED DECISIONS
 
 - Task 1 (Data model + constants) — committed 08e198e
 - Task 2 (ContextMemory struct + atomic Save) — committed afed6e4
+- Task 3 (Load + first-run + session rotation) — committed e51d76a
