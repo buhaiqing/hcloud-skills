@@ -251,3 +251,6 @@ gcl-alarm-plan-*.json
 
 # Build artifacts
 /bin/
+
+# Embedding model files (large, vendor-supplied)
+deps/embed/
