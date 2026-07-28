@@ -181,7 +181,7 @@ git commit -m "feat(l4): Context data types + schema constants"
   - `func NewContextMemory(root string) (*ContextMemory, error)`
   - `func (m *ContextMemory) Save(c *Context) error` — atomic write via tmp+rename
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestContextMemory_Save_CreatesFileWithMode0600(t *testing.T) {
@@ -227,12 +227,12 @@ func TestContextMemory_Save_AtomicNoTempLeftBehind(t *testing.T) {
 
 (Add `os`, `path/filepath`, `strings` to imports.)
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Save' -v`
 Expected: FAIL with `undefined: NewContextMemory`.
 
-- [ ] **Step 3: Implement NewContextMemory + Save**
+- [x] **Step 3: Implement NewContextMemory + Save**
 
 Append to `context_memory.go`:
 
@@ -304,12 +304,12 @@ func (m *ContextMemory) Save(c *Context) error {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run 'TestContextMemory_Save' -v`
 Expected: both PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_memory.go hwcloud-skillcheck/internal/l4/context_memory_test.go
@@ -1020,3 +1020,4 @@ NO UNRESOLVED DECISIONS
 ## Progress
 
 - Task 1 (Data model + constants) — committed 08e198e
+- Task 2 (ContextMemory struct + atomic Save) — committed afed6e4
