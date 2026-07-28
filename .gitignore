@@ -259,3 +259,4 @@ failure_patterns.json
 # re-downloading the model artifacts.
 deps/embed/*
 !deps/embed/SHA256SUMS
+.l4-memory/
