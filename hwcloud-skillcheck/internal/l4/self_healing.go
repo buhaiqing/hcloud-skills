@@ -100,3 +100,25 @@ func PreExecHook(step TaskStep, mem *OutcomeMemory, p HealingPolicy) HealingDeci
 	}
 	return HealingDecision{Action: "skip", Reason: "high historical failure rate"}
 }
+
+// PostFailureHook returns the action to take after a step has failed.
+//   - "retry"     when error is transient AND retry budget remains
+//     AND step verb is not destructive (verb matched via EqualFold)
+//   - "escalate"  in every other case (including MaxRetries=0)
+func PostFailureHook(step TaskStep, result StepResult, retryCount int, mem *OutcomeMemory, p HealingPolicy) HealingDecision {
+	if retryCount >= p.MaxRetries {
+		return HealingDecision{Action: "escalate", Reason: "max retries reached"}
+	}
+	// Match by step.Verb (pre-extracted by inferRiskFromAction in execution.go),
+	// NOT by substring of step.Action — "undelete-restore" must not be
+	// classified as destructive just because "delete" is a substring.
+	for _, verb := range p.DestructiveVerbs {
+		if strings.EqualFold(step.Verb, verb) {
+			return HealingDecision{Action: "escalate", Reason: "destructive op: no auto-retry"}
+		}
+	}
+	if isTransient(result.Error) {
+		return HealingDecision{Action: "retry", Reason: "transient error: " + result.Error}
+	}
+	return HealingDecision{Action: "escalate", Reason: "non-transient error: " + result.Error}
+}

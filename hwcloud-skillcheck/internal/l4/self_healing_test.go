@@ -133,3 +133,60 @@ func TestPreExecHook_BelowMinSamplesProceeds(t *testing.T) {
 		t.Fatalf("want proceed (below min samples), got %+v", d)
 	}
 }
+
+func TestPostFailureHook_DestructiveEscalates(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "s", Action: "delete-instance", Verb: "delete"}
+	res := StepResult{Success: false, Error: "anything"}
+	p := HealingPolicy{MaxRetries: 3, DestructiveVerbs: []string{"delete"}}
+	d := PostFailureHook(step, res, 0, mem, p)
+	if d.Action != "escalate" {
+		t.Fatalf("want escalate for destructive, got %+v", d)
+	}
+}
+
+func TestPostFailureHook_MaxRetriesEscalates(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "s", Action: "list"}
+	res := StepResult{Success: false, Error: "timeout"}
+	p := HealingPolicy{MaxRetries: 2, DestructiveVerbs: []string{"delete"}}
+	if d := PostFailureHook(step, res, 2, mem, p); d.Action != "escalate" {
+		t.Fatalf("want escalate at max retries, got %+v", d)
+	}
+}
+
+func TestPostFailureHook_TransientRetries(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "s", Action: "list"}
+	res := StepResult{Success: false, Error: "connection reset"}
+	p := HealingPolicy{MaxRetries: 3, DestructiveVerbs: []string{"delete"}}
+	d := PostFailureHook(step, res, 0, mem, p)
+	if d.Action != "retry" {
+		t.Fatalf("want retry for transient, got %+v", d)
+	}
+}
+
+func TestPostFailureHook_PermanentEscalates(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "s", Action: "list"}
+	res := StepResult{Success: false, Error: "permission denied"}
+	p := HealingPolicy{MaxRetries: 3, DestructiveVerbs: []string{"delete"}}
+	if d := PostFailureHook(step, res, 0, mem, p); d.Action != "escalate" {
+		t.Fatalf("want escalate for permanent, got %+v", d)
+	}
+}
+
+func TestPostFailureHook_ZeroMaxRetriesEscalates(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "s", Action: "list"}
+	res := StepResult{Success: false, Error: "timeout"}
+	p := HealingPolicy{MaxRetries: 0, DestructiveVerbs: []string{"delete"}}
+	if d := PostFailureHook(step, res, 0, mem, p); d.Action != "escalate" {
+		t.Fatalf("want escalate when MaxRetries=0, got %+v", d)
+	}
+}
