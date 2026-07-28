@@ -234,6 +234,7 @@ func runValidateGeneratorContract(args []string) error {
 	if err != nil {
 		return err
 	}
+	rootDir = resolveContractRoot(rootDir)
 
 	report := checkGeneratorContract(rootDir)
 
@@ -252,6 +253,28 @@ func runValidateGeneratorContract(args []string) error {
 		return fmt.Errorf("generator-contract: %d check(s) failed", report.Summary.Failing)
 	}
 	return nil
+}
+
+// resolveContractRoot walks up the directory tree from start until it finds a
+// directory that contains at least one required contract file. This makes the
+// validator forgiving about cwd: `hwcloud-skillcheck validate generator-contract`
+// works whether invoked from the repo root or from hwcloud-skillcheck/ itself.
+// Bounded at 6 hops so a runaway symlink chain cannot loop forever.
+func resolveContractRoot(start string) string {
+	cur := start
+	for range 6 {
+		for _, rel := range requiredContractFiles {
+			if _, err := os.Stat(filepath.Join(cur, rel)); err == nil {
+				return cur
+			}
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return start
+		}
+		cur = parent
+	}
+	return start
 }
 
 // ---------------------------------------------------------------------------
