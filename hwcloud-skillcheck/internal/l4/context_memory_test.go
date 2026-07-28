@@ -2,6 +2,7 @@ package l4
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,5 +147,88 @@ func TestContextMemory_Load_RotatesExpiredSession(t *testing.T) {
 	}
 	if !strings.HasPrefix(loaded.CreatedAt, time.Now().UTC().Format("2006-01-02")) {
 		t.Errorf("created_at not refreshed: %s", loaded.CreatedAt)
+	}
+}
+
+func TestContextMemory_RecordTask_PrependsAndCapsAt20(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	for i := 0; i < 25; i++ {
+		if err := mem.RecordTask(TaskSummary{
+			TaskID: fmt.Sprintf("t-%02d", i),
+			Status: "completed",
+		}); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+	c, _ := mem.Load()
+	if len(c.RecentTasks) != MaxRecentTasks {
+		t.Fatalf("want %d, got %d", MaxRecentTasks, len(c.RecentTasks))
+	}
+	// Newest first: most recent should be t-24, oldest kept t-05.
+	if c.RecentTasks[0].TaskID != "t-24" {
+		t.Errorf("newest = %s, want t-24", c.RecentTasks[0].TaskID)
+	}
+	if c.RecentTasks[len(c.RecentTasks)-1].TaskID != "t-05" {
+		t.Errorf("oldest kept = %s, want t-05", c.RecentTasks[len(c.RecentTasks)-1].TaskID)
+	}
+}
+
+func TestContextMemory_RecordTask_RunningAddsToOpen(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	if err := mem.RecordTask(TaskSummary{TaskID: "running-1", Status: "running"}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	c, _ := mem.Load()
+	if len(c.OpenTasks) != 1 || c.OpenTasks[0] != "running-1" {
+		t.Fatalf("open_tasks = %+v", c.OpenTasks)
+	}
+}
+
+func TestContextMemory_CloseTask_RemovesFromOpen(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	_ = mem.RecordTask(TaskSummary{TaskID: "r-1", Status: "running"})
+	_ = mem.RecordTask(TaskSummary{TaskID: "r-2", Status: "running"})
+	if err := mem.CloseTask("r-1"); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	c, _ := mem.Load()
+	if len(c.OpenTasks) != 1 || c.OpenTasks[0] != "r-2" {
+		t.Fatalf("open_tasks = %+v", c.OpenTasks)
+	}
+}
+
+func TestContextMemory_RecordError_CapsAt20(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	for i := 0; i < 25; i++ {
+		_ = mem.RecordError(ErrorSummary{
+			Timestamp: "x", Skill: "s", Action: "a", ErrorClass: "permanent",
+		})
+	}
+	c, _ := mem.Load()
+	if len(c.RecentErrors) != MaxRecentErrors {
+		t.Fatalf("want %d, got %d", MaxRecentErrors, len(c.RecentErrors))
+	}
+}
+
+func TestContextMemory_SetPreference_AddsAndDeletes(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	if err := mem.SetPreference("default_region", "cn-north-4"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	c, _ := mem.Load()
+	if c.Preferences["default_region"] != "cn-north-4" {
+		t.Fatalf("preferences = %+v", c.Preferences)
+	}
+	if err := mem.SetPreference("default_region", ""); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	c, _ = mem.Load()
+	if _, ok := c.Preferences["default_region"]; ok {
+		t.Fatalf("key not deleted: %+v", c.Preferences)
 	}
 }

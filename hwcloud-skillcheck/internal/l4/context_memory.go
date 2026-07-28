@@ -177,3 +177,74 @@ func newSessionID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
+
+// RecordTask prepends t to RecentTasks (newest first) and caps at MaxRecentTasks.
+// If status is "running" or "paused", t.TaskID is also prepended to OpenTasks
+// (capped at MaxOpenTasks).
+func (m *ContextMemory) RecordTask(t TaskSummary) error {
+	c, err := m.Load()
+	if err != nil {
+		return err
+	}
+	c.RecentTasks = append([]TaskSummary{t}, c.RecentTasks...)
+	if len(c.RecentTasks) > MaxRecentTasks {
+		c.RecentTasks = c.RecentTasks[:MaxRecentTasks]
+	}
+	if t.Status == "running" || t.Status == "paused" {
+		c.OpenTasks = append([]string{t.TaskID}, c.OpenTasks...)
+		if len(c.OpenTasks) > MaxOpenTasks {
+			c.OpenTasks = c.OpenTasks[:MaxOpenTasks]
+		}
+	}
+	c.LastUpdated = NowISO()
+	return m.Save(c)
+}
+
+// RecordError prepends e to RecentErrors (newest first), capped at MaxRecentErrors.
+func (m *ContextMemory) RecordError(e ErrorSummary) error {
+	c, err := m.Load()
+	if err != nil {
+		return err
+	}
+	c.RecentErrors = append([]ErrorSummary{e}, c.RecentErrors...)
+	if len(c.RecentErrors) > MaxRecentErrors {
+		c.RecentErrors = c.RecentErrors[:MaxRecentErrors]
+	}
+	c.LastUpdated = NowISO()
+	return m.Save(c)
+}
+
+// SetPreference sets preferences[k] = v. Passing v == "" deletes the key.
+func (m *ContextMemory) SetPreference(k, v string) error {
+	c, err := m.Load()
+	if err != nil {
+		return err
+	}
+	if c.Preferences == nil {
+		c.Preferences = map[string]string{}
+	}
+	if v == "" {
+		delete(c.Preferences, k)
+	} else {
+		c.Preferences[k] = v
+	}
+	c.LastUpdated = NowISO()
+	return m.Save(c)
+}
+
+// CloseTask removes taskID from OpenTasks (no-op if absent).
+func (m *ContextMemory) CloseTask(taskID string) error {
+	c, err := m.Load()
+	if err != nil {
+		return err
+	}
+	out := c.OpenTasks[:0]
+	for _, id := range c.OpenTasks {
+		if id != taskID {
+			out = append(out, id)
+		}
+	}
+	c.OpenTasks = out
+	c.LastUpdated = NowISO()
+	return m.Save(c)
+}
