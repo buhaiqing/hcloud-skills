@@ -248,3 +248,17 @@ func (m *ContextMemory) CloseTask(taskID string) error {
 	c.LastUpdated = NowISO()
 	return m.Save(c)
 }
+
+// primarySkillOfTask returns the first non-empty Skill from task.Steps,
+// or "" when the task has no steps.
+func primarySkillOfTask(task *TaskState) string {
+	if task == nil {
+		return ""
+	}
+	for _, s := range task.Steps {
+		if s.Skill != "" {
+			return s.Skill
+		}
+	}
+	return ""
+}
