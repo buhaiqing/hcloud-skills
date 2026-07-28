@@ -10,6 +10,18 @@
 
 > 违反此 gate = 流程违规，即使结果正确也需复盘。
 
+### Commit Gate（强制 — 不可跳过）
+
+**任何 `git commit` 之前，必须确认所有单元测试通过。** 执行：
+
+```bash
+cd hwcloud-skillcheck && go test ./...
+```
+
+- exit code ≠ 0 → **禁止 commit**，先修测试
+- 2 个预存已知失败（`TestConfirmationRegistry_ConcurrentSafety`、`TestHandleFault_DecisionAutoProceed`）已在 commit 中标注，后续应修复或标注 `// KNOWN-FLAKY: <reason>`
+- `git commit` 本身可正常执行（不自动触发 pre-commit hook 的 go test，因为 go test gate 在 pre_commit_check.sh 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit
+
 ## What This Repo Is
 
 Huawei Cloud Ops Skill collection — structured agent runbooks (`huaweicloud-[product]-ops`) executed via `hcloud` CLI (primary) with Go SDK JIT fallback. Not application code; no build/test/lint step.
@@ -110,7 +122,7 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 ### 为什么是机制而非规范
 
-单条规则（如"记得写 AGENTS.md"）会被忽略，因为无触发、无闭环。CADL 把沉淀变成工作流的**必经出口**：任务不做沉淀 = 任务未完成。Agent 调用任何 Skill 后都走到这一步，Skill 本身也通过下方「Skill 侧钩子」提示大模型。
+单条规则（如"记得写 AGENTS.md"）会被忽略，因为无触发、无闭环。CADL 把沉淀变成工作流的**必经出口**：任务不做沉淀 = 任务未完成。
 
 ### 触发条件（满足任一即必须走 CADL，不局限 CodeGraph）
 
@@ -138,13 +150,10 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 (L1–L8) — every rule there was paid for in a real failure.
 ```
 
-### Skill 侧钩子（让每个 Skill 自带沉淀意识）
+### Skill 侧钩子
 
-- **源头**：`huaweicloud-skill-generator` 在生成每个 skill 时，须在 SKILL.md 末尾注入一行：
-  `> 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。`
-  未来所有 `huaweicloud-*-ops` 自动继承此意识。
-- **现存 skill**：逐批在 SKILL.md 末尾补同一行提示，使大模型调用任何 skill 后都看到触发信号。
-- **大模型侧**：Agent 在任意 skill 调用结束前，主动检查 CADL 触发条件，而非等用户提醒。
+- `huaweicloud-skill-generator` 生成每个 skill 时，在 SKILL.md 末尾注入一行提示，召唤 CADL 意识。
+- Agent 在任意 skill 调用结束前，主动检查 CADL 触发条件，而非等用户提醒。
 
 ### 反模式（违反 CADL）
 
@@ -232,38 +241,13 @@ In every other case: lead with the recommendation.
 
 ## Test Hermeticity — Runtime-State Tests (P0)
 
-- **Tests that touch the real repo (`Path(__file__).resolve().parents[1]`)
-  are NOT hermetic by default.** They depend on state that exists locally
-  (e.g. `audit-results/` populated by prior GCL runs,
-  `.agents/skills/huaweicloud-skill-generator/` populated by the agent
-  runtime) but does **not** exist on a fresh CI checkout. The two
-  `test_main_repo_passes` / `test_repo_passes_after_sync` failures in CI run
-  #6 are the canonical example.
-- Rules for runtime-state tests:
-  1. **CLI-style smoke tests** (e.g. `cag.main()`, `csgd.check_drift(ROOT)`)
-     MUST tolerate the *absent* state, not just the *wrong* state. The
-     audit-results guard was changed: a missing `audit-results/` directory
-     is no longer a failure (runtime scripts create it on demand), only
-     wrong mode or tracked files fail.
-  2. **Bootstrap functions** (e.g. `sync()`) MUST self-heal — if the
-     runtime copy is missing, `mkdir(parents=True, exist_ok=True)` before
-     copying. Don't expect callers to pre-create the destination.
-  3. **Fixture-style tests** that *do* need the runtime state (e.g.
-     drift-check end-to-end) MUST use `tempfile.TemporaryDirectory()` with
-     a controlled `mkdir` setup, **not** `ROOT`. Mark such tests with a
-     `# REPO-ROOT-DEPENDENT` docstring so reviewers can spot them.
-  4. **No silent state mutation in CI.** A test that calls
-     `csgd.sync(ROOT, dry_run=False)` will leave the runtime copy populated
-     in the CI workspace, polluting subsequent runs. Either guard with
-     `unittest.skipUnless(Path("…").exists(), "requires runtime state")` or
-     copy the populated dir into a tempdir and operate there.
-- When a guard's `check_*` function reports "missing" as an error, ask:
-  is the missing state something the *runtime* creates on demand? If yes,
-  the guard is wrong — the contract is "guard what must already be true",
-  not "guard what will be true after the first runtime call". Use the
-  gitignore / mode / tracked-files checks as the hard gates; let "exists
-  and is correct" be a soft expectation enforced by smoke tests in
-  `validate_local.py`, not by `unittest discover` on a fresh checkout.
+Tests touching the real repo (`Path(__file__).resolve().parents[1]`) are **not hermetic by default** — they require state that doesn't exist on a fresh CI checkout (e.g. `audit-results/`, `.agents/skills/huaweicloud-skill-generator/`). Rules:
+1. **CLI-style smoke tests** MUST tolerate *absent* state. A missing `audit-results/` is no longer a failure (runtime scripts create it on demand).
+2. **Bootstrap functions** MUST self-heal: `mkdir(parents=True, exist_ok=True)` before copying; don't expect callers to pre-create destinations.
+3. **Fixture-style tests** needing runtime state MUST use `tempfile.TemporaryDirectory()` **not** `ROOT`; add a `# REPO-ROOT-DEPENDENT` docstring.
+4. **No silent state mutation in CI.** Guard with `unittest.skipUnless(Path("…").exists(), "requires runtime state")` or copy to a tempdir.
+
+When a guard reports "missing" as error: is it something the *runtime* creates on demand? If yes, the guard is wrong — guard what must already be true, not what will be true after the first call. Use gitignore/mode/tracked-files checks as hard gates; "exists and is correct" is a soft expectation.
 
 ## Docker Sandbox
 
