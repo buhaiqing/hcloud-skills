@@ -410,20 +410,16 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
 
-## Hard-Won Lessons (P0 收尾 + P1 规划阶段, 2026-07-27)
+## Hard-Won Lessons (P0 + P1 + P2 + CI维护, 2026-07-27 → 2026-07-28)
 
 ### L9. Restricted macOS Go cache
-
 When Go build/test hits a read-only `~/Library/Caches/go-build` error, set `GOCACHE=/tmp/hcloud-go-cache`; this changes only compiler cache location and keeps the source tree untouched.
 
-From the P0 trust-boundary close-out (commits `2b935ea`, `99996a2`, `deaf3b8`)
-and the P1+P2 spec/plan cycle. **Each rule is a fix for a real failure that
-wasted ≥30 min in this cycle.** Re-read before starting any new GCL / Harness
-work.
+From the P0 trust-boundary close-out and P1+P2 spec/plan cycle. Each rule below is a fix for a real failure that wasted ≥30 min. Re-read before starting any new GCL / Harness work.
 
 ### L1. "Reuse L4" is a lie when there's an import cycle
 **Problem**: spec said "reuse `l4.HighRiskVerbs` in gcl". `l4` imports `gcl`, so `gcl` cannot import `l4` — `import cycle not allowed`.
-**Fix**: copy the regex into `gcl` as `gclHighRiskVerbs` / `gclHighRiskCommands`, then add a build-time sync test (`internal/l4/gcl_sync_test.go`) that fails CI on drift. **Cost of drift** = silent trust-boundary leak. **Cost of check** = 30 lines.
+**Fix**: copy the regex into `gcl` as `gclHighRiskVerbs` / `gclHighRiskCommands`, then add a build-time sync test (`internal/l4/gcl_sync_test.go`) that fails CI on drift. (30-line check; silent trust-boundary leak is the cost of skipping it.)
 **Rule**: when brainstorming says "reuse X", verify the import graph allows it *before* promising reuse.
 
 ### L2. `t.TempDir()` is not stable across calls
@@ -494,3 +490,28 @@ work.
 **Problem**: sed/python/`edit` tool inserted code with extra blank lines; macOS gofmt passed, Linux CI gofmt failed → CI red on a clean commit.
 **Fix**: after any programmatic edit (sed, python, edit tool), always run `gofmt -l <file>` locally and `gofmt -w <file>` to auto-fix before commit.
 **Rule**: `go build` passing locally is insufficient; CI gofmt gate is authoritative. Always verify before push.
+
+### L17. CLI `--root` flag must resolve from any cwd
+**Problem**: `hwcloud-skillcheck validate generator-contract --root .` failed (0/22) when invoked from `hwcloud-skillcheck/` (the module dir) but passed 24/24 from the repo root. `filepath.Abs(".")` resolved to the module dir, where the generator files don't live.
+**Fix**: add `resolveContractRoot(start)` that walks up the directory tree (bounded 6 hops) and returns the first ancestor containing any file from the required-files map. Mirror the existing `findSkillcheckRoot` os.Args[0]/cwd-fallback pattern.
+**Rule**: any CLI flag that names a "repo root" must be cwd-tolerant. Users will run the tool from wherever their shell lands, not from the canonical dir.
+
+### L18. Suppress inner-validator stdout during go test
+**Problem**: `go test -v` for negative-path tests (`TestSafetyClass_InvalidValueInTrace`, `TestResourceScope_RawIDRejected`) printed the inner validator's `FAIL traces: ...` / `FAIL schema: ...` lines before the test's `--- PASS:` verdict. Readers confused the noise for test failures.
+**Fix**: gate the human-readable print blocks on `!isQuiet()` where `isQuiet()` reads `SKILLCHECK_QUIET=1` at call time. Add `TestMain` in `_test.go` that sets the env var for the whole test binary. `err` and `--json` output are unaffected.
+**Rule**: when a CLI tool is invoked by its own test, silence the human-readable output. Tests assert on the return value, not on stdout.
+
+### L19. Runtime data files don't belong in git
+**Problem**: `huaweicloud-*-ops/assets/failure_patterns.json` was tracked in git, producing timestamp-only commits every time `hwcloud-skillcheck learning trace aggregate` ran (e.g. `last_aggregation: 2026-07-28T07:02:07Z → 08:49:08Z`). Same family as the already-gitignored `audit-results/gcl-trace-*.json`.
+**Fix**: `git rm --cached` the existing tracked copies (preserve on disk), add the pattern to `.gitignore`. The loader (`LoadFailurePatterns` in `internal/learning/trace.go`) auto-seeds a fresh scaffold when missing, so first run recreates the file.
+**Rule**: if a file is the *output* of a CLI subcommand and is *not* hand-authored, it should be gitignored. Test by running the generator fresh on an empty repo — if the file reappears, it doesn't belong in git.
+
+### L20. CI workflows need explicit `cache-dependency-path` and current action majors
+**Problem**: `actions/setup-go@v5` failed with `Restore cache failed: Dependencies file is not found in /home/runner/... Supported file pattern: go.sum` because the cache step searched the workspace root while the module lived in `hwcloud-skillcheck/`. Separately, `actions/checkout@v4` and `setup-go@v5` triggered `Node.js 20 is deprecated... being forced to run on Node.js 24`.
+**Fix**: (1) add `cache-dependency-path: <module-dir>/go.sum` to every `setup-go` step. (2) bump action majors: `checkout v4→v5`, `setup-go v5→v6`, `upload-artifact v4→v7`, `download-artifact v4→v8`, `softprops/action-gh-release v2→v3`.
+**Rule**: Go modules in a subdirectory need explicit `cache-dependency-path`. Audit action majors quarterly or whenever GitHub announces a runtime deprecation.
+
+### L21. Optional wire-schema fields need code-level defaults
+**Problem**: `TestExternalCritic_TimeoutContext` set a 50ms ctx; the helper completed *before* the deadline, so `Score` reached the success path. The test payload omitted the optional `mode` field (the `critic_output` schema only requires `scores`), so `result.Mode = wire.Mode = ""` — the test's `if got.Mode == ""` assertion failed even though the call returned correctly.
+**Fix**: in the success branch of `ExternalCritic.Score`, default `result.Mode = "unconfigured"` when `wire.Mode == ""`. Mirrors the `defaultResult.Mode = "unconfigured"` already used for the early-return "no path configured" case. `Unconfigured` is now the canonical "Critic returned a valid payload but didn't tell us its mode" state.
+**Rule**: when a JSON schema marks a field as optional, the consumer must still defend against it being absent. The schema describes what is *allowed*; the consumer chooses what to *assume* when fields are missing. Document the assumed default in the field's Go doc-comment.
