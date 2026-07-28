@@ -255,6 +255,88 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 
 ---
 
+## Documentation Locations (强制)
+
+文档必须放置在以下固定位置，**禁止随意新建顶层 docs/ 子目录**：
+
+| 类型 | 路径 | 说明 |
+|------|------|------|
+| **ADR（架构决策记录）** | `docs/architecture/NNNN-<slug>.md` | 编号递增，slug 用 kebab-case。任何架构选型（存储/接口/外部依赖/取舍）必写 ADR |
+| **Spec（功能规格）** | `docs/superpowers/specs/<slug>.md` | 配合 ADR 写，描述 FR/NFR/数据模型 |
+| **Implementation Plan** | `docs/superpowers/plans/YYYY-MM-DD-<slug>.md` | 遵循 `superpowers:writing-plans` 模板 |
+| **运行时规范** | `docs/gcl-spec.md`、`docs/deployment-guide.md` 等根级 | 不轻易新建根级 .md，先复用现有 |
+
+**ADR 文件名约束**：
+
+- 4 位数字编号（`0001` ~ `9999`），递增
+- 单数主题一个 ADR（如 `0007-outcome-memory-self-healing.md`）
+- 状态字段：`Proposed` → `Accepted` → `Superseded`，写入 frontmatter 或正文
+
+**反模式**：
+
+- ❌ 把 ADR 写到 `docs/adr/`、`docs/decisions/`、`docs/adr-NNNN/` 等其他目录
+- ❌ 把 Plan 写到 `docs/plans/`、`docs/<feature>.md`
+- ❌ 没有编号的 ADR（`architecture-decision.md` 不允许）
+
+**Why**: 跨仓库协作时（如 GCL 生成新 skill 时引用 ADR），固定路径才能让引用稳定。`docs/architecture/` 是 hcloud-skills 项目的硬约定，所有 skill / generator / docs 工具都必须遵守。
+
+---
+
+## 术语表 (Glossary)
+
+项目核心概念速查。新人 onboarding / 跨 skill 协作时遇到陌生术语，先来这里。
+
+### 架构成熟度
+
+| 术语 | 定义 | 文档 |
+|------|------|------|
+| **Gartner Agentic AI 成熟度** | 业界用于评估 AI Agent 自治能力的 5 级模型（L1 手动 / L2 对话 / L3 任务自动化 / L4 领域自治 / L5 自演化） | （外部参考） |
+| **L3 → L4 跃迁** | 本项目当前目标：从「等人类触发才执行」进化到「领域内自治 + 自愈」。判据：跨调用 outcome memory + healing hooks | ADR-0007 / ADR-0008 |
+
+### Outcome Memory 与 Self-healing（ADR-0007）
+
+| 术语 | 定义 |
+|------|------|
+| **Outcome Memory** | L4 orchestrator 持久化的「执行结果日志」。每一步 step 的 outcome（success/failure/blocked）追加到 `<root>/.l4-memory/outcomes.jsonl`。跨任务、跨进程存活。是 self-healing 的数据底座。 |
+| **OutcomeRecord** | 一行 JSONL 记录。包含 `id`（uuid v4）、`ts`（ISO-8601 UTC）、`task_id`、`skill`、`action`、`context_hash`（sha256）、`outcome`、`error_class`（transient/permanent/unknown）、`error_msg`（≤200 字符）、`retry_count`、`duration_ms`、`risk`、`rbac_decision`、`gcl_decision` |
+| **ContextHash** | `OutcomeRecord.context_hash` 字段的取值。= `sha256(candidate_command)` 的 hex 前 N 字节。把「同一类命令」归到一起，避免「命令带时间戳/ID」导致无法匹配 |
+| **OutcomeMemory.RecentOutcomes(skill, action, n)** | 按时间倒序返回最近 n 条 `(skill, action)` 匹配的记录。n≤0 返回全部 |
+| **OutcomeMemory.MatchOutcomes(skill, action, contextHash, lookback)** | 返回 `(skill, action, contextHash)` 三元匹配、且 `ts >= now - lookback` 的记录 |
+| **OutcomeMemory.PruneOlderThan(cutoff)** | 删除 `ts < cutoff` 的记录。`NewOutcomeMemory` 启动时自动跑一次（cutoff = now - 90 天） |
+| **HealingPolicy** | 配置 pre-exec / post-failure 行为的策略 struct。零值 = 不自愈（安全默认）。字段：`MaxRetries`、`RetryBackoff`、`DestructiveVerbs`、`FailureRateSkipThreshold`、`MinSamples`、`LookbackWindow` |
+| **HealingDecision** | pre/post hook 的返回类型。`Action ∈ {proceed, skip, retry, escalate}` + `Reason` |
+| **PreExecHook(step, mem, p)** | 执行 step 前的钩子。命中「最近 N 次失败率 ≥ 阈值」时返回 `skip`。`mem==nil` 或 `p` 零值时返回 `proceed` |
+| **PostFailureHook(step, result, retryCount, mem, p)** | step 失败后的钩子。transient 错误（匹配 `timeout/401/429/503/token expired/connection reset`）且 `retryCount < MaxRetries` 且非 destructive → `retry`；否则 `escalate` |
+| **Destructive Verbs** | `HealingPolicy.DestructiveVerbs` 默认列表：`delete, terminate, destroy, drop, remove`。匹配这些动词的 step 永远不会被自愈重试 |
+| **Transient Pattern** | `isTransient(errMsg)` 内部识别的子串集合（大小写不敏感）：`timeout / token expired / 401 / 429 / 503 / connection reset` |
+
+### Cross-call Memory（ADR-0008）
+
+| 术语 | 定义 |
+|------|------|
+| **Context Memory** | 跨调用 agent 状态。持久化在 `<root>/.l4-memory/context.json`，单 JSON 文档（非 append log），原子写（tmp+rename）。与 Outcome Memory 是同一目录下的两份独立文件 |
+| **Context 文档结构** | `schema=context-memory/v1` + `session_id`（uuid v4）+ `created_at/last_updated` + `recent_tasks`（cap 20）+ `open_tasks`（cap 50）+ `recent_errors`（cap 20）+ `preferences`（flat map） |
+| **Session Rotation** | 当 `created_at` 距今超过 `SessionRotateAfter`（24h）时，`Load` 自动生成新 `session_id` 并刷新 `created_at`；`recent_tasks/recent_errors/preferences` 保留 |
+| **TaskSummary** | `Context.RecentTasks` 中的元素。包含 `task_id/fault/started_at/finished_at/status/primary_skill` |
+| **ErrorSummary** | `Context.RecentErrors` 中的元素。包含 `ts/skill/action/error_class/error_msg` |
+| **ContextMemory.RecordTask(t)** | 头部插入一条 TaskSummary，超 cap 时尾部截断。若 `status ∈ {running, paused}` 同步插入 `open_tasks` |
+| **ContextMemory.RecordError(e)** | 头部插入一条 ErrorSummary，超 cap 时尾部截断 |
+| **ContextMemory.SetPreference(k, v)** | 设置 `preferences[k]=v`；`v==""` 时删除键 |
+| **ContextMemory.CloseTask(taskID)** | 从 `open_tasks` 移除指定 taskID |
+
+### 其他常用术语
+
+| 术语 | 定义 |
+|------|------|
+| **GCL（Generator-Critic-Loop）** | Generator + Critic 双 Agent 闭环质量门控机制。详见 `docs/gcl-spec.md` |
+| **RBAC** | Role-Based Access Control。skill 操作前的权限检查，按 `RBACRisk ∈ {none,low,medium,high,critical}` 决策 allowed/denied。详见 `internal/l4/rbac.go` |
+| **Trust Score** | 历史 success_rate/consistency/recency/complexity_mastery/error_recovery 加权得分。映射到 L0_new ~ L4_autonomous。详见 `internal/l4/trust.go` |
+| **L4 Orchestrator** | `hwcloud-skillcheck/internal/l4/`。执行多 step 任务、持久化 checkpoint、做 RBAC + GCL + topology + trust + healing 决策 |
+| **Topology Graph** | 静态 + 动态的 skill→resource→resource→skill 依赖图。`internal/l4/topology.go` |
+| **CADL** | Compound-Asset Distillation Loop。从执行经验中沉淀 reusable 资产的机制（见 AGENTS.md §CADL） |
+
+---
+
 ## Runtime Quality Gates: GCL
 
 Detailed runtime-quality specs are externalized. Key reads before modifying GCL-related files:
