@@ -51,11 +51,8 @@ backup_policies:
     name: "ecs-weekly-snapshot"
     period: "WEEKLY"
     retention_days: 90
-```
 
-# Worker Output Contract (ECS Read-Only Assessment)
-
-```yaml
+# Worker output contract (ECS Read-Only Assessment)
 worker:
   skill_id: huaweicloud-ecs-ops
   product: ecs
