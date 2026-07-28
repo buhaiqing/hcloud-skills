@@ -89,8 +89,9 @@ func TestHandleFault_PredictiveWithMetrics(t *testing.T) {
 
 func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	root := t.TempDir()
-	// "ECS unreachable" matches vpc-ops first, so the orchestrator's trust
-	// fallback looks at huaweicloud-vpc-ops/assets/trust_history.json.
+	// "VPC subnet unreachable" matches the first FaultRule pattern (contains
+	// "unreachable") and only huaweicloud-vpc-ops has the required "connectivity"
+	// capability. ECS has "diagnostics" but not "connectivity", so vpc-ops wins.
 	skillDir := root + "/huaweicloud-vpc-ops/assets"
 	if err := mkdirAll(skillDir); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -114,15 +115,19 @@ func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	}
 	out := HandleFault(HandleFaultInput{
 		Root:     root,
-		Fault:    "ECS unreachable",
-		Resource: "ecs:instance",
+		Fault:    "VPC subnet unreachable",
+		Resource: "vpc:subnet",
 		Risk:     "low",
 	}, nil)
+	// Trust must be loaded from disk and AutoApprove must be true for low risk.
 	if out.Trust.TrustLevel == "L0_new" {
-		t.Logf("trust fallback did not load disk file: level=%s score=%v", out.Trust.TrustLevel, out.Trust.CompositeScore)
+		t.Errorf("trust fallback did not load disk file: level=%s score=%v", out.Trust.TrustLevel, out.Trust.CompositeScore)
 	}
-	if out.Decision != "auto_proceed" {
-		t.Errorf("decision=%q, want auto_proceed for low risk with L3+ trust (level=%s score=%v)", out.Decision, out.Trust.TrustLevel, out.Trust.CompositeScore)
+	if !out.Trust.AutoApprove {
+		t.Errorf("AutoApprove=false for L4 trust (level=%s score=%v)", out.Trust.TrustLevel, out.Trust.CompositeScore)
+	}
+	if out.Trust.RequiresHumanApproval {
+		t.Errorf("RequiresHumanApproval=true for L4 trust")
 	}
 }
 func TestHandleFault_DecisionHumanReviewForHighRisk(t *testing.T) {

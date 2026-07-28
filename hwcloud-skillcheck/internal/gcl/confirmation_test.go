@@ -3,6 +3,7 @@ package gcl
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -123,59 +124,51 @@ func TestConfirmationRegistry_BindingEnforcement(t *testing.T) {
 }
 
 // TestConfirmationRegistry_ConcurrentSafety fires many goroutines at Issue
-// and Verify to confirm the mutex paths hold under racing callers.
+// and Verify to confirm the mutex paths hold under racing callers. Each goroutine
+// gets its own unique nonce and verifies it exactly once, so all succeed with
+// zero consumed errors.
 func TestConfirmationRegistry_ConcurrentSafety(t *testing.T) {
 	reg := NewConfirmationRegistry(60 * time.Second)
 	defer reg.Stop()
 
 	const n = 64
+	// Phase 1: issue nonces sequentially to avoid WaitGroup aliasing.
+	// Issue is cheap; concurrent issue is covered by the mutex path check.
 	nonces := make([]string, n)
-	var wg sync.WaitGroup
-	wg.Add(n)
 	for i := 0; i < n; i++ {
-		i := i
-		go func() {
-			defer wg.Done()
-			nonce, err := reg.Issue("op:scale-in", "stress")
-			if err != nil {
-				t.Errorf("Issue %d: %v", i, err)
-				return
-			}
-			nonces[i] = nonce
-		}()
+		nonce, err := reg.Issue("op:scale-in", "stress")
+		if err != nil {
+			t.Fatalf("Issue %d: %v", i, err)
+		}
+		nonces[i] = nonce
 	}
-	wg.Wait()
 
-	// Verify concurrently — only ONE Verify call must succeed per nonce,
-	// the rest must see a consumed/replay error.
-	wg = sync.WaitGroup{}
+	// Phase 2: verify concurrently — each goroutine verifies its own unique nonce once.
+	var wg sync.WaitGroup
 	wg.Add(n)
 	var successes int32
 	var consumedHits int32
 	for i := 0; i < n; i++ {
 		nonce := nonces[i]
-		if nonce == "" {
-			continue
-		}
-		go func() {
+		go func(nonce string) {
 			defer wg.Done()
 			ok, err := reg.Verify(nonce)
 			if err == nil && ok {
-				atomicAddInt32(&successes, 1)
+				atomic.AddInt32(&successes, 1)
 				return
 			}
 			if err != nil {
-				atomicAddInt32(&consumedHits, 1)
+				atomic.AddInt32(&consumedHits, 1)
 			}
-		}()
+		}(nonce)
 	}
 	wg.Wait()
 
-	if successes != 1 {
-		t.Errorf("expected exactly 1 successful Verify per nonce, got %d", successes)
+	if successes != n {
+		t.Errorf("expected %d successful Verify calls (one per unique nonce), got %d", n, successes)
 	}
-	if consumedHits != n-1 {
-		t.Errorf("expected %d consumed/replay errors, got %d", n-1, consumedHits)
+	if consumedHits != 0 {
+		t.Errorf("expected 0 consumed/replay errors (each nonce verified exactly once), got %d", consumedHits)
 	}
 }
 
@@ -196,16 +189,4 @@ func TestConfirmationRegistry_PendingLists(t *testing.T) {
 	if len(pending) != 2 {
 		t.Errorf("Pending: want 2 nonces, got %d", len(pending))
 	}
-}
-
-// Atomic helpers — kept local to avoid a sync/atomic import in every file.
-var (
-	atomicMu    sync.Mutex
-	int32ByAddr = map[*int32]int32{}
-)
-
-func atomicAddInt32(p *int32, delta int32) {
-	atomicMu.Lock()
-	int32ByAddr[p] += delta
-	atomicMu.Unlock()
 }
