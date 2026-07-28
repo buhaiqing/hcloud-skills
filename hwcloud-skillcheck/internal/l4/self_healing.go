@@ -67,3 +67,36 @@ func (p HealingPolicy) IsZero() bool {
 		p.MinSamples == 0 &&
 		p.LookbackWindow == 0
 }
+
+// PreExecHook returns the action to take before executing step.
+// Default: proceed. Skips only when:
+//   - p.FailureRateSkipThreshold > 0
+//   - at least p.MinSamples recent records exist for (step.Skill, step.Action)
+//   - failure rate >= threshold
+//   - the most recent record is within p.LookbackWindow (when set)
+func PreExecHook(step TaskStep, mem *OutcomeMemory, p HealingPolicy) HealingDecision {
+	if p.FailureRateSkipThreshold <= 0 || p.MinSamples <= 0 {
+		return HealingDecision{Action: "proceed"}
+	}
+	recent, err := mem.RecentOutcomes(step.Skill, step.Action, p.MinSamples)
+	if err != nil || len(recent) < p.MinSamples {
+		return HealingDecision{Action: "proceed"}
+	}
+	failures := 0
+	for _, r := range recent {
+		if r.Outcome == "failure" {
+			failures++
+		}
+	}
+	rate := float64(failures) / float64(len(recent))
+	if rate < p.FailureRateSkipThreshold {
+		return HealingDecision{Action: "proceed"}
+	}
+	if p.LookbackWindow > 0 {
+		last, err := time.Parse(time.RFC3339, recent[0].Timestamp)
+		if err != nil || time.Since(last) > p.LookbackWindow {
+			return HealingDecision{Action: "proceed"}
+		}
+	}
+	return HealingDecision{Action: "skip", Reason: "high historical failure rate"}
+}

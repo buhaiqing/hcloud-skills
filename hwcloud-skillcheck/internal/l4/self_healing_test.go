@@ -3,6 +3,7 @@ package l4
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractHighRiskVerbs(t *testing.T) {
@@ -82,5 +83,53 @@ func TestHealingDecision_String(t *testing.T) {
 	d := HealingDecision{Action: "retry", Reason: "transient"}
 	if !strings.Contains(d.Reason, "transient") {
 		t.Fatal("reason should mention transient")
+	}
+}
+
+func TestPreExecHook_EmptyMemoryReturnsProceed(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	step := TaskStep{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list"}
+	p := HealingPolicy{FailureRateSkipThreshold: 0.5, MinSamples: 2, LookbackWindow: time.Hour}
+	d := PreExecHook(step, mem, p)
+	if d.Action != "proceed" {
+		t.Fatalf("empty memory: want proceed, got %+v", d)
+	}
+}
+
+func TestPreExecHook_HighFailureRateSkips(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	now := time.Now().UTC().Format(time.RFC3339)
+	// 4 failures, 1 success: 80% failure rate, above 0.5 threshold.
+	for i, outcome := range []string{"failure", "failure", "failure", "success", "failure"} {
+		_ = mem.Record(OutcomeRecord{
+			ID: string(rune('a' + i)), Timestamp: now, Skill: "huaweicloud-ecs-ops", Action: "delete-instances", Outcome: outcome,
+		})
+	}
+	step := TaskStep{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "delete-instances"}
+	p := HealingPolicy{FailureRateSkipThreshold: 0.5, MinSamples: 5, LookbackWindow: time.Hour}
+	d := PreExecHook(step, mem, p)
+	if d.Action != "skip" {
+		t.Fatalf("want skip, got %+v", d)
+	}
+	if !strings.Contains(d.Reason, "failure") {
+		t.Fatalf("reason should mention failure, got %q", d.Reason)
+	}
+}
+
+func TestPreExecHook_BelowMinSamplesProceeds(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 0; i < 2; i++ {
+		_ = mem.Record(OutcomeRecord{
+			ID: string(rune('a' + i)), Timestamp: now, Skill: "s", Action: "x", Outcome: "failure",
+		})
+	}
+	step := TaskStep{Step: 1, Skill: "s", Action: "x"}
+	p := HealingPolicy{FailureRateSkipThreshold: 0.5, MinSamples: 5, LookbackWindow: time.Hour}
+	if d := PreExecHook(step, mem, p); d.Action != "proceed" {
+		t.Fatalf("want proceed (below min samples), got %+v", d)
 	}
 }
