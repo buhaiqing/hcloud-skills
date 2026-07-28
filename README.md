@@ -228,7 +228,7 @@ See [Deployment Guide](docs/deployment-guide.md) for:
 - Operations checklist
 > See [Deployment Guide](docs/deployment-guide.md) for macOS (Intel/Apple Silicon) and Windows (amd64/arm64) install commands.
 
-### Build From Source### Build From Source
+### Build From Source
 
 ```bash
 git clone https://github.com/buhaiqing/hcloud-skills.git
@@ -519,18 +519,42 @@ Run `cd hwcloud-skillcheck && go test ./...` for the full test suite.
 
 ### Build & release (hwcloud-skillcheck)
 
+Build & test from source:
+
 ```bash
 cd hwcloud-skillcheck
 go build ./...
 go vet ./...
 go test ./...
-# Cross-compile releases
-GOOS=linux GOARCH=amd64 go build -o hwcloud-skillcheck-linux-amd64 .
-GOOS=linux GOARCH=arm64 go build -o hwcloud-skillcheck-linux-arm64 .
-GOOS=darwin GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64 .
-GOOS=darwin GOARCH=amd64 go build -o hwcloud-skillcheck-darwin-amd64 .
+```
+
+Cross-platform release workflows (via Taskfile.yml):
+
+```bash
+# 1. Tag + push → CI builds + publishes (recommended; fully automated)
+task release VERSION=0.1.1
+
+# 2. Local cross-platform build → ./dist/ (5 platforms + SHA256SUMS)
+task release-build VERSION=0.1.1
+
+# 3. Local build + create GitHub Release via gh CLI (requires `gh auth login`)
+task release-local VERSION=0.1.1
+```
+
+Manual fallback (single-platform, no Taskfile required):
+
+```bash
+cd hwcloud-skillcheck
+GOOS=linux   GOARCH=amd64 go build -o hwcloud-skillcheck-linux-amd64   .
+GOOS=linux   GOARCH=arm64 go build -o hwcloud-skillcheck-linux-arm64   .
+GOOS=darwin  GOARCH=amd64 go build -o hwcloud-skillcheck-darwin-amd64  .
+GOOS=darwin  GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64  .
 GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
 ```
+
+The CI workflow (`.github/workflows/release.yml`) runs automatically on
+`v*` tag push, builds the same 5-platform matrix, and uploads the
+binaries + SHA256SUMS to the GitHub Release via `softprops/action-gh-release`.
 
 ## References
 

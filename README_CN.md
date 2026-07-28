@@ -499,6 +499,44 @@ if ($userPath -notlike "*\.local\bin*") {
 Write-Host "已安装到 $out — 重启终端或运行：`$env:Path += `";$env:USERPROFILE\.local\bin`""
 ```
 
+### 构建与发版 (hwcloud-skillcheck)
+
+源码构建与测试：
+
+```bash
+cd hwcloud-skillcheck
+go build ./...
+go vet ./...
+go test ./...
+```
+
+跨平台发版工作流（通过 Taskfile.yml）：
+
+```bash
+# 1. 打 tag + push → CI 自动构建并发布（推荐；全自动）
+task release VERSION=0.1.1
+
+# 2. 本地跨平台构建 → ./dist/（5 个平台 + SHA256SUMS）
+task release-build VERSION=0.1.1
+
+# 3. 本地构建 + 通过 gh CLI 创建 GitHub Release（需先 `gh auth login`）
+task release-local VERSION=0.1.1
+```
+
+手动回退方案（单平台，无需 Taskfile）：
+
+```bash
+cd hwcloud-skillcheck
+GOOS=linux   GOARCH=amd64 go build -o hwcloud-skillcheck-linux-amd64   .
+GOOS=linux   GOARCH=arm64 go build -o hwcloud-skillcheck-linux-arm64   .
+GOOS=darwin  GOARCH=amd64 go build -o hwcloud-skillcheck-darwin-amd64  .
+GOOS=darwin  GOARCH=arm64 go build -o hwcloud-skillcheck-darwin-arm64  .
+GOOS=windows GOARCH=amd64 go build -o hwcloud-skillcheck-windows-amd64.exe .
+```
+
+CI 工作流（`.github/workflows/release.yml`）在 `v*` tag push 时自动运行，
+构建同样的 5 平台矩阵，并通过 `softprops/action-gh-release` 上传二进制与 SHA256SUMS。
+
 ### 验证安装
 
 ```bash
