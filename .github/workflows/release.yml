@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Resolve version
+        id: version
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          echo "version=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${tag}"
+
+      - name: Run tests
+        working-directory: hwcloud-skillcheck
+        run: go test ./... -count=1
+
+      - name: Build (linux/amd64)
+        working-directory: hwcloud-skillcheck
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.commit=${GITHUB_SHA::8}" \
+            -o ../dist/hwcloud-skillcheck-linux-amd64 .
+
+      - name: Build (linux/arm64)
+        working-directory: hwcloud-skillcheck
+        run: |
+          mkdir -p dist
+          GOARCH=arm64 go build -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.commit=${GITHUB_SHA::8}" \
+            -o ../dist/hwcloud-skillcheck-linux-arm64 .
+
+      - name: Build (darwin/amd64)
+        working-directory: hwcloud-skillcheck
+        run: |
+          mkdir -p dist
+          GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.commit=${GITHUB_SHA::8}" \
+            -o ../dist/hwcloud-skillcheck-darwin-amd64 .
+
+      - name: Build (darwin/arm64)
+        working-directory: hwcloud-skillcheck
+        run: |
+          mkdir -p dist
+          GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.commit=${GITHUB_SHA::8}" \
+            -o ../dist/hwcloud-skillcheck-darwin-arm64 .
+
+      - name: Build (windows/amd64)
+        working-directory: hwcloud-skillcheck
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${{ steps.version.outputs.version }} -X main.commit=${GITHUB_SHA::8}" \
+            -o ../dist/hwcloud-skillcheck-windows-amd64.exe .
+
+      - name: Generate checksums
+        working-directory: dist
+        run: |
+          sha256sum hwcloud-skillcheck-* > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/hwcloud-skillcheck-linux-amd64
+            dist/hwcloud-skillcheck-linux-arm64
+            dist/hwcloud-skillcheck-darwin-amd64
+            dist/hwcloud-skillcheck-darwin-arm64
+            dist/hwcloud-skillcheck-windows-amd64.exe
+            dist/SHA256SUMS

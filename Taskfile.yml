@@ -2,6 +2,9 @@ version: '3'
 
 vars:
   MODULE: hwcloud-skillcheck
+  BIN: hwcloud-skillcheck
+  VERSION: '{{.VERSION}}'
+  RELEASE_DIR: dist
 
 tasks:
   all:
@@ -11,23 +14,23 @@ tasks:
       - go test -C {{.MODULE}} ./... -count=1
   build:
     cmds:
-      - go build -C {{.MODULE}} -trimpath -o bin/hwcloud-skillcheck .
+      - go build -C {{.MODULE}} -trimpath -o bin/{{.BIN}} .
   lint:
     cmds:
       - go run -C {{.MODULE}} . lint go --root {{.MODULE}}
   golden:
     cmds:
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck golden run --root .
+      - ./{{.MODULE}}/bin/{{.BIN}} golden run --root .
   sandbox:
     cmds:
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck check lanes --root .
+      - ./{{.MODULE}}/bin/{{.BIN}} check lanes --root .
   self-check:
     deps: [build]
     cmds:
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret trace --self-check
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret summary --self-check
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret alarm-plan --self-check
-      - ./{{.MODULE}}/bin/hwcloud-skillcheck aggregate trace --self-check
+      - ./{{.MODULE}}/bin/{{.BIN}} scan secret trace --self-check
+      - ./{{.MODULE}}/bin/{{.BIN}} scan secret summary --self-check
+      - ./{{.MODULE}}/bin/{{.BIN}} scan secret alarm-plan --self-check
+      - ./{{.MODULE}}/bin/{{.BIN}} aggregate trace --self-check
   deps:lock:
     cmds:
       - test -f deps/embed/SHA256SUMS
@@ -36,10 +39,46 @@ tasks:
     cmds:
       - mkdir -p audit-results/self-test audit-results/sandbox
       - docker-compose up hcloud-skills
+
+  # Cross-platform release builds (locally produces all platform binaries).
+  # Usage:  task release-build VERSION=0.1.1
+  release-build:
+    cmds:
+      - test -n "{{.VERSION}}"
+      - git diff --quiet || { echo "error: working tree is dirty; commit changes first"; exit 1; }
+      - rm -rf {{.RELEASE_DIR}}
+      - mkdir -p {{.RELEASE_DIR}}
+      - cd {{.MODULE}} && for target in "linux amd64" "linux arm64" "darwin amd64" "darwin arm64" "windows amd64"; do
+          set -- $target; os=$1; arch=$2; ext=""; [ "$os" = "windows" ] && ext=".exe";
+          output="{{.RELEASE_DIR}}/{{.BIN}}-${os}-${arch}${ext}";
+          echo "Building ${os}/${arch} -> ${output}";
+          GOOS=$os GOARCH=$arch go build -trimpath
+            -ldflags "-X main.version={{.VERSION}} -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo '')"
+            -o "../${output}" .;
+        done
+      - cd {{.RELEASE_DIR}} && sha256sum {{.BIN}}-* > SHA256SUMS
+      - echo "Built release artifacts in {{.RELEASE_DIR}}/"
+      - ls -la {{.RELEASE_DIR}}/
+
+  # Tag + push to trigger GitHub Action (alternative: build locally and use `gh release create`).
+  # Usage:  task release VERSION=0.1.1
   release:
-    vars:
-      VERSION: '{{.VERSION}}'
     cmds:
       - test -n "{{.VERSION}}"
       - git tag "v{{.VERSION}}"
       - git push origin "v{{.VERSION}}"
+
+  # Local release: build all platforms + create GitHub Release via `gh` CLI.
+  # Requires: gh CLI authenticated, `make release-build` run first.
+  # Usage:  task release-local VERSION=0.1.1
+  release-local:
+    deps: [release-build]
+    cmds:
+      - test -n "{{.VERSION}}"
+      - git tag -f "v{{.VERSION}}"
+      - git push -f origin "v{{.VERSION}}"
+      - gh release create "v{{.VERSION}}"
+          --title "v{{.VERSION}}"
+          --generate-notes
+          {{.RELEASE_DIR}}/{{.BIN}}-*
+          {{.RELEASE_DIR}}/SHA256SUMS
