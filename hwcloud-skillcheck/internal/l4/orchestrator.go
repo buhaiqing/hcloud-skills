@@ -464,7 +464,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			})
 		}
 
-		executionTask = RunExecutionLoop(root, task, plan, matched)
+		executionTask = RunExecutionLoop(root, task, plan, matched, nil)
 
 		// Record final task status and record each failed step as an error.
 		if cm != nil {
