@@ -405,3 +405,68 @@ Auto-generates `capability_manifest.json` per skill under `--root`, written to `
 | `--cmd` | Subcommand (`gen`); default `gen` |
 
 Exit codes: `0` manifests written, `1` generation error.
+
+## `hwcloud-skillcheck telemetry` Subcommands
+
+### `hwcloud-skillcheck telemetry confusion --root <dir>`
+
+Derives the router intent confusion matrix from `audit-results/` traces under `--root`. Emits the matrix as JSON on stdout — pairs of `(expected_intent, routed_intent)` with counts, suitable for diffing across releases. Used to spot router regressions before they show up as user-visible misroutes.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+
+Exit codes: `0` matrix emitted, `1` derivation error.
+
+## `hwcloud-skillcheck router` Subcommands
+
+The `router` family inspects, preflight-tests, and offline-calibrates the router policy in `capability-registry.json`. All three subcommands operate offline — they never import the runtime hot path.
+
+### `hwcloud-skillcheck router info --root <dir>`
+
+Prints a one-shot summary of the active router policy: `router_policy_version`, optional `router_policy_candidate`, `policy_diff_at`, `confidence_gate` thresholds (`top1_score_min`, `margin_min`, `entity_match`), and `lexicon_version`.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Workspace root (required) |
+
+Exit codes: `0` ok, `1` missing `--root` or read/decode error.
+
+### `hwcloud-skillcheck router embed-test --root <dir>`
+
+Runs an embedding-provider preflight against the capability registry and then a single smoke `Embed()` call. Loads the registry from `$HC_CAPABILITY_REGISTRY` or `<root>/capability-registry.json` (falling back to `<root>/hwcloud-skillcheck/capability-registry.json`), prints the preflight report (`PASS`/`FAIL` plus per-field info/warnings/errors with fix hints), and on success prints the embedding's provider name, vector dimension, call duration, and the first 5 dimensions of the vector. Use `--provider` to override the configured provider for the duration of the diagnostic.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Workspace or module root (default `.`) |
+| `--provider <name>` | Temporary provider override for this diagnostic only |
+| `--text <text>` | Sample text to embed after preflight passes (default `list ecs servers`) |
+
+Exit codes: `0` preflight + smoke embed succeeded, `1` preflight failed or smoke call errored.
+
+### `hwcloud-skillcheck router calibrate --root <dir>`
+
+Offline router policy calibration (rubric A2.13). Default is dry-run (no writes); pass `--apply` to commit the new version. `--rollback-to vX.Y.Z` restores a previous `router_policy_version` instead of bumping. Successful `--apply` rewrites `capability-registry.json` with the new `router_policy_version` and a refreshed `policy_diff_at` timestamp. `--source` is currently advisory (prints a note); the real trace-derived suggestion algorithm lands in a later revision.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Workspace root (required) |
+| `--apply` | Apply calibration (mutates `capability-registry.json`); without this, dry-run is the default per rubric A2.13 |
+| `--source <dir>` | Audit-results dir to read traces from (advisory only in this revision) |
+| `--rollback-to <vX.Y.Z>` | Roll back to a previous `router_policy_version` (must be semver-like) |
+| `--bump <level>` | Version bump on `--apply`: `patch\|minor\|major` (default `patch`) |
+| `--policy <path>` | Explicit path to `capability-registry.json` (default: `$HC_CAPABILITY_REGISTRY` or `<root>/capability-registry.json`) |
+
+Exit codes: `0` plan printed (dry-run) or applied, `1` missing `--root`, malformed semver, or write failure.
+
+## `hwcloud-skillcheck memory` Subcommands
+
+### `hwcloud-skillcheck memory inspect --root <dir>`
+
+Inspects the L4 outcome and context memory under `<root>/.l4-memory/`. Prints the `outcomes.jsonl` path, count of records retained over the last 90 days, the 5 most recent outcome records (timestamp, skill, action, outcome, error class, retry count), the `context.json` path, session id, age, recent tasks, recent errors, open tasks, and the JSON-encoded preferences. Missing `outcomes.jsonl` is treated as empty (no error).
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Workspace root (default `.`) |
+
+Exit codes: `0` ok, `1` memory store unreadable.
