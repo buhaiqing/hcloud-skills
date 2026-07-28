@@ -900,7 +900,7 @@ first non-empty `Skill` field and return it.
 - Consumes: full API from Tasks 1–5
 - Produces: a test that simulates two separate "process runs" against the same `<root>` and verifies state survives
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```go
 package l4
@@ -951,12 +951,12 @@ func TestContextMemory_PersistsAcrossRuns(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
+- [x] **Step 2: Run test to verify it passes**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestContextMemory_PersistsAcrossRuns -v`
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add hwcloud-skillcheck/internal/l4/context_e2e_test.go
@@ -1024,3 +1024,4 @@ NO UNRESOLVED DECISIONS
 - Task 3 (Load + first-run + session rotation) — committed e51d76a
 - Task 4 (Mutation API: RecordTask/RecordError/SetPreference/CloseTask) — committed eb0abdb
 - Task 5 (Wire ContextMemory into HandleFault) — committed 773e3ea
+- Task 6 (E2E persistence-across-runs test) — committed 4d0c15a
