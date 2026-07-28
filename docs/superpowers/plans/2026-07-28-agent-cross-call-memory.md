@@ -718,7 +718,7 @@ Scope of this task is **minimal** — just record lifecycle events. Do NOT
 yet consume context in the orchestrator's decision logic (that's a
 follow-up).
 
-- [ ] **Step 1: Read current `orchestrator.go`**
+- [x] **Step 1: Read current `orchestrator.go`**
 
 Read `hwcloud-skillcheck/internal/l4/orchestrator.go`. Identify:
 - The `HandleFaultInput` struct definition (probably lines 50–90).
@@ -726,7 +726,7 @@ Read `hwcloud-skillcheck/internal/l4/orchestrator.go`. Identify:
 - The exact line where `BuildTaskFromPlan` is called.
 - The line where the resulting `task` is finalized (`CompleteTask` / `FailTask`).
 
-- [ ] **Step 2: Write the failing integration test**
+- [x] **Step 2: Write the failing integration test**
 
 In `orchestrator_context_test.go`:
 
@@ -778,12 +778,12 @@ func TestOrchestrator_RecordsTaskLifecycleViaHandleFault(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestOrchestrator_RecordsTaskLifecycleViaHandleFault -v`
 Expected: FAIL — `ContextMem` field doesn't exist on `HandleFaultInput`, or `HandleFault` doesn't read it.
 
-- [ ] **Step 4: Add `ContextMem` field to `HandleFaultInput`**
+- [x] **Step 4: Add `ContextMem` field to `HandleFaultInput`**
 
 In `orchestrator.go`:
 
@@ -797,7 +797,7 @@ type HandleFaultInput struct {
 }
 ```
 
-- [ ] **Step 5: Instantiate and use ContextMemory in `HandleFault`**
+- [x] **Step 5: Instantiate and use ContextMemory in `HandleFault`**
 
 At the top of `HandleFault` body (after root resolution, before `BuildTaskFromPlan`):
 
@@ -860,17 +860,17 @@ for _, r := range task.Results {
 }
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [x] **Step 6: Run test to verify it passes**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -run TestOrchestrator_RecordsTaskLifecycleViaHandleFault -v`
 Expected: PASS.
 
-- [ ] **Step 7: Run the full test suite**
+- [x] **Step 7: Run the full test suite**
 
 Run: `cd hwcloud-skillcheck && go test ./internal/l4/ -v`
 Expected: all PASS. The nil-`ContextMem` path must be back-compat with existing callers.
 
-- [ ] **Step 8: Lint and vet**
+- [x] **Step 8: Lint and vet**
 
 Run:
 ```bash
@@ -878,7 +878,7 @@ cd hwcloud-skillcheck && go vet ./... && gofmt -l .
 ```
 Expected: empty output.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add hwcloud-skillcheck/internal/l4/orchestrator.go hwcloud-skillcheck/internal/l4/orchestrator_context_test.go
@@ -1023,3 +1023,4 @@ NO UNRESOLVED DECISIONS
 - Task 2 (ContextMemory struct + atomic Save) — committed afed6e4
 - Task 3 (Load + first-run + session rotation) — committed e51d76a
 - Task 4 (Mutation API: RecordTask/RecordError/SetPreference/CloseTask) — committed eb0abdb
+- Task 5 (Wire ContextMemory into HandleFault) — committed 773e3ea
