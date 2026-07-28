@@ -7,6 +7,16 @@ import (
 	"testing"
 )
 
+// TestMain sets SKILLCHECK_QUIET=1 for the entire test binary so that
+// runValidate* functions suppress the human-readable FAIL/OK output lines.
+// Tests assert on the err return value, not on stdout; the noise from
+// negative tests (TestSafetyClass_InvalidValueInTrace etc.) clutters
+// `go test -v` output without adding signal.
+func TestMain(m *testing.M) {
+	os.Setenv("SKILLCHECK_QUIET", "1")
+	os.Exit(m.Run())
+}
+
 // scaffoldGCLGoFiles writes minimal internal/gcl/*.go stubs into
 // <SKILLCHECK_ROOT>/internal/gcl/ so that checkSafetyClassCode and
 // checkResourceScopeCode (which read from SKILLCHECK_ROOT/internal/gcl/)

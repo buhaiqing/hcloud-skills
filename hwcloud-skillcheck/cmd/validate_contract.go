@@ -112,6 +112,10 @@ var maskKeywordRe = regexp.MustCompile(`(?i)mask`)
 // allowedResourceScopePatterns[i].
 var allowedResourceScopePatternREs []*regexp.Regexp
 
+// isQuiet returns true when SKILLCHECK_QUIET=1 — primarily for go test runs
+// where the inner validator output clutters test logs. Read at call time so
+// TestMain can toggle it after package init.
+func isQuiet() bool { return os.Getenv("SKILLCHECK_QUIET") == "1" }
 func init() {
 	contractItemREs = make([]*regexp.Regexp, len(contractItems))
 	for i, ci := range contractItems {
@@ -242,7 +246,7 @@ func runValidateGeneratorContract(args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(report)
-	} else {
+	} else if !isQuiet() {
 		fmt.Printf("Generator GCL contract: %d/%d checks pass.\n", report.Summary.Passing, report.Summary.Total)
 		for _, f := range report.Failures {
 			fmt.Printf("  FAIL %s.%s: %s\n", f.Scope, f.Item, f.Reason)
@@ -321,7 +325,7 @@ func runValidateSafetyClass(args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(result)
-	} else {
+	} else if !isQuiet() {
 		for _, e := range result.SchemaErrors {
 			fmt.Printf("  FAIL schema: %s\n", e)
 		}
@@ -565,7 +569,7 @@ func runValidateResourceScope(args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.Encode(result)
-	} else {
+	} else if !isQuiet() {
 		for _, e := range result.SchemaErrors {
 			fmt.Printf("  FAIL schema: %s\n", e)
 		}
