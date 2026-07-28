@@ -154,3 +154,51 @@ Evaluates GCL trace quality against CES SLO thresholds and generates an alarm pl
 | `--plan-file <path>` | Write alarm plan to specific path |
 
 Exit codes: `0` no breaches, `1` threshold breach.
+
+## `hwcloud-skillcheck check` Subcommands
+
+### `hwcloud-skillcheck check example-config --root <dir>`
+
+Validates `assets/example-config.yaml` for every `huaweicloud-*-ops/` skill under `--root`. Checks each file for plaintext secret literals, well-formed `{{env.*}}` / `{{user.*}}` / `{{output.*}}` placeholders (no bare `{x}` tokens), basic YAML structure, and YAML anchor references that follow their definitions. Emits a soft warning when a key is repeated 3+ times without any anchors.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--warn-only` | Treat failures as warnings (exit `0`) |
+| `--json` | Emit JSON report |
+
+Exit codes: `0` pass or warnings only, `1` any file has errors.
+
+### `hwcloud-skillcheck check markdown-links --root <dir>`
+
+Walks every Markdown file under `--root` and verifies that local relative links resolve to an existing file. Does not check `http(s)://` URLs or fragment-only anchors. This is the gate used by `go test ./...` and CI.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+
+Exit codes: `0` pass, `1` broken link(s).
+
+### `hwcloud-skillcheck check references-links --root <dir>`
+
+Validates `references/` anchor health for every skill under `--root`: every Markdown link target whose fragment is non-empty must point to a heading that exists in the linked file. Detects both stale anchors and missing targets.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--warnings-only` | Demote warnings to non-fatal |
+| `--json` | Emit JSON report |
+
+Exit codes: `0` pass, `1` broken anchor(s).
+
+### `hwcloud-skillcheck check advanced-coverage --root <dir>`
+
+Validates TE-7 advanced-section coverage: every `huaweicloud-*-ops/SKILL.md` under `--root` must contain a section matching the advanced-coverage rubric (the `advanced/` directory plus an SKILL.md subsection that links to it). Use `--warn-only` during gradual rollouts when a skill has not yet been migrated.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--warn-only` | Demote missing `advanced/` to warnings |
+| `--json` | Emit JSON report |
+
+Exit codes: `0` pass, `1` any skill missing the advanced section.
