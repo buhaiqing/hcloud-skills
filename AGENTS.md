@@ -276,13 +276,10 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 
 | Anti-Pattern | What to Do Instead |
 |---|---|
-| Inventing API fields or CLI flags | Cross-reference every field against OpenAPI or verified CLI output |
+| Inventing API fields/CLI flags | Cross-reference against OpenAPI or verified CLI output |
 | Printing/logging real credentials | Mask with `***` / `<masked>` |
 | Skipping safety gate on destructive ops | Add explicit confirmation step |
-| Hardcoding regions/timeouts | Use `{{env.*}}` / `{{user.*}}` placeholders |
-| One skill does everything | Single product, single resource model; delegate cross-product ops |
 
-## Delegation Matrix (Common Cross-Product Operations)
 
 - ECS → VPC (subnet), CES (metrics), ELB (load balancing)
 - RDS → ECS (CloudShell), CES (performance metrics)
@@ -293,36 +290,25 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 1. OpenAPI + official docs > forums/chat
 2. Verified `hcloud` CLI output > assumed behavior
 3. `huaweicloud-sdk-go-v3` for SDK fallback patterns
-4. API docs: https://support.huaweicloud.com/api/
 
 ---
 
 ## Runtime Quality Gates: GCL
 
-Detailed runtime-quality specifications are externalized to reduce always-loaded context size:
-
+Detailed runtime-quality specs are externalized. Key reads before modifying GCL-related files:
 | Spec / Tool | Read or run before modifying |
 |---|---|
-| `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md`, GCL scripts, or CES GCL monitoring wiring |
+| `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md` |
 | `hwcloud-skillcheck gcl run --root .` | runtime Orchestrator loop; external Critic required in production |
-| `hwcloud-skillcheck aggregate trace --root .` | trace → quality summary aggregation |
-| `hwcloud-skillcheck gcl alarm-wire --root .` | CES alarm plan/apply for GCL SLOs |
-| `hwcloud-skillcheck validate --root .` | Go total-entry for Tier-A artifact conformance + local validation |
+| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results |
 
-### GCL hard constraints
 
-- Production GCL requires isolated Generator and Critic contexts; shared-context G+C is banned.
-- Critic is read-only: it MUST NOT call `hcloud`, use SDK clients, mutate resources, or self-score Generator output.
-- Critic MUST NOT see raw user request; it may use sanitized `{{output.operation_intent}}`, Generator output, trace, and rubric.
-- Orchestrator owns `operation_intent` generation before Critic scoring; it MUST omit raw user wording, credentials, and unmasked sensitive identifiers.
-- `Safety = 0` / `SAFETY_FAIL` MUST abort immediately; never return partial or best-effort output.
-- Every GCL loop MUST be bounded by `max_iterations`; unbounded retry loops are banned.
-- Every GCL run MUST persist a masked trace under `audit-results/gcl-trace-*.json`.
-- Production GCL MUST use externally supplied isolated Critic scores; `--structural-critic-only` is only for CI/local smoke tests and MUST NOT approve production or human acceptance gates.
-- GCL prompt templates MUST use `{{env.*}}` / `{{user.*}}` / `{{output.*}}`; bare `{...}` placeholders are banned.
-- GCL `required` / `recommended` skills MUST keep `## Quality Gate (GCL)` in `SKILL.md`, plus `references/rubric.md` and `references/prompt-templates.md`.
+- **Contexts**: isolated Generator + Critic only; shared-context G+C banned.
+- **Critic**: read-only, no hcloud/SDK/mutation/self-score; sees sanitized `{{output.operation_intent}}` only.
+- **Safety=0/SAFETY_FAIL**: abort immediately, never partial output.
+- **Loops bounded**: every run has `max_iterations` + masked trace to `audit-results/gcl-trace-*.json`.
+- **Templates**: placeholders MUST use `{{env.*}}/{{user.*}}/{{output.*}}`; bare `{…}` banned.
 
-### Runtime scripts
 
 ```bash
 hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
@@ -335,20 +321,15 @@ hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-qual
 
 Build-time 2-round self-reflection and runtime GCL are independent gates. A clean self-reflection does not exempt runtime scoring; a passing GCL rubric does not exempt sloppy skill updates.
 
+Build-time 2-round self-reflection and runtime GCL are independent gates.
+
 ### GCL changelog
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-06-04 | Initial GCL specification and ECS pilot |
-| 1.3.0 | 2026-06-04 | All 20 skills gained GCL artifacts |
-| 1.4.0 | 2026-06-04 | CES monitoring design for GCL pass-rate |
 | 1.6.0 | 2026-06-19 | qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES summary schema added |
 
-### See also
-
-- `docs/gcl-spec.md` — full runtime GCL spec
-- `huaweicloud-ces-ops/assets/gcl-quality-summary.schema.json` — quality summary contract
-- `huaweicloud-ces-ops/references/gcl-monitoring.md` — CES monitoring design
 
 ## Self-Healing Loop & Experience Learning (L4)
 
@@ -485,16 +466,31 @@ work.
 **Cost of not flagging**: a green-build narrative hides a real semantic gap that will surprise a Critic reviewing a low-overlap request.
 **Rule**: any time a contract field is "good enough for GREEN but not for spec", leave a L-numbered lesson near the set site so the next implementer (or Critic) can find it in 10 seconds.
 ### L11. Sandbox network is sealed — design for offline-mode, not for "I'll just download it"
-**Problem**: this sandbox (2026-07-28 cycle) cannot reach `github.com`, `goproxy.cn`, `proxy.golang.org`, raw.githubusercontent.com, or any external host. `nc` and `ping` are blocked; only DNS queries to local stub hosts (jetbrains mirror, aliyun-oss internal, maven.hd123) resolve. The `~/Library/Caches/go-build` write is also sandboxed (L9), forcing `GOCACHE=/tmp/hcloud-go-cache`.
-**Concrete impact for P2**: cannot ship real ONNX inference in-session — `yalue/onnxruntime_go` SDK can't be fetched, `onnxruntime_c_api.h` not on disk, so cgo fails. A2.3 (rubric) remained RED with a blocker doc, not a fake stub.
-**Fix pattern**: when a task requires a network-bound dependency, do ONE of:
-  1. Vendor the dep into `hwcloud-skillcheck/vendor/` (zip + checksum) before the run, so the sandbox never has to fetch.
-  2. Implement offline-mode that does NOT require the network dep (e.g., shadow path + calibrate CLI shipped without ONNX).
-  3. Document the blocker with concrete unlock conditions and route the task to operator-side (out-of-sandbox) execution.
-**Rule**: when brainstorming says "use SDK X", verify first that X is either (a) vendored, (b) in the local module cache, or (c) the sandbox can reach its module proxy. Otherwise plan for offline-mode first.
-**Cost of not flagging**: hours wasted on import cycle or build-failure diagnosis, plus the temptation to ship a stub that breaks rubric semantics.
+**Problem**: sandbox cannot reach `github.com`, `goproxy.cn`, `proxy.golang.org`; only local stub hosts resolve.
+**Fix**: when a task requires a network-bound dep, do ONE of: (1) vendor into `hwcloud-skillcheck/vendor/`, (2) implement offline-mode, (3) document the blocker with unlock conditions.
+**Rule**: before committing to "use SDK X", verify X is vendored, in module cache, or reachable. Otherwise plan for offline-mode first.
 
 ### L12. Every sandbox/provider needs a user-facing preflight
-**Problem**: provider configuration failures otherwise surface during initialization or the first live request, often as one opaque error at a time. Operators then repeat edit/restart cycles and may accidentally place credentials in config files while troubleshooting.
-**Fix**: every provider implements a side-effect-free `Preflight(ProviderConfig) PreflightReport`. It aggregates all errors and warnings before network/native calls; every error carries `Field`, plain-language `Message`, actionable `Fix`, and a manual link when useful. Expose the same report through an operator smoke command such as `router embed-test`.
-**Rule**: a new local, cloud, container, or third-party sandbox provider is incomplete until invalid configuration is covered by preflight tests and the user manual includes copy-paste fixes. Preflight never logs secret values and never performs resource mutation.
+**Problem**: provider configuration failures surface as opaque errors, leading to repeated edit/restart cycles and credential-in-config mistakes.
+**Fix**: implement side-effect-free `Preflight(ProviderConfig) PreflightReport` that aggregates all errors before network/native calls, with plain-language Message and actionable Fix.
+**Rule**: a new sandbox provider is incomplete until invalid config is covered by preflight tests and the user manual has copy-paste fixes.
+
+### L13. Env-var dependency injection must sync test fixture + injection channel
+**Problem**: `TestSafetyClass_UnknownValue` created `sanitizer.go` scaffold but did not set `SKILLCHECK_ROOT` — code under test searched the build cache path instead of the scaffold dir.
+**Fix**: when a test creates a fixture file that a production function reads via env var, always `t.Setenv("VAR_NAME", tmp)` in the same test that creates the file.
+**Rule**: fixture creation and dependency injection are a contract — both must exist together or neither works.
+
+### L14. Subprocess Mode = exit code, not decode intent
+**Problem**: `TestExternalCritic_DecodeError` asserted `Mode=="decode-error"` but the helper exited non-zero (no stdout), producing `subprocess-error` — the test named the intention not the outcome.
+**Fix**: subprocess exit ≠ 0 → `out` is empty → `Mode` should reflect subprocess error, not json.Unmarshal failure. Assert the actual code path, not the hoped-for path.
+**Rule**: test assertion names must match what the code actually does, not what you intend it to do. "NonZeroExit" not "DecodeError".
+
+### L15. CI Linux `go test` makes `os.Args[0]`/Executable unusable for source-tree walking
+**Problem**: `checkSafetyClassCode(skillcheckRoot)` used `filepath.Dir(os.Args[0])` to find the source tree — worked on macOS compiled binary, failed on Linux CI where `go test` puts args[0] in `~/.cache/go-build/...`.
+**Fix**: walk up from both `os.Args[0]` AND `os.Getwd()`; stop when `sanitizer.go` is found. `cwd` fallback is the reliable anchor for CI.
+**Rule**: `os.Args[0]`/`os.Executable()` are not reliable in `go test` / build-cache environments. Always fall back to `cwd` walking.
+
+### L16. Programmatic Go file edits require gofmt verification before commit
+**Problem**: sed/python/`edit` tool inserted code with extra blank lines; macOS gofmt passed, Linux CI gofmt failed → CI red on a clean commit.
+**Fix**: after any programmatic edit (sed, python, edit tool), always run `gofmt -l <file>` locally and `gofmt -w <file>` to auto-fix before commit.
+**Rule**: `go build` passing locally is insufficient; CI gofmt gate is authoritative. Always verify before push.
