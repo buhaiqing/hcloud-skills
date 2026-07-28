@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestOutcomeRecord_RoundTrip(t *testing.T) {
@@ -88,5 +89,47 @@ func TestOutcomeMemory_DirAndFileMode(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("file perm = %o, want 0600", perm)
+	}
+}
+
+func TestOutcomeMemory_RecentOutcomes(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	records := []OutcomeRecord{
+		{ID: "1", Timestamp: "2026-07-28T00:00:00Z", Skill: "huaweicloud-ecs-ops", Action: "list", Outcome: "success"},
+		{ID: "2", Timestamp: "2026-07-28T00:00:01Z", Skill: "huaweicloud-ecs-ops", Action: "list", Outcome: "failure"},
+		{ID: "3", Timestamp: "2026-07-28T00:00:02Z", Skill: "huaweicloud-rds-ops", Action: "list", Outcome: "success"},
+		{ID: "4", Timestamp: "2026-07-28T00:00:03Z", Skill: "huaweicloud-ecs-ops", Action: "delete", Outcome: "failure"},
+	}
+	for _, r := range records {
+		if err := mem.Record(r); err != nil {
+			t.Fatalf("record %s: %v", r.ID, err)
+		}
+	}
+	got, err := mem.RecentOutcomes("huaweicloud-ecs-ops", "list", 10)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 records, got %d", len(got))
+	}
+	if got[0].ID != "2" || got[1].ID != "1" {
+		t.Fatalf("want [2,1], got [%s,%s]", got[0].ID, got[1].ID)
+	}
+}
+
+func TestOutcomeMemory_MatchOutcomes_Lookback(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	old := OutcomeRecord{ID: "old", Timestamp: "2020-01-01T00:00:00Z", Skill: "s", Action: "x", ContextHash: "h", Outcome: "failure"}
+	fresh := OutcomeRecord{ID: "fresh", Timestamp: time.Now().UTC().Format(time.RFC3339), Skill: "s", Action: "x", ContextHash: "h", Outcome: "success"}
+	_ = mem.Record(old)
+	_ = mem.Record(fresh)
+	got, err := mem.MatchOutcomes("s", "x", "h", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("match: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "fresh" {
+		t.Fatalf("want [fresh], got %+v", got)
 	}
 }

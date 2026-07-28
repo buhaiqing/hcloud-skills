@@ -1,11 +1,14 @@
 package l4
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"time"
 )
 
 // OutcomeRecord is one row in outcomes.jsonl.
@@ -63,4 +66,85 @@ func (m *OutcomeMemory) Record(r OutcomeRecord) error {
 		return fmt.Errorf("outcome memory: write: %w", err)
 	}
 	return nil
+}
+
+// readAll parses the entire JSONL file. Malformed lines are skipped silently.
+// Returns an empty slice (not an error) if the file does not exist yet.
+func (m *OutcomeMemory) readAll() ([]OutcomeRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	raw, err := os.ReadFile(m.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("outcome memory: read: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var out []OutcomeRecord
+	for _, line := range bytes.Split(raw, []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		var r OutcomeRecord
+		if err := json.Unmarshal(line, &r); err != nil {
+			continue // skip malformed
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+// RecentOutcomes returns up to n records matching (skill, action), most
+// recent first. n <= 0 returns all matching records.
+func (m *OutcomeMemory) RecentOutcomes(skill, action string, n int) ([]OutcomeRecord, error) {
+	all, err := m.readAll()
+	if err != nil {
+		return nil, err
+	}
+	var match []OutcomeRecord
+	for _, r := range all {
+		if r.Skill == skill && r.Action == action {
+			match = append(match, r)
+		}
+	}
+	sort.SliceStable(match, func(i, j int) bool {
+		return match[i].Timestamp > match[j].Timestamp
+	})
+	if n > 0 && len(match) > n {
+		match = match[:n]
+	}
+	return match, nil
+}
+
+// MatchOutcomes returns records matching (skill, action, contextHash) whose
+// Timestamp is within `lookback` of now. lookback <= 0 means "no time filter".
+func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookback time.Duration) ([]OutcomeRecord, error) {
+	all, err := m.readAll()
+	if err != nil {
+		return nil, err
+	}
+	cutoff := time.Time{}
+	if lookback > 0 {
+		cutoff = time.Now().Add(-lookback)
+	}
+	var match []OutcomeRecord
+	for _, r := range all {
+		if r.Skill != skill || r.Action != action || r.ContextHash != contextHash {
+			continue
+		}
+		if lookback > 0 {
+			ts, err := time.Parse(time.RFC3339, r.Timestamp)
+			if err != nil || ts.Before(cutoff) {
+				continue
+			}
+		}
+		match = append(match, r)
+	}
+	sort.SliceStable(match, func(i, j int) bool {
+		return match[i].Timestamp > match[j].Timestamp
+	})
+	return match, nil
 }
