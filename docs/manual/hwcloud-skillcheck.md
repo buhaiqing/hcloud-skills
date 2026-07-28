@@ -361,3 +361,47 @@ Reconciles drift. Default is dry-run (no writes); pass `--apply` to actually ove
 | `--apply` | Apply changes (overrides `--dry-run`) |
 
 Exit codes: `0` no drift or sync succeeded, `1` sync errored.
+
+## `hwcloud-skillcheck critic` Subcommands
+
+### `hwcloud-skillcheck critic score --generator <path>`
+
+Rule-based 5-dimension scorer (port of `scripts/critic_v1.py`). Reads a generator trace JSON, scores it across `correctness`, `safety`, `idempotency`, `traceability`, and `spec_compliance`, and prints the `CriticResult` JSON to stdout. With `--emit`, also writes the same JSON to `--critic-out` so external pipelines can pick it up.
+
+| Flag | Description |
+|------|-------------|
+| `--generator <path>` | Path to generator trace JSON (required) |
+| `--emit` | Write critic JSON to `--critic-out` in addition to stdout |
+| `--critic-out <path>` | Output path when `--emit` is set (default `critic.json`) |
+
+Exit codes: `0` ok, `1` missing `--generator` or read/decode error.
+
+## `hwcloud-skillcheck ab` Subcommands
+
+### `hwcloud-skillcheck ab compare --root <dir>`
+
+A/B diffs two golden runs against an allowlist. Reads `<root>/.ab/old.json` (the baseline) and `<root>/.ab/cur.json` (the current run), then `ab.CompareWith` flags any scenario whose value differs from the baseline and is not listed in `<root>/.ab/allowlist.json`. Useful for catching unintended regressions between two golden runs.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Repo root (default `.`) |
+| `--old <ref>` | Git ref for the old run; metadata only (default `HEAD~1`) |
+| `--cmd` | Subcommand (`compare`); default `compare` |
+
+If `.ab/old.json` or `.ab/cur.json` does not exist the compare is skipped with a stderr notice (no failure) so first runs do not break the gate.
+
+Exit codes: `0` no drift or compare skipped, `1` non-allowlisted drift detected.
+
+## `hwcloud-skillcheck manifest` Subcommands
+
+### `hwcloud-skillcheck manifest gen --root <dir> --out <dir>`
+
+Auto-generates `capability_manifest.json` per skill under `--root`, written to `--out` (default `audit-results/sandbox/manifests/`). The manifest is a structured description of each skill's tools, examples, and triggers — the same shape consumed by the runtime router.
+
+| Flag | Description |
+|------|-------------|
+| `--root <dir>` | Skill repository root (default `.`) |
+| `--out <dir>` | Output directory (default `audit-results/sandbox/manifests`) |
+| `--cmd` | Subcommand (`gen`); default `gen` |
+
+Exit codes: `0` manifests written, `1` generation error.
