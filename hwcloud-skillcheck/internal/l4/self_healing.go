@@ -1,6 +1,7 @@
 package l4
 
 import (
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -68,13 +69,31 @@ func (p HealingPolicy) IsZero() bool {
 		p.LookbackWindow == 0
 }
 
+// observeHealingDecision records every decision and logs actionable ones.
+func observeHealingDecision(step TaskStep, decision HealingDecision, hook string, retryCount int) HealingDecision {
+	DefaultHealingMetrics.Record(decision, hook)
+	if decision.Action != "proceed" {
+		slog.Default().Info("healing_decision",
+			"skill", step.Skill,
+			"action", step.Action,
+			"hook", hook,
+			"decision_action", decision.Action,
+			"decision_reason", decision.Reason,
+			"retry_count", retryCount,
+			"risk", step.Risk,
+		)
+	}
+	return decision
+}
+
 // PreExecHook returns the action to take before executing step.
 // Default: proceed. Skips only when:
 //   - p.FailureRateSkipThreshold > 0
 //   - at least p.MinSamples recent records exist for (step.Skill, step.Action)
 //   - failure rate >= threshold
 //   - the most recent record is within p.LookbackWindow (when set)
-func PreExecHook(step TaskStep, mem *OutcomeMemory, p HealingPolicy) HealingDecision {
+func PreExecHook(step TaskStep, mem *OutcomeMemory, p HealingPolicy) (decision HealingDecision) {
+	defer func() { decision = observeHealingDecision(step, decision, "PreExecHook", 0) }()
 	if p.FailureRateSkipThreshold <= 0 || p.MinSamples <= 0 {
 		return HealingDecision{Action: "proceed"}
 	}
@@ -105,7 +124,8 @@ func PreExecHook(step TaskStep, mem *OutcomeMemory, p HealingPolicy) HealingDeci
 //   - "retry"     when error is transient AND retry budget remains
 //     AND step verb is not destructive (verb matched via EqualFold)
 //   - "escalate"  in every other case (including MaxRetries=0)
-func PostFailureHook(step TaskStep, result StepResult, retryCount int, mem *OutcomeMemory, p HealingPolicy) HealingDecision {
+func PostFailureHook(step TaskStep, result StepResult, retryCount int, mem *OutcomeMemory, p HealingPolicy) (decision HealingDecision) {
+	defer func() { decision = observeHealingDecision(step, decision, "PostFailureHook", retryCount) }()
 	if retryCount >= p.MaxRetries {
 		return HealingDecision{Action: "escalate", Reason: "max retries reached"}
 	}
