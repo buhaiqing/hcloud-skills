@@ -183,6 +183,7 @@ func TestSafetyClass_UnknownValue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "sanitizer.go"), []byte("package gcl\nvar SAFETY_CLASS_VALUES = []string{\"read-only\", \"mutating\"}\nfunc MaskResourceID(v string) string { return \"***\" }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("SKILLCHECK_ROOT", tmp)
 	scaffoldGeneratorContractFiles(t, tmp, map[string]string{
 		"huaweicloud-ces-ops/assets/gcl-trace.schema.json": `{
   "properties": {

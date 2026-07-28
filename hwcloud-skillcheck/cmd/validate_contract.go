@@ -289,10 +289,7 @@ func runValidateSafetyClass(args []string) error {
 	// Tests can override via SKILLCHECK_ROOT env var.
 	skillcheckRoot := os.Getenv("SKILLCHECK_ROOT")
 	if skillcheckRoot == "" {
-		skillcheckRoot = filepath.Dir(os.Args[0])
-		if filepath.Base(skillcheckRoot) == "bin" {
-			skillcheckRoot = filepath.Dir(skillcheckRoot)
-		}
+		skillcheckRoot = findSkillcheckRoot()
 	}
 
 	result := checkSafetyClassEnum(skillcheckRoot, rootDir)
@@ -394,6 +391,36 @@ func checkSafetyClassSchema(root string) []string {
 	}
 	return errors
 }
+
+// findSkillcheckRoot returns the directory containing the hwcloud-skillcheck module.
+// os.Args[0] can point into the Go build cache on Linux, so we fall back to
+// walking up from the current working directory until we find sanitizer.go.
+func findSkillcheckRoot() string {
+	// Try os.Args[0] first (works when running the installed binary)
+	if len(os.Args) > 0 {
+		p := os.Args[0]
+		for p != "." && p != "/" {
+			p = filepath.Dir(p)
+			srcPath := filepath.Join(p, "hwcloud-skillcheck", "internal", "gcl", "sanitizer.go")
+			if _, err := os.Stat(srcPath); err == nil {
+				return filepath.Join(p, "hwcloud-skillcheck")
+			}
+		}
+	}
+	// Fall back to walking up from cwd (works during 'go test' in CI)
+	cwd, _ := os.Getwd()
+	for cwd != "." && cwd != "/" {
+		srcPath := filepath.Join(cwd, "hwcloud-skillcheck", "internal", "gcl", "sanitizer.go")
+		if _, err := os.Stat(srcPath); err == nil {
+			return filepath.Join(cwd, "hwcloud-skillcheck")
+		}
+		cwd = filepath.Dir(cwd)
+	}
+	// Last resort: return cwd-based assumption
+	result, _ := os.Getwd()
+	return filepath.Join(result, "hwcloud-skillcheck")
+}
+
 
 func checkSafetyClassCode(skillcheckRoot string) []string {
 	var errors []string
@@ -507,10 +534,7 @@ func runValidateResourceScope(args []string) error {
 	// Tests can override via SKILLCHECK_ROOT env var.
 	skillcheckRoot := os.Getenv("SKILLCHECK_ROOT")
 	if skillcheckRoot == "" {
-		skillcheckRoot = filepath.Dir(os.Args[0])
-		if filepath.Base(skillcheckRoot) == "bin" {
-			skillcheckRoot = filepath.Dir(skillcheckRoot)
-		}
+		skillcheckRoot = findSkillcheckRoot()
 	}
 
 	result := checkResourceScopeContract(skillcheckRoot, rootDir)

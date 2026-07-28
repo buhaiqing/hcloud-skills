@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -49,8 +50,10 @@ func TestP1Acceptance_AuditsAllCriteria(t *testing.T) {
 }
 
 func TestP1GatesWired(t *testing.T) {
-	cmd := exec.Command("/bin/bash", "/Users/bohaiqing/opensource/git/hcloud-skills/scripts/pre_commit_check.sh", "--skip-tests")
-	cmd.Dir = ".."
+	// Script is at $REPO_ROOT/scripts/pre_commit_check.sh.
+	scriptPath := filepath.Join(repoRoot(), "scripts", "pre_commit_check.sh")
+	cmd := exec.Command("/bin/bash", scriptPath, "--skip-tests")
+	cmd.Dir = repoRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Logf("script error: %v\noutput: %s", err, string(out))
@@ -62,4 +65,20 @@ func TestP1GatesWired(t *testing.T) {
 			t.Errorf("gate %q not found in pre-commit output", g)
 		}
 	}
+}
+
+// repoRoot returns the repository root (parent of hwcloud-skillcheck/).
+func repoRoot() string {
+	// This test lives in hwcloud-skillcheck/internal/spec_audit/.
+	// Walk up three levels to reach the repo root.
+	_, f0, _, _ := runtime.Caller(0)
+	// f0 = p1_audit_test.go in spec_audit dir
+	// parent[0] = spec_audit dir
+	// parent[1] = internal dir
+	// parent[2] = hwcloud-skillcheck dir
+	// parent[3] = repo root
+	for i := 0; i < 4; i++ {
+		f0 = filepath.Dir(f0)
+	}
+	return f0
 }

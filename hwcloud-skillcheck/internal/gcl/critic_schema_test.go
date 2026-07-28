@@ -99,15 +99,16 @@ func TestExternalCritic_SchemaInvalidOutOfRange(t *testing.T) {
 	}
 }
 
-// TestExternalCritic_DecodeError: output is not even valid JSON.
-func TestExternalCritic_DecodeError(t *testing.T) {
+// TestExternalCritic_SubprocessNonZeroExit: helper exits non-zero (invalid JSON payload)
+// → subprocess error, not decode error.
+func TestExternalCritic_SubprocessNonZeroExit(t *testing.T) {
 	bin := helperBinaryPath(t)
 	payload := `not json at all`
 	t.Setenv("PAYLOAD_FILE", writePayloadFile(t, payload))
 	c := NewExternalCritic(bin)
 	got := c.Score(context.Background(), GeneratorOutput{Command: "echo hi"})
-	if got.Mode != "decode-error" {
-		t.Errorf("Mode: want decode-error, got %q", got.Mode)
+	if !strings.HasPrefix(got.Mode, "subprocess-error") {
+		t.Errorf("Mode: want subprocess-error prefix, got %q", got.Mode)
 	}
 }
 

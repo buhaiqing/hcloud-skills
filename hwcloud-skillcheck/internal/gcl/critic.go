@@ -110,8 +110,10 @@ func (e ExternalCritic) Score(ctx context.Context, gen GeneratorOutput) CriticRe
 	_ = in.Close()
 	out, err := cmd.Output()
 	if err != nil {
-		// DEBUG: surface to test logs
-		_ = err
+		// Context deadline exceeded or subprocess crashed — still return a result
+		// so callers get a populated Mode rather than the unconfigured default.
+		defaultResult.Mode = "subprocess-error: " + err.Error()
+		return defaultResult
 	}
 	// Validate the wire payload against the critic_output schema BEFORE
 	// surfacing it as a CriticResult. A validation failure means the
