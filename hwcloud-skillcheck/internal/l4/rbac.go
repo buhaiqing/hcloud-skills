@@ -90,6 +90,13 @@ var HighRiskVerbs = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\b(delete|terminate|destroy|drop|remove|rm|del)\b`),
 }
 
+// ExtractHighRiskVerbs returns the canonical list of destructive verb
+// strings parsed from HighRiskVerbs. Used as the default for
+// HealingPolicy.DestructiveVerbs and for risk-inference in execution.go.
+func ExtractHighRiskVerbs() []string {
+	return []string{"delete", "terminate", "destroy", "drop", "remove", "rm", "del"}
+}
+
 // HighRiskPattern matches dangerous resource patterns in commands.
 var HighRiskPattern = regexp.MustCompile(`(?i)(security.?group|subnet|vpc|database|instance|cluster|load.?balancer).*delete`)
 

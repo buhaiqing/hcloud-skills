@@ -37,6 +37,12 @@ type HandleFaultInput struct {
 	// invocations. When nil, a fresh ContextMemory is created from
 	// the resolved root directory.
 	ContextMem *ContextMemory
+	// Mem is the outcome-memory store for self-healing. When nil, a fresh
+	// OutcomeMemory is created from the resolved root directory.
+	Mem *OutcomeMemory
+	// Policy configures self-healing behavior. Zero value = no healing
+	// (same behavior as before this feature existed).
+	Policy HealingPolicy
 }
 
 // TopologyResult is the public topology block in the orchestrator output.
@@ -152,6 +158,18 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	risk := in.Risk
 	if risk == "" {
 		risk = "medium"
+	}
+
+	// Resolve outcome-memory: caller-supplied or fresh under root.
+	// If creation fails, log and fall back to nil (healing is bypassed).
+	mem := in.Mem
+	if mem == nil {
+		var err error
+		mem, err = NewOutcomeMemory(root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "orchestrator: outcome memory: %v\n", err)
+			mem = nil
+		}
 	}
 
 	// Step 1 — Topology
@@ -472,6 +490,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			}
 		}
 
+		executionTask = RunExecutionLoopWithHealing(root, task, plan, matched, mem, in.Policy, nil)
 		// Update decision based on execution result.
 		switch executionTask.Status {
 		case TaskStatusCompleted:

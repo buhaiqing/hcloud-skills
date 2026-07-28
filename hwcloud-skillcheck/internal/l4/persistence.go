@@ -59,6 +59,7 @@ type TaskStep struct {
 	Skill        string `json:"skill"`
 	SkillShort   string `json:"skill_short,omitempty"`
 	Action       string `json:"action"`
+	Verb         string `json:"verb,omitempty"`
 	Risk         string `json:"risk"`
 	RequiresRBAC bool   `json:"requires_rbac"`
 	Command      string `json:"command,omitempty"`
