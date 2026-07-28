@@ -1,6 +1,12 @@
 package l4
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+)
 
 // OutcomeRecord is one row in outcomes.jsonl.
 // See docs/superpowers/specs/outcome-memory-self-healing.md §5.
@@ -21,7 +27,40 @@ type OutcomeRecord struct {
 	GCLDecision  string `json:"gcl_decision"`
 }
 
-// ensure json is "used" — Marshal/Unmarshal via the package's other tests will reference it.
-// In Go, types themselves do not require imports; we keep the json package ready for
-// future Record methods in this file.
-var _ = json.Marshal
+// OutcomeMemory is an append-only outcome store backed by a single JSONL file.
+type OutcomeMemory struct {
+	path string
+	mu   sync.Mutex
+}
+
+// NewOutcomeMemory ensures <root>/.l4-memory/ exists and returns a store
+// pointing at <root>/.l4-memory/outcomes.jsonl.
+func NewOutcomeMemory(root string) (*OutcomeMemory, error) {
+	dir := filepath.Join(root, ".l4-memory")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("outcome memory: mkdir: %w", err)
+	}
+	return &OutcomeMemory{path: filepath.Join(dir, "outcomes.jsonl")}, nil
+}
+
+// Record appends one OutcomeRecord as a single JSON line.
+// fsync is intentionally NOT called per-record — the append-only file is
+// recovered by PruneOlderThan or by readAll which scans forward. Per-record
+// fsync would tank write throughput (NFR-3: >= 1000 records/s).
+func (m *OutcomeMemory) Record(r OutcomeRecord) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	line, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("outcome memory: marshal: %w", err)
+	}
+	f, err := os.OpenFile(m.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("outcome memory: open: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("outcome memory: write: %w", err)
+	}
+	return nil
+}
