@@ -50,9 +50,15 @@ func ComputeTrustScoreFromOutcome(skill, action string, mem *OutcomeMemory, poli
 // TrustSourceCounter tracks how trust lookups decided between the new
 // outcome-memory path and the legacy OpHistory path during the Phase 2
 // cutover. Exposed via `hwcloud-skillcheck trust stats`.
+//
+// DeprecationCount (Phase 3) increments whenever the legacy []OpHistory
+// path is invoked — by LookupTrust's fall-back branch or by
+// ComputeTrustScoreFromOpHistory callers. Lets us watch the cutover
+// drain to zero before Phase 4 deletes the legacy code paths.
 type TrustSourceCounter struct {
 	FromOutcomeMemory atomic.Uint64
 	FromOpHistory     atomic.Uint64
+	DeprecationCount  atomic.Uint64
 }
 
 // DefaultTrustSource is the process-wide counter for trust lookups.
@@ -84,6 +90,10 @@ func LookupTrust(skill, action string, mem *OutcomeMemory, legacy []OpHistory) T
 	}
 	if DefaultTrustSource != nil {
 		DefaultTrustSource.Record("op_history")
+		// Phase 3: this branch hits the deprecated ComputeTrustScore path.
+		// Bump DeprecationCount so `trust stats` reflects every legacy
+		// lookup the cutover hasn't reached yet.
+		DefaultTrustSource.RecordDeprecation()
 	}
 	return ComputeTrustScore(legacy)
 }
@@ -100,6 +110,19 @@ func (t *TrustSourceCounter) Record(from string) {
 	case "op_history":
 		t.FromOpHistory.Add(1)
 	}
+}
+
+// RecordDeprecation bumps the Phase 3 deprecation counter. Called from
+// every site that still invokes the legacy ComputeTrustScore([]OpHistory)
+// path (the LookupTrust fall-back branch and the
+// ComputeTrustScoreFromOpHistory wrapper). The counter is what we
+// watch to confirm the cutover is complete before Phase 4 deletes the
+// legacy code paths.
+func (t *TrustSourceCounter) RecordDeprecation() {
+	if t == nil {
+		return
+	}
+	t.DeprecationCount.Add(1)
 }
 
 var LastOutcomeLookup atomic.Pointer[string]
@@ -304,7 +327,27 @@ type TrustScore struct {
 	ComputedAt         string             `json:"computed_at"`
 }
 
+// ComputeTrustScoreFromOpHistory is the Phase 3 entry point for callers
+// that still operate on the curator-pipeline []OpHistory slice (the
+// trust_history.json back-fill path). It delegates to the deprecated
+// ComputeTrustScore and bumps DeprecationCount so we can monitor
+// callers that haven't migrated to ComputeTrustScoreFromOutcome yet.
+//
+// Phase 4 deletes ComputeTrustScore; this wrapper will be removed in
+// the same commit (ADR-0009 §Migration).
+func ComputeTrustScoreFromOpHistory(h []OpHistory) TrustScore {
+	if DefaultTrustSource != nil {
+		DefaultTrustSource.RecordDeprecation()
+	}
+	return ComputeTrustScore(h)
+}
+
 // ComputeTrustScore returns the composite trust score + level.
+//
+// Deprecated: use ComputeTrustScoreFromOutcome. Phase 4 (ADR-0009
+// §Migration) will remove this function and the OpHistory type. New
+// callers must accept OutcomeMemory and call
+// ComputeTrustScoreFromOutcome directly.
 func ComputeTrustScore(h []OpHistory) TrustScore {
 	components := map[string]float64{
 		"success_rate":       ComputeSuccessRate(h),

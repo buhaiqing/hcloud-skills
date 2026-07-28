@@ -304,6 +304,12 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	gclRes.PassedSteps = passCount
 
 	// Step 5 — Trust
+	//
+	// Back-fill only — Phase 4 will remove the curator pipeline
+	// (trust_history.json ingest) per ADR-0009 §Migration. New trust
+	// scores come from OutcomeMemory via LookupTrust; this legacy branch
+	// stays so existing on-disk trust_history.json data continues to
+	// seed trust during the cutover window.
 	trustHistory := []OpHistory{}
 	if in.TrustData != nil {
 		if ops, ok := in.TrustData["history"].([]any); ok {
