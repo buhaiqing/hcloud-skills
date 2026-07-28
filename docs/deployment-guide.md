@@ -5,7 +5,7 @@
 >
 > **Audience**: Platform engineers, SREs, and ops teams operating Huawei Cloud skills.
 >
-> **Last updated**: 2026-07-26
+> **Last updated**: 2026-07-28 (P2 end-of-cycle)
 
 ---
 
@@ -94,6 +94,180 @@ Available platform binaries:
 
 ---
 
+## 1.5 Router Policy Registry (P2, partial)
+
+The Skill Router resolves its decision parameters from a versioned JSON registry
+specified by the environment. The binary exposes **no setter** for these
+parameters; changes only land via `hwcloud-skillcheck router calibrate --apply`,
+which the runbook sandbox does not expose to operator UIs.
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `HC_CAPABILITY_REGISTRY` | `capability-registry.json` (cwd) | Path to the versioned policy file. Used by `Router.Route()` at every dispatch. |
+
+**Defaults** shipped in the canonical file (rubric A2.14 pins them):
+
+```json
+{
+  "router_policy_version": "v1.0.0",
+  "confidence_gate": {
+    "top1_score_min": 7500,
+    "margin_min": 1500,
+    "entity_match": ["strong"]
+  }
+}
+```
+
+**Pre-deployment check** (any environment lacking `HC_CAPABILITY_REGISTRY` will
+fall back to these hard-coded defaults at runtime):
+
+```bash
+test -f "$HC_CAPABILITY_REGISTRY" &&   python3 -c "import json,sys; d=json.load(open('$HC_CAPABILITY_REGISTRY')); assert d['router_policy_version'].startswith('v') and d['confidence_gate']['top1_score_min']==7500"   && echo "capability-registry OK"
+```
+
+If `HC_CAPABILITY_REGISTRY` is unset, `Route()` reads `./capability-registry.json`
+relative to the process CWD; in the Go binary's installed layout this resolves to
+`/usr/local/bin/capability-registry.json`, which does not exist. Operators MUST
+set the env var explicitly in production. The fallback exists for tests and
+local development only.
+
+Three embedding modes are mutually compatible: **local** (default
+`local-fasttext`), **cloud** (`huaweicloud-modelarts`), and **off** (`none`).
+`fallback_chain` is honoured at runtime: if the primary provider fails to
+initialise, the Router walks the chain and records `fallback_used=true` with
+the active provider name in the trace.
+
+
+### Calibration workflow (offline only)
+
+The `--apply` flag of `router calibrate` is the only path through which the
+binary mutates `capability-registry.json`. Recommended operational sequence:
+
+```bash
+# Step 1: dry-run; review the plan, do NOT touch files
+hwcloud-skillcheck router calibrate --root /etc/hcloud-skills     --source /var/log/hcloud-skills/audit-results/     --bump patch
+
+# Step 2: re-run with --apply once the diff is approved
+hwcloud-skillcheck router calibrate --root /etc/hcloud-skills     --source /var/log/hcloud-skills/audit-results/     --apply --bump patch
+
+# Step 3 (rollback): revert to a previously-good version
+hwcloud-skillcheck router calibrate --root /etc/hcloud-skills     --apply --rollback-to v1.0.0
+```
+
+The CLI exits 0 on success and writes the new policy to the same path
+(`$HC_CAPABILITY_REGISTRY` if set, else `<root>/capability-registry.json`).
+The trace-derived suggestions currently print only the source path; the
+calibration algorithm that consumes traces ships in a follow-up revision.
+
+**Hard rule (rubric A2.13 + S3)**: `--apply` is the ONLY way to mutate the
+policy. Do NOT edit `capability-registry.json` by hand; bypassing the CLI
+skips the version bump, breaks `router_policy_diff_at` audit, and invalidates
+the `--rollback-to` semantics.
+
+See `docs/superpowers/specs/2026-07-27-harness-runtime-p1p2-design.md` §4.2.1
+for the policy versioning contract and §6.1 for the runtime-immutability
+guarantees.
+
+## 1.6 Embedding Sandbox Setup and Preflight
+
+The Router uses a provider pattern, so local and cloud execution share one interface.
+The **default is local process mode** (`local-fasttext`): it runs inside
+`hwcloud-skillcheck`, requires no network, no model download and no credential. Cloud mode
+is opt-in and never activates merely because cloud environment variables happen to exist.
+
+Every provider has a `Preflight()` stage. It runs before model initialization or network
+access, reports all configuration problems in one pass, and gives each problem a concrete
+`Fix:`. Use it during installation, after a registry edit, and before restarting production:
+
+```bash
+export HC_CAPABILITY_REGISTRY="$(pwd)/hwcloud-skillcheck/capability-registry.json"
+hwcloud-skillcheck router embed-test --root . --text "list ecs servers"
+```
+
+A healthy local result looks like:
+
+```text
+sandbox preflight: PASS
+  provider: local-fasttext
+embedding smoke test: PASS
+  provider: local-fasttext
+  vector_dim: 384
+```
+
+### Local process mode (recommended default)
+
+```json
+"embedding": {
+  "mode": "local",
+  "provider_name": "local-fasttext",
+  "dim": 384,
+  "timeout_ms": 500,
+  "fallback_chain": ["local-fasttext"]
+}
+```
+
+Security controls include context cancellation, a 64 KiB input cap, a per-process QPS cap,
+panic containment, finite-value/L2 normalization, return-copy isolation, and no network
+egress. Fields such as `endpoint`, `auth_env`, and `project_id` are unnecessary in local
+mode; preflight reports them as warnings with removal instructions.
+
+### Huawei Cloud ModelArts mode (explicit opt-in)
+
+Store only the **environment variable name** in the registry. Never write the AK/SK or IAM
+token itself to JSON:
+
+```json
+"embedding": {
+  "mode": "cloud",
+  "provider_name": "huaweicloud-modelarts",
+  "endpoint": "https://modelarts.<region>.myhuaweicloud.com/v1/infers/<inference-id>",
+  "auth_env": "HC_MODELARTS_AUTH",
+  "project_id": "<project-id>",
+  "dim": 384,
+  "timeout_ms": 500,
+  "fallback_chain": ["local-fasttext"],
+  "extra": {"model_id": "<deployed-model-id>"}
+}
+```
+
+Choose one credential form, then run preflight:
+
+```bash
+# IAM token
+export HC_MODELARTS_AUTH='<iam-token>'
+
+# Or AK/SK; the separator is a literal pipe
+export HC_MODELARTS_AUTH='<access-key>|<secret-key>'
+
+export HC_EMBED_PROVIDER=huaweicloud-modelarts
+hwcloud-skillcheck router embed-test --root . --text "list ecs servers"
+```
+
+`HC_EMBED_PROVIDER` overrides only the provider for that process. The rest of the settings
+still come from `HC_CAPABILITY_REGISTRY`. Remove the variable to return to registry-driven
+selection. Provider changes take effect after restart; runtime requests cannot mutate them.
+
+### Common preflight messages
+
+| Message | Meaning | Fix |
+|---|---|---|
+| `endpoint is required` | Cloud provider has no inference URL | Add the deployed ModelArts HTTPS inference URL to `embedding.endpoint`. |
+| `HTTPS is required` | Endpoint uses `http://` or lacks a scheme | Change it to a verified `https://` URL. |
+| `auth_env is required` | Registry does not name a credential variable | Set `embedding.auth_env` to an env-var **name**, such as `HC_MODELARTS_AUTH`. |
+| `env var ... is unset or empty` | The named credential is absent from the process | Export it before starting the service; verify service-manager environment propagation. |
+| `contains whitespace control characters` | Credential includes a copied newline or tab | Re-export the credential without newline/tab characters. |
+| `dim ... outside allowed range` | Vector size is outside 64–4096 | Use the deployed model's dimension; default is 384. |
+| `timeout_ms ... exceeds ... 500ms` | Cloud call can violate the Stage-2 budget | Set `timeout_ms` to 500 or less. |
+| `unknown embedding provider` | Typo or unavailable provider | Use `local-fasttext`, `huaweicloud-modelarts`, `none`, or provision the documented ONNX runtime first. |
+| `embedding=none ... endpoint is unused` | No-sandbox mode selected but old cloud fields remain | Remove `endpoint`, `auth_env`, and `fallback_chain` from the registry. |
+| `fallback_chain is ignored` | No-sandbox mode and fallback chain are both set | Drop the chain or pick a non-none primary. |
+
+Preflight is configuration-only and does not prove cloud reachability. After it passes,
+`router embed-test` performs one real embedding call; connection, 401, 404 and 429 failures
+also include a remediation hint. For locked-down production networks, allow egress only to
+the configured HTTPS host. If cloud is unavailable, switch the registry back to
+`local-fasttext`; automatic fallback metadata is reserved for the runtime fallback path.
+
 ## 2. Deployment Options
 
 ### 2.1 Bare Metal / VM Deployment
@@ -178,11 +352,11 @@ pipelines — the binary is standalone and needs no runtime dependencies.
 git status
 
 # Build, test, and verify locally
-make all          # fmt + vet + test + build
-make self-check   # verify binary against embedded fixtures
+task all           # lint + test + build
+task self-check    # verify binary against embedded fixtures
 
 # Tag and push (CI will build and publish artifacts)
-make release VERSION=0.2.0
+task release VERSION=0.2.0
 # This runs: git tag v0.2.0 && git push origin v0.2.0
 # CI workflow build-skillcheck.yml picks up the tag,
 # builds 6 platform binaries, and publishes to GitHub Releases
@@ -258,10 +432,10 @@ All binaries are:
 
 ```bash
 # 1. Run full validation
-make all
+task all
 
 # 2. Verify binary health
-make self-check
+task self-check
 
 # 3. Check skill-generator drift (dual-copy trap)
 hwcloud-skillcheck drift check --root .
@@ -272,8 +446,8 @@ hwcloud-skillcheck validate gcl-conformance --root .
 
 ### 5.2 Pre-Release Checklist
 
-- [ ] `make all` passes (fmt + vet + test + build)
-- [ ] `make self-check` passes (binary exercises embedded fixtures)
+- [ ] `task all` passes (lint + test + build)
+- [ ] `task self-check` passes (binary exercises embedded fixtures)
 - [ ] `hwcloud-skillcheck validate --root .` — all A-class checks pass
 - [ ] `hwcloud-skillcheck drift check --root .` — no canonical/runtime drift
 - [ ] Working tree is clean (`git status`)
@@ -348,5 +522,29 @@ hwcloud ecs delete-server     # blocked by safety gate
 - `docker/README.md` — Docker sandbox details
 - `.github/workflows/validate-skills.yml` — CI validation pipeline
 - `.github/workflows/build-skillcheck.yml` — CI build + release pipeline
-- `Makefile` — build targets reference
+- `Taskfile.yml` — build targets reference
 - `docs/superpowers/` — architecture plans and specs
+
+
+### 1.6.1 No-sandbox mode (`provider_name: none`)
+
+The no-sandbox provider skips Stage-2 rerank entirely; the Router still emits
+trace metadata so audits can reason about decisions made without an embedding
+model. It is the explicit opt-out for:
+
+- locked-down production environments without egress or local model files
+- CI runs that must validate Stage-1 determinism in isolation
+- air-gapped operator workstations verifying the binary shape
+
+```json
+"embedding": {
+  "mode": "off",
+  "provider_name": "none",
+  "dim": 384
+}
+```
+
+`router embed-test` reports `rerank_mode=skipped` and exits 0 after one call
+that returns an empty vector; provider metadata is `none` with `fallback_used=false`.
+Warnings surface for leftover cloud fields (endpoint, auth_env, fallback_chain)
+so old configurations are visible during migration.

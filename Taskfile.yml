@@ -1,0 +1,45 @@
+version: '3'
+
+vars:
+  MODULE: hwcloud-skillcheck
+
+tasks:
+  all:
+    deps: [lint, test, build]
+  test:
+    cmds:
+      - go test -C {{.MODULE}} ./... -count=1
+  build:
+    cmds:
+      - go build -C {{.MODULE}} -trimpath -o bin/hwcloud-skillcheck .
+  lint:
+    cmds:
+      - go run -C {{.MODULE}} . lint go --root {{.MODULE}}
+  golden:
+    cmds:
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck golden run --root .
+  sandbox:
+    cmds:
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck check lanes --root .
+  self-check:
+    deps: [build]
+    cmds:
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret trace --self-check
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret summary --self-check
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck scan secret alarm-plan --self-check
+      - ./{{.MODULE}}/bin/hwcloud-skillcheck aggregate trace --self-check
+  deps:lock:
+    cmds:
+      - test -f deps/embed/SHA256SUMS
+      - shasum -a 256 -c deps/embed/SHA256SUMS
+  dev:
+    cmds:
+      - mkdir -p audit-results/self-test audit-results/sandbox
+      - docker-compose up hcloud-skills
+  release:
+    vars:
+      VERSION: '{{.VERSION}}'
+    cmds:
+      - test -n "{{.VERSION}}"
+      - git tag "v{{.VERSION}}"
+      - git push origin "v{{.VERSION}}"

@@ -1,0 +1,46 @@
+{
+  "router_policy_version": "v1.0.0",
+  "router_policy_candidate": "v1.1.0-shadow",
+  "policy_diff_at": "2026-07-28T09:00:00Z",
+
+  "confidence_gate": {
+    "top1_score_min": 7500,
+    "margin_min":     1500,
+    "entity_match":   ["strong"]
+  },
+
+  "scoring_weights": {
+    "input_shape_match":   3500,
+    "tag_overlap_cosine":  2500,
+    "permissions_subset":  1500,
+    "bm25f_supplement":    2500,
+    "lexicon_alias_bonus":  500,
+    "hard_filter_penalty": -10000
+  },
+
+  "embedding": {
+    "mode": "local",
+    "provider_name": "local-fasttext",
+    "dim": 384,
+    "timeout_ms": 500,
+    "fallback_chain": ["local-fasttext"]
+  },
+
+  "lexicon": {
+    "version": "v1.0.0",
+    "products": {
+      "ecs": "huaweicloud-ecs-ops",
+      "rds": "huaweicloud-rds-ops",
+      "billing": "huaweicloud-billing-ops"
+    },
+    "actions": {
+      "delete": "delete",
+      "list":   "list",
+      "create": "create"
+    },
+    "resources": {
+      "instance": "ecs:instance",
+      "database": "rds:database"
+    }
+  }
+}

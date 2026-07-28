@@ -433,9 +433,9 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 2. **操作步骤**：
    ```bash
    # push 完成后，在仓库根目录执行：
-   make release VERSION=X.Y.Z
+   task release VERSION=X.Y.Z
    ```
-   `make release` 会 `git tag` + `git push origin <tag>`，触发 CI 构建和 GitHub Release。
+   `task release` 会 `git tag` + `git push origin <tag>`，触发 CI 构建和 GitHub Release。
 
 3. **版本号规范**：遵循语义化版本（semver）
    - `X.Y.Z`：主版本.次版本.补丁版本
@@ -446,6 +446,10 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
 
 ## Hard-Won Lessons (P0 收尾 + P1 规划阶段, 2026-07-27)
+
+### L9. Restricted macOS Go cache
+
+When Go build/test hits a read-only `~/Library/Caches/go-build` error, set `GOCACHE=/tmp/hcloud-go-cache`; this changes only compiler cache location and keeps the source tree untouched.
 
 From the P0 trust-boundary close-out (commits `2b935ea`, `99996a2`, `deaf3b8`)
 and the P1+P2 spec/plan cycle. **Each rule is a fix for a real failure that
@@ -491,3 +495,22 @@ work.
 **Problem**: in the P0 cycle, two tests were red on a clean checkout (before any P0 work): `TestConfirmationRegistry_ConcurrentSafety` (flaky goroutine race) and `TestHandleFault_DecisionAutoProceed` (L4 fixture drift). After P0, both were still red. A naive reader would assume they were P0 regressions. The truth: they pre-date the spec.
 **Fix**: in every commit message, **explicitly call out** pre-existing failures (`"TestX failure is pre-existing, not caused by this commit"`). Add a `// KNOWN-FLAKY: <reason>` comment above the test so `go test -run` can filter them.
 **Rule**: a "red" test in CI is a signal, not a verdict. Every commit message should distinguish regressions from pre-existing noise.
+### L10. P2 EntityMatch heuristic is a proxy, not the spec contract
+**Problem**: `router.ConfidenceGate.EntityMatch` (`router.go:computeGate`) is derived from `ManifestScore >= 0.8 → "strong"`, `>= 0.4 → "weak"`, else `"absent"`. Spec §4.2.3 defines the field as "Whether a typed entity from the request matched a skill input/lexicon entry" — semantically different from the overlap-ratio proxy shipped today.
+**Fix**: when wiring the real entity recognizer (lexicon.products/actions/resources lookup), update `computeGate` to query it. Until then, mark the field `// heuristic: see L10` near its set-site, and document the gap in the spec changelog ("v0.3.0 partial GREEN").
+**Cost of not flagging**: a green-build narrative hides a real semantic gap that will surprise a Critic reviewing a low-overlap request.
+**Rule**: any time a contract field is "good enough for GREEN but not for spec", leave a L-numbered lesson near the set site so the next implementer (or Critic) can find it in 10 seconds.
+### L11. Sandbox network is sealed — design for offline-mode, not for "I'll just download it"
+**Problem**: this sandbox (2026-07-28 cycle) cannot reach `github.com`, `goproxy.cn`, `proxy.golang.org`, raw.githubusercontent.com, or any external host. `nc` and `ping` are blocked; only DNS queries to local stub hosts (jetbrains mirror, aliyun-oss internal, maven.hd123) resolve. The `~/Library/Caches/go-build` write is also sandboxed (L9), forcing `GOCACHE=/tmp/hcloud-go-cache`.
+**Concrete impact for P2**: cannot ship real ONNX inference in-session — `yalue/onnxruntime_go` SDK can't be fetched, `onnxruntime_c_api.h` not on disk, so cgo fails. A2.3 (rubric) remained RED with a blocker doc, not a fake stub.
+**Fix pattern**: when a task requires a network-bound dependency, do ONE of:
+  1. Vendor the dep into `hwcloud-skillcheck/vendor/` (zip + checksum) before the run, so the sandbox never has to fetch.
+  2. Implement offline-mode that does NOT require the network dep (e.g., shadow path + calibrate CLI shipped without ONNX).
+  3. Document the blocker with concrete unlock conditions and route the task to operator-side (out-of-sandbox) execution.
+**Rule**: when brainstorming says "use SDK X", verify first that X is either (a) vendored, (b) in the local module cache, or (c) the sandbox can reach its module proxy. Otherwise plan for offline-mode first.
+**Cost of not flagging**: hours wasted on import cycle or build-failure diagnosis, plus the temptation to ship a stub that breaks rubric semantics.
+
+### L12. Every sandbox/provider needs a user-facing preflight
+**Problem**: provider configuration failures otherwise surface during initialization or the first live request, often as one opaque error at a time. Operators then repeat edit/restart cycles and may accidentally place credentials in config files while troubleshooting.
+**Fix**: every provider implements a side-effect-free `Preflight(ProviderConfig) PreflightReport`. It aggregates all errors and warnings before network/native calls; every error carries `Field`, plain-language `Message`, actionable `Fix`, and a manual link when useful. Expose the same report through an operator smoke command such as `router embed-test`.
+**Rule**: a new local, cloud, container, or third-party sandbox provider is incomplete until invalid configuration is covered by preflight tests and the user manual includes copy-paste fixes. Preflight never logs secret values and never performs resource mutation.

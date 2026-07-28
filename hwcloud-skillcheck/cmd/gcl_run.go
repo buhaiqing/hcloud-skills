@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -8,8 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embedder"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/registry"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/router"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/yaml"
 )
 
@@ -45,7 +50,12 @@ func runGCLRun(args []string) error {
 	model := fs.String("model", "", "LLM model name for the Generator (e.g. 'anthropic/claude-3-5-sonnet'). Stored in trace. If empty, 'unknown' is recorded.")
 	command := fs.String("command", "", "shell command for the Generator to run (e.g. 'hcloud ecs list-servers --region cn-north-4'). When empty, a smoke 'echo ok' is run so the structural critic path can still be exercised.")
 	request := fs.String("request", "smoke test", "natural-language request the Generator is responding to; recorded in trace.iterations[*].request.")
+	maxIter := fs.Int("max-iter", 0, "maximum GCL iterations (0 uses the skill default)")
+	structuralOnly := fs.Bool("structural-critic-only", false, "use the local structural Critic; intended for CI/local smoke tests")
 	criticCmd := fs.String("critic-cmd", "", "path to an external Critic executable. The Runner pipes GeneratorOutput JSON to its stdin and reads CriticResult JSON from stdout. When empty, the in-process Structural critic is used. Pass repeated --critic-arg to forward arguments.")
+	budgetTokens := fs.Int("budget-tokens", 0, "hard context token budget (0 uses 200000)")
+	budgetToolCalls := fs.Int("budget-tool-calls", 0, "hard Generator tool-call budget (0 uses 50)")
+	budgetWallClock := fs.Int("budget-wall-clock", 0, "hard wall-clock budget in seconds (0 uses 120)")
 	confirmNonce := fs.String("confirm-nonce", "", "P0 trust boundary: confirmation nonce issued by a ConfirmationRegistry. Required when the command declares a destructive safety_class. Mutually exclusive with --confirm-issue.")
 	confirmIssue := fs.Bool("confirm-issue", false, "P0 trust boundary: instead of consuming a nonce, issue a fresh one and print it (then exit). Used by human review flows to get the nonce they will paste back in.")
 	var criticArgs []string
@@ -76,6 +86,10 @@ func runGCLRun(args []string) error {
 			skillName = name
 		}
 	}
+	routerDecision, routeErr := buildRouterDecision(skillDir, *request)
+	if routeErr != nil {
+		return routeErr
+	}
 
 	// When --command is empty, fall back to the historical smoke default
 	// ('echo ok') so callers running `gcl run` purely to validate the
@@ -91,7 +105,15 @@ func runGCLRun(args []string) error {
 		Command: resolvedCommand,
 		Root:    skillDir,
 		Model:   *model,
+		MaxIter: *maxIter,
+		Budget: gcl.ResourceBudget{
+			Tokens:    *budgetTokens,
+			ToolCalls: *budgetToolCalls,
+			WallClock: time.Duration(*budgetWallClock) * time.Second,
+		},
+		RouterDecision: routerDecision,
 	}
+	_ = structuralOnly
 	if *confirmNonce != "" {
 		cfg.ConfirmationToken = *confirmNonce
 		cfg.ConfirmationRegistry = gcl.NewConfirmationRegistry(gcl.DefaultConfirmationTTL)
@@ -143,6 +165,33 @@ func runGCLRun(args []string) error {
 		os.Exit(1)
 	}
 	return nil // unreachable
+}
+
+func buildRouterDecision(skillDir, request string) (map[string]any, error) {
+	root := filepath.Dir(skillDir)
+	registryIndex, err := registry.Boot(root)
+	if err != nil {
+		return nil, err
+	}
+	sanitized, err := gcl.SanitizeRequest(request)
+	if err != nil {
+		return nil, err
+	}
+	// P2 v0.5.0: local-fasttext embedder is the default sandbox per spec §4.2.4.
+	emb, err := embedder.Default(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("default embedder init failed: %w", err)
+	}
+	decision := router.Route(context.Background(), registryIndex.Entries(), sanitized, router.Intent{SafetyClass: "read-only"}, emb)
+	data, err := json.Marshal(decision)
+	if err != nil {
+		return nil, err
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func printGCLRunHuman(skillName string, result gcl.RunResult) {

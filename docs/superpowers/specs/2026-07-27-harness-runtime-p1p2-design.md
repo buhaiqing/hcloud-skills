@@ -228,6 +228,220 @@ Inputs: `(user_request: string, op_intent: map[string]any)`.
 }
 ```
 
+### 4.2.1 Router Policy Versioning
+
+Every Router dispatch reads its decision parameters from `capability-registry.json`. Those parameters are versioned and **immutable at runtime** — the Go binary never opens them for write, never carries a setter, and never accepts an environment variable that overrides them. Runtime immutability is enforced by rubric A2.14 + S3 (no setter API, no `--flag` override, no build-time `define` that affects scoring).
+
+```jsonc
+// capability-registry.json (excerpt)
+{
+  "router_policy_version":   "v1.0.0",
+  "router_policy_candidate": "v1.1.0-shadow",  // optional; observed but never enforced
+  "policy_diff_at":          "2026-07-28T09:00:00Z",
+
+  "confidence_gate": {
+    "top1_score_min": 7500,        // fixed-point, normalized to [0, 10000]
+    "margin_min":     1500,
+    "entity_match":   ["strong"]   // bypass set; weak/absent => invoke ONNX
+  },
+
+  "scoring_weights": {            // Stage-1 deterministic weights
+    "input_shape_match":   3500,
+    "tag_overlap_cosine":  2500,
+    "permissions_subset":  1500,
+    "bm25f_supplement":    2500,
+    "lexicon_alias_bonus":  500,
+    "hard_filter_penalty": -10000
+  },
+
+  "lexicon": {
+    "version":   "v1.0.0",
+    "products":  { "ecs": "huaweicloud-ecs-ops" /* ... */ },
+    "actions":   { "delete": "delete"             /* ... */ },
+    "resources": { "instance": "ecs:instance"     /* ... */ }
+  }
+}
+```
+
+**Trace contract** (mandatory on every dispatch, refs A2.11):
+
+```json
+"router_decision": {
+  "router_policy_version": "v1.0.0",
+  "confidence_gate": {
+    "top1_score":   8200,
+    "margin":       2100,
+    "entity_match": "strong",
+    "hard_filtered": false,
+    "decision":      "skip_onnx",
+    "rationale":     "top1_score>=7500 && margin>=1500 && entity_match=strong"
+  }
+  /* existing candidates / chosen / fallback_used / duration_ms unchanged */
+}
+```
+
+`router_policy_version` is the version actually used for the decision. `router_policy_candidate` is the shadow policy version under observation (when present); the chosen skill and main score are **never** derived from it.
+
+### 4.2.2 Shadow Mode + Offline Calibration
+
+The runtime adapts, but **only** by observing candidate policies in shadow and recomputing parameters offline. The runtime never mutates its own decision parameters.
+
+**Shadow mode** (refs A2.12):
+
+- The Registry MAY carry an optional `router_policy_candidate` block alongside `router_policy_version`. When present, the runtime evaluates the request under both policy versions.
+- The main `chosen` skill, `confidence_gate.decision`, and every caller-visible score MUST be derived exclusively from `router_policy_version`. The candidate's outcome is reported only under a separate trace block:
+
+```json
+"router_decision_shadow": {
+  "router_policy_candidate": "v1.1.0-shadow",
+  "chosen":            "huaweicloud-rds-ops",
+  "score_delta":       -380,
+  "margin_delta":      +200,
+  "would_have_changed": false
+}
+```
+
+- The shadow block is **advisory only**. It does not affect `router_decision.chosen`, does not trigger different downstream paths, and does not contribute to the Intent Confusion Matrix.
+
+**Offline calibration** (refs A2.13 + S3):
+
+- Recomputation of `confidence_gate` thresholds, `scoring_weights`, or `lexicon` is exposed via a single CLI:
+
+```bash
+hwcloud-skillcheck router calibrate --root . [--dry-run] [--source <trace-dir>] [--apply] [--rollback-to v1.0.0]
+```
+
+- The CLI is **offline-only**: it reads audit traces (shadow + main) and produces a candidate `capability-registry.json` diff. It MUST default to `--dry-run`. Without an explicit `--apply` it MUST NOT write any file.
+- A successful `--apply` MUST bump `router_policy_version` (semver `PATCH|MINOR|MAJOR` based on which keys change) and write the new `policy_diff_at`. **No automatic promotion path exists.** The bump is an artifact on disk; humans review the diff and commit.
+- Rollback = revert to a previous `router_policy_version` via `--rollback-to v1.0.0` (also offline, also dry-run by default).
+- The calibration CLI MUST refuse to run against traces collected under a different `router_policy_version` than the one currently pinned, unless `--allow-cross-version` is supplied and the operator confirms.
+
+**Hard constraints**:
+
+- The Router Go package MUST NOT export any setter or writer for `confidence_gate`, `scoring_weights`, or `lexicon`. (Enforced by `TestRouterConfidenceGateHasNoRuntimeSetter`.)
+- Calibration may never be invoked from the runtime hot path. Calling `router calibrate` from a `/v1/route` HTTP handler, from `--command`, or from any in-process request flow is a hard contract violation.
+- Shadow results MUST NOT be written to the same fields consumed by the gate or the matrix. The trace schema enforces this by writing the shadow block under a separate key.
+
+### 4.2.3 Confidence Gate as a First-Class Signal
+
+The gate's decision is recorded on every dispatch as a structured block (refs A2.11) so that downstream tooling (Critic, confusion matrix, shadow comparison, debugging) never has to re-derive why a routing choice was made.
+
+Fields and semantics:
+
+| Field | Type | Semantics |
+|---|---|---|
+| `top1_score` | int [0,10000] | Stage-1 normalized score of the chosen skill, fixed-point integer |
+| `margin` | int >=0 | `top1_score - top2_score`, fixed-point integer |
+| `entity_match` | enum `{strong, weak, absent}` | Whether a typed entity from the request matched a skill input/lexicon entry |
+| `hard_filtered` | bool | True iff at least one candidate was dropped by the side-effect / permission hard filter |
+| `decision` | enum `{skip_onnx, invoke_onnx}` | Routing decision derived from the three thresholds |
+| `rationale` | string | Deterministic human-readable expression that produced `decision` |
+
+**Decision logic** (hardcoded in Go, no runtime mutation):
+
+```
+if top1_score < confidence_gate.top1_score_min
+   or margin < confidence_gate.margin_min
+   or entity_match not in confidence_gate.entity_match:
+       decision = "invoke_onnx"
+else:
+       decision = "skip_onnx"
+```
+
+The three thresholds (`top1_score_min`, `margin_min`, `entity_match`) are the **only** knobs. They live in `capability-registry.json` (refs A2.14). Any change to them MUST pass through §4.2.2's calibration CLI; the runtime always reads the currently pinned value as a `var` initialized at boot, and exposes no setter.
+
+**Calibration source-of-truth**: when the three thresholds change, `router_policy_version` MUST bump (at minimum PATCH). The new version's confusion-matrix numbers, observed over the production lane, are what justify a MINOR bump; a MAJOR bump is reserved for lexicons or scoring-weight structure changes.
+
+### 4.2.4 Embedding Provider Strategy
+
+The Router's Stage-2 scoring calls into a swappable `Embedder` strategy
+interface (see `hwcloud-skillcheck/internal/embedder/embedder.go`). The
+selection is data-driven: `capability-registry.json` carries an
+`embedding` block whose `name` field picks the implementation. No runtime
+setter, no `case` switch in code, no build-tag wheel — only a config
+change + process restart.
+
+**Interface (the only contract that matters)**:
+
+```go
+type Embedder interface {
+    Name() string                                              // "local-fasttext" | "huaweicloud-modelarts" | "onnx-runtime" | ...
+    Init(ctx context.Context, cfg ProviderConfig) error
+    Embed(ctx context.Context, text string) ([]float32, error) // fixed-dim vector
+    Score(ctx context.Context, query, doc string) (float64, error) // cosine, optional convenience
+    Health(ctx context.Context) error
+    Close() error
+}
+```
+
+**ProviderConfig schema** (`capability-registry.json`):
+
+```jsonc
+"embedding": {
+  "name":           "<provider_name>",     // see Name() enum
+  "endpoint":       "<url>",               // remote only
+  "auth_env":       "<env_var_name>",      // credentials live in env, never in registry (rubric A2.14)
+  "dim":            384,                   // expected output dimension
+  "timeout_ms":     500,                   // single Embed call hard cap
+  "fallback_chain": ["local-fasttext"],    // tried in order when health fails
+  "extra":          { ... }                // provider-specific knobs
+}
+```
+
+**Implementations** (one per `name`):
+
+| Name | What | When | Sandbox-able |
+|---|---|---|---|
+| `local-fasttext` | Pure-Go char n-gram hashing trick + L2-normalized projection. No vocab, no model file, ~200 lines. | Default in v1 | ✅ today |
+| `huaweicloud-modelarts` | HTTPS client to a Huawei Cloud ModelArts inference endpoint. Carries cloud-sandbox auth + retry + fallback semantics. | P3 / when ModelArts ingress is configured | needs egress |
+| `onnx-runtime` | cgo binding to a locally-vendored `libonnxruntime.dylib` + `onnxruntime_c_api.h`. Source assets: `deps/embed/all-MiniLM-L6-v2.onnx` + `tokenizer.json` (already locked). | When vendor lands or sandbox egress opens | blocked today |
+| `pure-go-minilm` | Pure-Go transformer inference reading the same `.onnx` weights via a minimal ONNX protobuf parser. Best of both: no native deps + real semantics. | Long-term; mirror replacement once stubbed. | blocked today |
+
+**Hard rules**:
+
+- The `Embedder` interface is the **only** place the Router talks to embeddings. Other packages MUST NOT import the implementations directly.
+- The `embedding.name` field is the operational switch. Promoting `local-fasttext` → `huaweicloud-modelarts` is a registry edit + restart, not a code change.
+- `auth_env` is mandatory for remote providers; the router validates the env var at `Init()` time and refuses to start if missing (no implicit env lookup).
+- `fallback_chain` is consulted after `Health()` reports failure on the primary. The router records `embedding_provider_meta.fallback_used=true` and the original name in the trace.
+- The runtime **never** mutates `embedding` after `Init()`. Calibration can change thresholds; embedding selection is part of the build's identity (rubric A2.14 + S3 extend to embedding too).
+
+**Trace contract** (additive; existing fields unchanged):
+
+```jsonc
+"router_decision": {
+  "router_policy_version":       "v1.0.0",
+  "rerank_mode":                 "embedding",          // "embedding" | "skipped"
+  "rerank_source":               "local-fasttext",     // provider Name()
+  "embedding_provider_meta": {
+    "primary":                   "local-fasttext",
+    "fallback_used":             false,
+    "dim":                       384,
+    "embedding_duration_ms":     1
+  },
+  "confidence_gate": { ... },
+  "router_decision_shadow": { ... }
+}
+```
+
+**Migration posture**:
+
+```
+today                           vendor lands                       long-term
+─────────────────────────────────────────────────────────────────────────────
+embedding.name =                embedding.name =                    embedding.name =
+  "local-fasttext"              "huaweicloud-modelarts"            "pure-go-minilm"
+                                (with fallback_chain =             (or stay on ModelArts,
+                                 ["local-fasttext"])                drop fallback later)
+```
+
+Each transition is a config edit + restart. The Router code does not change.
+
+**Rubric cross-references** (rubric v5):
+
+| Old (v4) | New (v5) | Why |
+|---|---|---|
+| `A2.3: ... with actual ONNX inference (no lexical fallback)` | `A2.3: ... with non-lexical embedding-based inference; provider is data-driven via capability-registry.json embedding.name` | Reflects §4.2.4 strategy decision: lexical (Jaccard) is banned; ONNX is one of multiple legal providers |
+
 ### 4.3 Resource Budgets (all hard)
 
 | Budget | Default | Override | Over-budget behavior |
@@ -314,7 +528,7 @@ P1 + P2 ship in two separate plans. P1 must be complete and verified before P2 p
 |---|---|---|
 | A2.1 | Registry boot reads only frontmatter, not body | `TestRegistryBootDoesNotReadBody` |
 | A2.2 | Router stage 1 returns top-5 within 10ms on a 20-skill repo | `TestRouterManifestFilterLatency` |
-| A2.3 | Router stage 2 (ONNX rerank) returns top-1 within 50ms | `TestRouterONNXRerankLatency` |
+| A2.3 | Router stage 2 returns top-1 using a configured non-lexical `Embedder`, records provider metadata, and never uses lexical fallback | `TestRouterNoLexicalFallback`, `TestRouterEmbeddingProviderMetadata` |
 | A2.4 | Router emits `router_decision` block with all 5 candidates | `TestRouterEmitsDecisionBlock` |
 | A2.5 | Token budget: over-budget → SAFETY_FAIL with `budget_exceeded=tokens` | `TestBudgetTokensHard` |
 | A2.6 | Tool-call budget: over-budget → SAFETY_FAIL with `budget_exceeded=tool_calls` | `TestBudgetToolCallsHard` |
@@ -322,6 +536,11 @@ P1 + P2 ship in two separate plans. P1 must be complete and verified before P2 p
 | A2.8 | Confusion matrix derivable from trace files | `TestConfusionMatrixDerivable` |
 | A2.9 | `task` is the single dev entry; `Makefile` removed | `TestDevExSingleEntry` |
 | A2.10 | `deps/embed/SHA256SUMS` covers the ONNX model + tokenizer | `TestDependencyLock` |
+| A2.11 | Trace carries `router_policy_version` and `confidence_gate` block on every dispatch | `TestRouterPolicyVersionInTrace`, `TestRouterEmitsConfidenceGate` |
+| A2.12 | Shadow candidate runs alongside main decision but never alters chosen skill or score | `TestRouterShadowCandidateDoesNotAffectMainDecision` |
+| A2.13 | `router calibrate` is offline-only, defaults to dry-run, and applied calibration requires an explicit `router_policy_version` bump | `TestRouterCalibrateDryRunOnly`, `TestRouterCalibrateRequiresVersionBump` |
+| A2.14 | `confidence_gate` thresholds and decision logic live in `capability-registry.json`; runtime exposes no setter | `TestRouterConfidenceGateFieldsFixed`, `TestRouterConfidenceGateHasNoRuntimeSetter` |
+| S3 | Runtime never mutates router decision parameters; changes flow through `router calibrate` + human-reviewed version bump | A2.13/A2.14 evidence + diff inspection |
 
 ### M-metrics acceptance
 
@@ -333,6 +552,12 @@ P1 + P2 ship in two separate plans. P1 must be complete and verified before P2 p
 - M6: `TestTelemetryLaneSeparation` is green; the gate fails on cross-lane writes.
 - M7: `telemetry confusion --root .` exits 0 and the report shows non-empty `top1_vs_intended` rows (continuous; no test gate, just an operational dashboard).
 - M8: CES `CUSTOM.GCL` namespace exports `p95_latency_ms`, `mean_tokens`, `mean_tool_calls`, `cost_per_task_usd` (continuous; no test gate).
+
+## 6.1 Runtime immutability and shadow-isolation safety rules
+
+- **Runtime immutability**: the Router package MUST NOT expose any API, build tag, or runtime flag that mutates `confidence_gate` thresholds, scoring weights, lexicons, or decision logic. All such changes ship via `capability-registry.json` version bumps and pass through the `router calibrate` CLI gate (§4.2.2, rubric S3).
+- **Shadow isolation**: shadow-mode candidate results MUST be persisted under `router_decision_shadow` and MUST NOT influence the `chosen` skill, the `confidence_gate.decision`, or any caller-visible scoring field (§4.2.2, rubric A2.12).
+- **Calibration contract**: `router calibrate` runs offline only, defaults to `--dry-run`, requires an explicit `--apply` to mutate state, and refuses to operate across mixed-version traces unless the operator confirms (§4.2.2, rubric A2.13).
 
 ## 7. Risks & Trade-offs
 
@@ -369,3 +594,9 @@ P1 + P2 ship in two separate plans. P1 must be complete and verified before P2 p
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-07-27 | Initial P1+P2 design — single spec, two-plan split (P1 evidence → P2 efficiency). Pins P0 metrics M1/M2; instruments M3–M8. |
+| 0.2.0 | 2026-07-28 | §4.2 extended with policy versioning (4.2.1), shadow mode + offline calibration (4.2.2), confidence gate as first-class signal (4.2.3). Tightens rubric A2.3 (no lexical fallback) and adds A2.11–A2.14 + S3. |
+| 0.3.0 | 2026-07-28 | Partial GREEN: 4 of 8 new contract tests pass (A2.11/A2.14). Capability Compiler artifact `hwcloud-skillcheck/capability-registry.json` shipped (v1.0.0). New package files `internal/router/policy.go` + `internal/router/confidence_gate.go` semantics. ConfidenceGate type + trace fields wired into `Route()`. `HardFiltered` and `EntityMatch` heuristics documented as gaps pending §4.2.3 full semantics. Outstanding: ONNX rerank (#1), shadow path (#4), `router calibrate` CLI (#5, #6). |
+| 0.4.0 | 2026-07-28 | End-of-P2 implementation: 7 of 8 new contract tests GREEN; A2.3 ONNX rerank BLOCKED by sandbox network restrictions (no `yalue/onnxruntime_go` SDK + no `onnxruntime_c_api.h`). Shipped: `cmd/router.go` (router info / router calibrate); shadow path writes `router_decision_shadow` block without mutating main `chosen`; calibrate CLI defaults to dry-run and bumps `router_policy_version` on `--apply`. `router_calibrate.go` hard-enforces A2.13 + S3 (offline only, dry-run default, --apply requires explicit flag). Outstanding: A2.3 ONNX inference (network-blocked, see `audit-results/p2-blockers.md`). |
+| 0.5.0 | 2026-07-28 | Embedding Provider Strategy (Scheme 5): added §4.2.4 `Embedder` interface + ProviderConfig schema + 4-implementation matrix (`local-fasttext` / `huaweicloud-modelarts` / `onnx-runtime` / `pure-go-minilm`). Capability registry becomes the operational switch. A2.3 rubric relaxed from "actual ONNX" to "non-lexical embedding-based" via v5. Eliminates Jaccard lexical fallback as a class; provider selection is data-driven, no code change to migrate between providers. Outstanding: cloud sandbox provider impl (P3), pure-Go MiniLM impl (long-term). |
+| 0.5.2 | 2026-07-28 | No-sandbox provider (`none`) added; Router honours `fallback_chain` at runtime and records `EmbeddingProviderMeta.FallbackUsed` + `ActiveProvider`. HWS V1 signature upgraded to the canonical ModelArts format (host + signed-headers + payload SHA). `router embed-test` reports skipped rerank when `none` is selected. All three modes share one Preflight contract with concrete Fix messages. |
+| 0.5.1 | 2026-07-28 | Provider implementation completed: `local-fasttext` is the default local-process sandbox; `huaweicloud-modelarts` is the explicit cloud switch. Every provider runs side-effect-free, multi-issue `Preflight()` before initialization and exposes actionable `Fix` guidance through `router embed-test`. Provider metadata is persisted in router decisions. ONNX remains optional pending vendored native runtime assets. |

@@ -233,9 +233,10 @@ See [Deployment Guide](docs/deployment-guide.md) for:
 ```bash
 git clone https://github.com/buhaiqing/hcloud-skills.git
 cd hcloud-skills
-make build          # writes ./bin/hwcloud-skillcheck
-make test           # full Go test suite
-make release VERSION=vX.Y.Z   # cut a release (pushes tag, triggers CI artifacts)
+go install github.com/go-task/task/v3/cmd/task@latest
+task build          # writes ./hwcloud-skillcheck/bin/hwcloud-skillcheck
+task test           # full Go test suite
+task release VERSION=X.Y.Z    # cut a release (pushes tag, triggers CI artifacts)
 ```
 
 ### Verify Installation
@@ -257,6 +258,43 @@ hwcloud-skillcheck validate --root ./my-skills
 # Run specific checks
 hwcloud-skillcheck check markdown-links --root .
 hwcloud-skillcheck scan secret trace --self-check
+
+### Router Policy & Calibration (P2)
+
+From P2 efficiency spec §4.2, the Skill Router reads its decision parameters from a
+versioned registry file at runtime; the binary carries no setter for them
+(rubric A2.14, S3).
+
+```bash
+# The file ships in the repo at hwcloud-skillcheck/capability-registry.json
+export HC_CAPABILITY_REGISTRY="$(pwd)/hwcloud-skillcheck/capability-registry.json"
+
+# Inspect current policy:
+hwcloud-skillcheck router info --root .
+
+# Validate the default local sandbox and run one embedding smoke call:
+hwcloud-skillcheck router embed-test --root . --text "list ecs servers"
+
+# Cloud is opt-in. Preflight checks endpoint, credential env, dimension and timeout
+# before any network request and prints a concrete Fix for every problem:
+HC_EMBED_PROVIDER=huaweicloud-modelarts \
+  hwcloud-skillcheck router embed-test --root . --text "list ecs servers"
+
+# Calibration (offline only, dry-run by default — rubric A2.13):
+hwcloud-skillcheck router calibrate --root .                              # dry-run (default)
+hwcloud-skillcheck router calibrate --root . --apply                      # commit a bump (default: patch)
+hwcloud-skillcheck router calibrate --root . --apply --bump minor         # structural change
+hwcloud-skillcheck router calibrate --root . --apply --rollback-to v1.0.0 # revert to v1.0.0
+hwcloud-skillcheck router calibrate --root . --source audit-results/      # trace-derived suggestions (advisory)
+```
+
+The default embedding sandbox is `local-fasttext`: pure Go, in-process, no network or
+credential setup. `huaweicloud-modelarts` is an explicit cloud switch configured by the
+registry or `HC_EMBED_PROVIDER`; every provider runs `Preflight()` before initialization.
+ONNX remains an optional future provider blocked on vendored native runtime assets, not a
+runtime prerequisite. See `docs/deployment-guide.md` §1.6 for configuration and friendly
+preflight troubleshooting, and the P2 design §4.2.4 for provider semantics. The Router supports three provider modes: local (`local-fasttext`, the default), cloud (`huaweicloud-modelarts` for Huawei Cloud ModelArts), and off (`none` for environments that must skip Stage-2 rerank). `fallback_chain` is honoured at runtime; when the primary provider fails, the Router falls back and records `fallback_used=true` plus the active provider in trace metadata.
+
 ```
 
 ### B-Class Validation Commands (GCL Contract Checks)

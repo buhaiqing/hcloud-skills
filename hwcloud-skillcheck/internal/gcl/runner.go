@@ -146,6 +146,7 @@ type GCLTrace struct {
 	Model              string           `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
 	Request            string           `json:"request"`
 	OperationIntent    map[string]any   `json:"operation_intent,omitempty"`
+	RouterDecision     map[string]any   `json:"router_decision,omitempty"`
 	RubricVersion      string           `json:"rubric_version"`
 	MaskedFields       []string         `json:"masked_fields"`
 	DurationMs         int              `json:"duration_ms"`
@@ -153,6 +154,7 @@ type GCLTrace struct {
 	ResourceContext    map[string]any   `json:"resource_context,omitempty"`
 	OpsEfficiency      *OpsEfficiency   `json:"ops_efficiency,omitempty"`
 	CostAttribution    *CostAttribution `json:"cost_attribution,omitempty"`
+	BudgetExceeded     string           `json:"budget_exceeded,omitempty"`
 	Iterations         []Iteration      `json:"iterations"`
 	Final              *FinalResult     `json:"final,omitempty"`
 	// SanitizedRequest is a masked form of Request safe to surface to the
@@ -203,6 +205,8 @@ type RunConfig struct {
 	Stderr          io.Writer
 	Root            string // repository root for audit-results/
 	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
+	Budget          ResourceBudget
+	RouterDecision  map[string]any
 
 	// P0 trust boundary wiring (gcl-spec §14):
 	ConfirmationToken    string                // nonce issued by ConfirmationRegistry; required when intent.safety_class == "destructive"
@@ -210,10 +214,17 @@ type RunConfig struct {
 	RetryBuilder         RetryPromptBuilder    // nil → next iter runs the same Command unchanged
 }
 
+type ResourceBudget struct {
+	Tokens    int
+	ToolCalls int
+	WallClock time.Duration
+}
+
 // RunResult is the output of a GCL Run.
 type RunResult struct {
-	ExitCode  int    // 0=PASS, 1=MAX_ITER, 2=usage, 3=SAFETY_FAIL, 124=timeout
-	TracePath string // absolute path to the persisted trace JSON
+	ExitCode       int    // 0=PASS, 1=MAX_ITER, 2=usage, 3=SAFETY_FAIL, 124=timeout
+	TracePath      string // absolute path to the persisted trace JSON
+	BudgetExceeded string
 }
 
 // ---- Public API ----------------------------------------------------------
@@ -234,6 +245,34 @@ func rcStderr(cfg *RunConfig) io.Writer {
 	return os.Stderr
 }
 
+func resolvedBudget(budget ResourceBudget) ResourceBudget {
+	if budget.Tokens == 0 {
+		budget.Tokens = 200_000
+	}
+	if budget.ToolCalls == 0 {
+		budget.ToolCalls = 50
+	} else if budget.ToolCalls < 0 {
+		budget.ToolCalls = 0
+	}
+	if budget.WallClock == 0 {
+		budget.WallClock = 120 * time.Second
+	}
+	return budget
+}
+
+func failBudget(cfg *RunConfig, trace *GCLTrace, start time.Time, kind string) RunResult {
+	trace.BudgetExceeded = kind
+	trace.Final = &FinalResult{Status: "SAFETY_FAIL", Iter: len(trace.Iterations), Unresolved: []string{"budget_exceeded=" + kind}}
+	trace.DurationMs = int(time.Since(start).Milliseconds())
+	FinalizeFinopsAiops(trace)
+	path, err := PersistTrace(trace, cfg.Root)
+	if err != nil {
+		fmt.Fprintf(rcStderr(cfg), "warning: PersistTrace failed: %v\n", err)
+	}
+	fmt.Fprintf(rcStderr(cfg), "SAFETY_FAIL budget_exceeded=%s — trace: %s\n", kind, path)
+	return RunResult{ExitCode: ExitSafety, TracePath: path, BudgetExceeded: kind}
+}
+
 // Run executes the GCL loop: Generator → Critic → Orchestrator.
 // It returns when a PASS or SAFETY_FAIL decision is reached, or MAX_ITER is exhausted.
 //
@@ -250,6 +289,7 @@ func rcStderr(cfg *RunConfig) io.Writer {
 // correct for tests but incorrect in production.
 func Run(cfg RunConfig) RunResult {
 	startTime := time.Now()
+	budget := resolvedBudget(cfg.Budget)
 
 	// Resolve Critic once. Callers that leave cfg.Critic nil get
 	// the in-process Structural critic (the historical default).
@@ -298,9 +338,17 @@ func Run(cfg RunConfig) RunResult {
 		Request:            cfg.Request,
 		SanitizedRequest:   sanitized,
 		OperationIntent:    opIntent,
+		RouterDecision:     cfg.RouterDecision,
 		RubricVersion:      "v1",
 		MaskedFields:       []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
 		Iterations:         []Iteration{},
+	}
+	estimatedTokens := (len(cfg.Request) + len(cfg.Command) + 3) / 4
+	if estimatedTokens > budget.Tokens {
+		return failBudget(&cfg, &trace, startTime, "tokens")
+	}
+	if budget.ToolCalls == 0 {
+		return failBudget(&cfg, &trace, startTime, "tool_calls")
 	}
 
 	// P0 §14.3 — operation_intent schema validation BEFORE sanitization,
@@ -329,12 +377,23 @@ func Run(cfg RunConfig) RunResult {
 		return RunResult{ExitCode: ExitSafety}
 	}
 
-	timeout := cfg.Timeout
+	timeout := time.Duration(cfg.Timeout) * time.Second
 	if timeout == 0 {
-		timeout = 120
+		timeout = 120 * time.Second
 	}
 
 	for iteration := 1; iteration <= maxIter; iteration++ {
+		if iteration > budget.ToolCalls {
+			return failBudget(&cfg, &trace, startTime, "tool_calls")
+		}
+		remaining := budget.WallClock - time.Since(startTime)
+		if remaining <= 0 {
+			return failBudget(&cfg, &trace, startTime, "wall_clock")
+		}
+		commandTimeout := timeout
+		if remaining < commandTimeout {
+			commandTimeout = remaining
+		}
 		generatorStart := time.Now()
 		// P0 §14.2 — on retries, hand the previous masked output + Critic
 		// verdict to the RetryBuilder so the LLM can repair instead of
@@ -343,11 +402,14 @@ func Run(cfg RunConfig) RunResult {
 		if iteration > 1 && cfg.RetryBuilder != nil && len(trace.Iterations) > 0 {
 			prev := trace.Iterations[len(trace.Iterations)-1]
 			prompt := cfg.RetryBuilder.Build(prev.Generator, prev.Critic, iteration)
-			generator = runCommand(prompt, timeout)
+			generator = runCommand(prompt, commandTimeout)
 		} else {
-			generator = runCommand(cfg.Command, timeout)
+			generator = runCommand(cfg.Command, commandTimeout)
 		}
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
+		if generator.ExitCode == ExitTimeout && commandTimeout == remaining {
+			return failBudget(&cfg, &trace, startTime, "wall_clock")
+		}
 
 		// Critic evaluates the Generator output. Default is the
 		// in-process Structural critic; callers may inject a custom
@@ -665,7 +727,7 @@ func hasCredentialLeak(text string) bool {
 // contains a TIMEOUT message.
 //
 // Mirrors run_command() in gcl_runner.py.
-func runCommand(command string, timeoutSecs int) GeneratorOutput {
+func runCommand(command string, timeout time.Duration) GeneratorOutput {
 	maskedCmd := MaskSecrets([]byte(command))
 
 	// Bound the captured stdout / stderr. A noisy generator (a hung
@@ -681,7 +743,6 @@ func runCommand(command string, timeoutSecs int) GeneratorOutput {
 	stdout := cappedWriter{cap: maxCaptureBytes}
 	stderr := cappedWriter{cap: maxCaptureBytes}
 
-	timeout := time.Duration(timeoutSecs) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -721,7 +782,7 @@ func runCommand(command string, timeoutSecs int) GeneratorOutput {
 		return GeneratorOutput{
 			Command:       maskedCmd,
 			ExitCode:      ExitTimeout, // 124 — UNIX convention for timeout
-			ResultExcerpt: fmt.Sprintf("TIMEOUT after %ds", timeoutSecs),
+			ResultExcerpt: fmt.Sprintf("TIMEOUT after %s", timeout),
 			StdoutLen:     0,
 			StderrLen:     0,
 			HasLeak:       false,

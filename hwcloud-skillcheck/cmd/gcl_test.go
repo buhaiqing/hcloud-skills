@@ -46,6 +46,11 @@ func TestGCLRunHelp(t *testing.T) {
 	if !contains(got, "-root") && !contains(got, "hwcloud-skillcheck gcl run") {
 		t.Errorf("gcl run --help output unexpected:\n%s", got)
 	}
+	for _, want := range []string{"-budget-tokens", "-budget-tool-calls", "-budget-wall-clock", "-max-iter", "-structural-critic-only"} {
+		if !contains(got, want) {
+			t.Errorf("gcl run help missing %q:\n%s", want, got)
+		}
+	}
 }
 
 func TestGCLAlarmHelp(t *testing.T) {
