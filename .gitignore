@@ -260,3 +260,4 @@ failure_patterns.json
 deps/embed/*
 !deps/embed/SHA256SUMS
 .l4-memory/
+dist/
