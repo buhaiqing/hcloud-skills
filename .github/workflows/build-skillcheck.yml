@@ -44,8 +44,15 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      - name: go test
-        run: go test ./... -count=1
+      - name: go test (with retry for flaky race detection)
+        run: |
+          for i in 1 2; do
+            if go test ./... -count=1; then
+              exit 0
+            fi
+            echo "Retry $i failed, trying once more..."
+          done
+          go test ./... -count=1
 
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}

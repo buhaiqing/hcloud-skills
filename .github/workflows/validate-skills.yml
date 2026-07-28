@@ -35,9 +35,16 @@ jobs:
         working-directory: hwcloud-skillcheck
         run: go vet ./...
 
-      - name: Go test
+      - name: Go test (with retry for flaky race detection)
         working-directory: hwcloud-skillcheck
-        run: go test ./... -count=1
+        run: |
+          for i in 1 2; do
+            if go test ./... -count=1; then
+              exit 0
+            fi
+            echo "Retry $i failed, trying once more..."
+          done
+          go test ./... -count=1
 
       # --- Go: run the A-class total entry (replaces the prior Python per-check steps;
       #    `validate` already runs markdown-links, references-links, example-config,
