@@ -30,31 +30,56 @@ type OutcomeRecord struct {
 	GCLDecision  string `json:"gcl_decision"`
 }
 
+// outcomeKeyCacheSize is the per-(skill, action) RecentOutcomes window
+// (Eng-T4 / T-4). Matches trustOutcomeMaxRecords so trust/healing hot paths
+// answer from memory after the first disk scan.
+const outcomeKeyCacheSize = 100
+
 // OutcomeMemory is an append-only outcome store backed by a single JSONL file.
+//
+// RecentOutcomes keeps an in-memory cache of the newest outcomeKeyCacheSize
+// records per (skill, action), filled on first read and updated on Record.
+// PruneOlderThan clears the cache. MatchOutcomes still scans the file (rarer,
+// lookback/hash filtered).
 type OutcomeMemory struct {
 	path string
 	mu   sync.Mutex
+	// keyCache maps skill\x00action → records newest-first, capped at
+	// outcomeKeyCacheSize. Missing key = cold (not yet loaded from disk).
+	keyCache map[string][]OutcomeRecord
+	// fullScans counts JSONL full-file parses (tests / light observability).
+	fullScans int
 }
 
 // NewOutcomeMemory ensures <root>/.l4-memory/ exists and returns a store
 // pointing at <root>/.l4-memory/outcomes.jsonl. Auto-prunes records older
 // than 90 days on first open.
 func NewOutcomeMemory(root string) (*OutcomeMemory, error) {
-	dir := filepath.Join(root, ".l4-memory")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	dir, err := EnsureMemoryDir(root)
+	if err != nil {
 		return nil, fmt.Errorf("outcome memory: mkdir: %w", err)
 	}
-	mem := &OutcomeMemory{path: filepath.Join(dir, "outcomes.jsonl")}
+	mem := &OutcomeMemory{
+		path:     filepath.Join(dir, "outcomes.jsonl"),
+		keyCache: map[string][]OutcomeRecord{},
+	}
 	if _, err := mem.PruneOlderThan(time.Now().Add(-90 * 24 * time.Hour)); err != nil {
 		return nil, fmt.Errorf("outcome memory: initial prune: %w", err)
 	}
 	return mem, nil
 }
 
+func outcomeCacheKey(skill, action string) string {
+	return skill + "\x00" + action
+}
+
 // Record appends one OutcomeRecord as a single JSON line.
 // fsync is intentionally NOT called per-record — the append-only file is
 // recovered by PruneOlderThan or by readAll which scans forward. Per-record
 // fsync would tank write throughput (NFR-3: >= 1000 records/s).
+//
+// When a (skill, action) cache entry is warm, the new record is prepended
+// (newest-first) and trimmed to outcomeKeyCacheSize — no invalidation wipe.
 func (m *OutcomeMemory) Record(r OutcomeRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -70,7 +95,19 @@ func (m *OutcomeMemory) Record(r OutcomeRecord) error {
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return fmt.Errorf("outcome memory: write: %w", err)
 	}
+	k := outcomeCacheKey(r.Skill, r.Action)
+	if cached, ok := m.keyCache[k]; ok {
+		m.keyCache[k] = trimNewestFirst(append([]OutcomeRecord{r}, cached...), outcomeKeyCacheSize)
+	}
 	return nil
+}
+
+// FullScans returns how many times the JSONL file was fully parsed.
+// Intended for tests proving the RecentOutcomes cache avoids re-reads.
+func (m *OutcomeMemory) FullScans() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fullScans
 }
 
 // readAll parses the entire JSONL file. Malformed lines are skipped silently.
@@ -78,6 +115,12 @@ func (m *OutcomeMemory) Record(r OutcomeRecord) error {
 func (m *OutcomeMemory) readAll() ([]OutcomeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.readAllUnlocked()
+}
+
+// readAllUnlocked parses the JSONL file. Caller must hold m.mu.
+func (m *OutcomeMemory) readAllUnlocked() ([]OutcomeRecord, error) {
+	m.fullScans++
 	raw, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -103,31 +146,51 @@ func (m *OutcomeMemory) readAll() ([]OutcomeRecord, error) {
 }
 
 // RecentOutcomes returns up to n records matching (skill, action), most
-// recent first. n <= 0 returns all matching records.
+// recent first.
+//
+// n > 0: served from a per-key cache of the newest outcomeKeyCacheSize
+// matches (first call scans disk once; later calls + Record hit memory).
+// n <= 0: full-file scan returning every match (uncapped; not served from
+// the size-limited cache).
 func (m *OutcomeMemory) RecentOutcomes(skill, action string, n int) ([]OutcomeRecord, error) {
-	all, err := m.readAll()
-	if err != nil {
-		return nil, err
-	}
-	var match []OutcomeRecord
-	for _, r := range all {
-		if r.Skill == skill && r.Action == action {
-			match = append(match, r)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if n <= 0 {
+		all, err := m.readAllUnlocked()
+		if err != nil {
+			return nil, err
 		}
+		match := filterSkillAction(all, skill, action)
+		sortNewestFirst(match)
+		return append([]OutcomeRecord(nil), match...), nil
 	}
-	sort.SliceStable(match, func(i, j int) bool {
-		return match[i].Timestamp > match[j].Timestamp
-	})
-	if n > 0 && len(match) > n {
-		match = match[:n]
+
+	k := outcomeCacheKey(skill, action)
+	cached, ok := m.keyCache[k]
+	if !ok {
+		all, err := m.readAllUnlocked()
+		if err != nil {
+			return nil, err
+		}
+		cached = filterSkillAction(all, skill, action)
+		sortNewestFirst(cached)
+		if len(cached) > outcomeKeyCacheSize {
+			cached = cached[:outcomeKeyCacheSize]
+		}
+		m.keyCache[k] = append([]OutcomeRecord(nil), cached...)
 	}
-	return match, nil
+	return cloneOutcomes(cached, n), nil
 }
 
 // MatchOutcomes returns records matching (skill, action, contextHash) whose
 // Timestamp is within `lookback` of now. lookback <= 0 means "no time filter".
+// Always reads from disk (hash/lookback queries are not covered by the
+// per-key recent cache).
 func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookback time.Duration) ([]OutcomeRecord, error) {
-	all, err := m.readAll()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	all, err := m.readAllUnlocked()
 	if err != nil {
 		return nil, err
 	}
@@ -148,20 +211,20 @@ func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookbac
 		}
 		match = append(match, r)
 	}
-	sort.SliceStable(match, func(i, j int) bool {
-		return match[i].Timestamp > match[j].Timestamp
-	})
+	sortNewestFirst(match)
 	return match, nil
 }
 
 // PruneOlderThan drops records whose Timestamp is strictly before cutoff.
 // Returns the number of records removed. Safe to call on an empty file.
 // Holds m.mu across the entire read→write→rename sequence to prevent
-// data loss: a concurrent Record() between readAll and rename would
+// data loss: a concurrent Record() between read and rename would
 // otherwise be silently dropped when the rename overwrites the file.
+// Clears the RecentOutcomes key cache.
 func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.keyCache = map[string][]OutcomeRecord{}
 	raw, err := os.ReadFile(m.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -172,6 +235,8 @@ func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
 	if len(raw) == 0 {
 		return 0, nil
 	}
+	// Count as a full scan (parse every line).
+	m.fullScans++
 	kept := make([]OutcomeRecord, 0, 16)
 	dropped := 0
 	for _, line := range bytes.Split(raw, []byte{'\n'}) {
@@ -230,4 +295,34 @@ func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
 		return dropped, fmt.Errorf("outcome memory: prune rename: %w", err)
 	}
 	return dropped, nil
+}
+
+func filterSkillAction(all []OutcomeRecord, skill, action string) []OutcomeRecord {
+	var match []OutcomeRecord
+	for _, r := range all {
+		if r.Skill == skill && r.Action == action {
+			match = append(match, r)
+		}
+	}
+	return match
+}
+
+func sortNewestFirst(match []OutcomeRecord) {
+	sort.SliceStable(match, func(i, j int) bool {
+		return match[i].Timestamp > match[j].Timestamp
+	})
+}
+
+func trimNewestFirst(recs []OutcomeRecord, n int) []OutcomeRecord {
+	if n > 0 && len(recs) > n {
+		return recs[:n]
+	}
+	return recs
+}
+
+func cloneOutcomes(cached []OutcomeRecord, n int) []OutcomeRecord {
+	if n > 0 && len(cached) > n {
+		cached = cached[:n]
+	}
+	return append([]OutcomeRecord(nil), cached...)
 }

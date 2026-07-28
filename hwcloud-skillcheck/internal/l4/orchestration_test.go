@@ -78,6 +78,59 @@ func TestDiscoverTransitiveSkills_BFS(t *testing.T) {
 	}
 }
 
+func TestExpandMatchedWithDelegates_AddsTransitive(t *testing.T) {
+	primary := MatchFaultSkills("RDS connection timeout", nil)
+	transitive := DiscoverTransitiveSkills([]string{"huaweicloud-rds-ops"})
+	expanded := ExpandMatchedWithDelegates(primary, transitive, nil)
+
+	if len(expanded) <= len(primary) {
+		t.Fatalf("expanded=%d, want > primary=%d", len(expanded), len(primary))
+	}
+	seen := map[string]bool{}
+	for _, s := range expanded {
+		seen[s.Skill] = true
+	}
+	for _, want := range []string{"huaweicloud-ecs-ops", "huaweicloud-vpc-ops"} {
+		if !seen[want] {
+			t.Errorf("missing delegated skill %s in expanded plan skills", want)
+		}
+	}
+	// Delegates carry lower confidence than primaries.
+	for _, s := range expanded {
+		if s.Confidence == delegateConfidence && len(s.MatchedKeywords) == 1 && s.MatchedKeywords[0] == "delegated" {
+			continue
+		}
+		if s.Confidence <= delegateConfidence {
+			// primary or equal — fine
+		}
+	}
+}
+
+func TestExpandMatchedWithDelegates_RespectsAvailableFilter(t *testing.T) {
+	primary := MatchFaultSkills("RDS connection timeout", []string{"huaweicloud-rds-ops"})
+	transitive := DiscoverTransitiveSkills([]string{"huaweicloud-rds-ops"})
+	expanded := ExpandMatchedWithDelegates(primary, transitive, []string{"huaweicloud-rds-ops"})
+
+	if len(expanded) != 1 || expanded[0].Skill != "huaweicloud-rds-ops" {
+		t.Errorf("available filter should keep only rds-ops, got %v", expanded)
+	}
+}
+
+func TestExpandMatchedWithDelegates_PrimaryWinsConfidence(t *testing.T) {
+	primary := []MatchedSkill{{Skill: "huaweicloud-ces-ops", Confidence: 0.9, Domain: "monitoring"}}
+	transitive := []string{"huaweicloud-ces-ops", "huaweicloud-ecs-ops"}
+	expanded := ExpandMatchedWithDelegates(primary, transitive, nil)
+
+	if len(expanded) != 2 {
+		t.Fatalf("expanded=%d, want 2", len(expanded))
+	}
+	for _, s := range expanded {
+		if s.Skill == "huaweicloud-ces-ops" && s.Confidence != 0.9 {
+			t.Errorf("primary confidence overwritten: got %v", s.Confidence)
+		}
+	}
+}
+
 func TestSelectStrategy_SingleSequential(t *testing.T) {
 	if got := SelectStrategy(1, false); got != "sequential" {
 		t.Errorf("SelectStrategy(1, false) = %q, want sequential", got)

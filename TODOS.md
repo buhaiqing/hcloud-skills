@@ -6,63 +6,19 @@
 
 ## P0 — Blocker
 
-(none right now; all P1 ship work is done)
+(none right now)
 
 ## P1 — Next release
 
-### T-1: Trust Phase 3 deprecate OpHistory
-- **Provenance**: ADR-0009 §Migration
-- **Effort**: M
-- **What**: Mark `ComputeTrustScore([]OpHistory)` deprecated; route new call sites through `ComputeTrustScoreFromOutcome`; curator pipeline becomes back-fill only.
-
-### T-2: Trust Phase 4 remove OpHistory
-- **Provenance**: ADR-0009 §Migration
-- **Effort**: M
-- **What**: Remove curator pipeline entirely. Trust single source = outcome memory. Drop `OpHistory` type.
-
-### T-3: L4→L5 trajectory: cross-skill orchestration
-- **Provenance**: ADR-0009 §Open follow-ups; L4 Orchestrator gap
-- **Effort**: L
-- **What**: Topology graph exists (topology.go) but no runtime cross-skill delegation. Wire it through `HandleFault` to dispatch a task across multiple `huaweicloud-*-ops` skills.
+(none right now)
 
 ## P2 — Next quarter
 
-### T-4: Performance — OutcomeMemory.RecentOutcomes O(N) read
-- **Provenance**: Eng-review Eng-T4 (2026-07-28)
-- **Effort**: M
-- **What**: Current implementation reads entire JSONL file per call. With 1k records/s writes, file grows fast; reads will bottleneck. Add in-memory LRU cache (last 100 records) invalidated on `Record`, or document and accept at scale.
-
-### T-5: Performance — ContextMemory batched mutations
-- **Provenance**: Eng-review Eng-T5 (2026-07-28)
-- **Effort**: S
-- **What**: Currently rewrites entire JSON on every mutation. Batch via `Save()` only at task-finalize time. Mutation API queues deltas.
-
-### T-6: hashContext strip volatile args
-- **Provenance**: Eng-review Eng-m1 (2026-07-28)
-- **Effort**: S
-- **What**: If `step.Args` includes timestamps/IDs, every call has unique hash — defeating MatchOutcomes. Strip known-volatile args before hashing; document which fields are stable.
-
-### T-7: preFetchFailurePatterns shared helper
-- **Provenance**: Eng-review Eng-M2 (2026-07-28)
-- **Effort**: S
-- **What**: `preFetchPatterns` is byte-similar in `execution.go` and `orchestrator.go` (50 lines, two mutex names, both `SetLimit(NumCPU)`). Extract to `persistence.go`.
+(none right now)
 
 ## P3 — Someday / L4→L5
 
-### T-8: ADR-0011: cross-skill delegation protocol
-- **Provenance**: T-3 above
-- **Effort**: L
-- **What**: Define how one skill invokes another (sync vs async, context propagation, error handling). Needed before cross-skill orchestration can ship.
-
-### T-9: Healing decision observability — Prometheus exporter
-- **Provenance**: ADR-0009 §Open follow-ups
-- **Effort**: M
-- **What**: Current counters are in-process. Add a `metrics` subcommand that exposes them in Prometheus text format on `:9090/metrics`. Optional scraping by ops.
-
-### T-10: `EnsureMemoryDir()` shared helper
-- **Provenance**: AGENTS.md §Open follow-ups
-- **Effort**: S
-- **What**: Both `outcome_memory.go` and `context_memory.go` `mkdir .l4-memory` (mode 0700). Extract to a shared helper when a third caller appears (YAGNI until then).
+(none right now)
 
 ## Resolved (last 30 days)
 
@@ -75,3 +31,14 @@
 - 2026-07-28: Healing decision observability (slog + counters + memory inspect) shipped
 - 2026-07-28: Cross-platform release workflow (Taskfile + CI) shipped
 - 2026-07-28: CLI manual updated to cover all current subcommands
+- 2026-07-28: T-1 Trust Phase 3 — `ComputeTrustScore([]OpHistory)` deprecated; new call sites routed through `ComputeTrustScoreFromOutcome`
+- 2026-07-28: T-2 Trust Phase 4 — curator pipeline removed; trust single source = outcome memory; `OpHistory` type dropped (`TestOpHistory_CompletelyRemoved`)
+- 2026-07-28: T-3 cross-skill runtime orchestration — `ExpandMatchedWithDelegates` wires transitive `DelegatesTo` skills into execution plan; `HandleFault` dispatches all planned steps via `RunExecutionLoopWithHealing`
+- 2026-07-28: T-5 ContextMemory batched mutations — mutation API queues dirty buffer; `Flush()` once at task-finalize (`HandleFault`)
+- 2026-07-28: T-6 `hashContext` strips volatile CLI flags (time windows, pagination, client/request IDs) so MatchOutcomes correlates repeats
+- 2026-07-28: T-7 `preFetchFailurePatterns` extracted to `persistence.go`; orchestrator + execution share one helper
+- 2026-07-28: T-8 ADR-0011 cross-skill delegation protocol accepted (orchestrator-mediated sync pipeline)
+- 2026-07-28: T-4 OutcomeMemory per-(skill,action) recent cache (≤100) — first RecentOutcomes scans disk once; later hits + Record updates skip rescan
+- 2026-07-28: T-9 `metrics` subcommand serves healing/trust counters in Prometheus text on `:9090/metrics`
+- 2026-07-28: T-10 `EnsureMemoryDir()` shared helper — `NewOutcomeMemory` / `NewContextMemory` both call it
+- 2026-07-28: Doc/Spec backlog closed — GCL trust-boundary P0 + Harness P1P2 specs → Accepted; P1 evidence DoD checked; CLI Alpine no-python smoke wired; `.planning/.../l4-orchestration/SPEC-PLAN.md` superseded by Go L4 + ADR-0007…0011; `02-REVIEW.md` WR-02/03/04/06 closed

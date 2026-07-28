@@ -147,6 +147,58 @@ func DiscoverTransitiveSkills(primary []string) []string {
 	return out
 }
 
+// delegateConfidence is the default trust weight for skills pulled in via
+// DelegatesTo edges rather than direct fault-keyword matching.
+const delegateConfidence = 0.35
+
+// ExpandMatchedWithDelegates merges fault-matched primaries with transitively
+// discovered delegate skills so BuildExecutionPlan can dispatch across the
+// full delegation closure. Primaries keep their match confidence; delegates
+// get delegateConfidence. When available is non-empty, delegates outside the
+// allow-list are dropped (same rule as MatchFaultSkills).
+func ExpandMatchedWithDelegates(primary []MatchedSkill, transitive []string, available []string) []MatchedSkill {
+	avail := map[string]bool{}
+	for _, s := range available {
+		avail[s] = true
+	}
+	haveAvail := len(available) > 0
+
+	best := map[string]MatchedSkill{}
+	for _, m := range primary {
+		best[m.Skill] = m
+	}
+	for _, skill := range transitive {
+		if _, ok := best[skill]; ok {
+			continue
+		}
+		if haveAvail && !avail[skill] {
+			continue
+		}
+		cap, ok := SkillCapabilities[skill]
+		if !ok {
+			continue
+		}
+		best[skill] = MatchedSkill{
+			Skill:           skill,
+			Confidence:      delegateConfidence,
+			Domain:          cap.Domain,
+			Capabilities:    cap.Capabilities,
+			MatchedKeywords: []string{"delegated"},
+		}
+	}
+	out := make([]MatchedSkill, 0, len(best))
+	for _, m := range best {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Confidence != out[j].Confidence {
+			return out[i].Confidence > out[j].Confidence
+		}
+		return out[i].Skill < out[j].Skill
+	})
+	return out
+}
+
 // SelectStrategy mirrors the Python policy: single → sequential, with deps →
 // pipeline, ≤3 → parallel, >3 → fan_out_collect.
 func SelectStrategy(skillCount int, hasDependency bool) string {

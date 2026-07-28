@@ -9,8 +9,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // TaskState represents a multi-step execution checkpoint.
@@ -68,6 +72,7 @@ type TaskStep struct {
 // StepResult captures the outcome of one completed step.
 type StepResult struct {
 	Step         int                `json:"step"`
+	Skill        string             `json:"skill,omitempty"`
 	Command      string             `json:"command"`
 	StartedAt    string             `json:"started_at"`
 	FinishedAt   string             `json:"finished_at"`
@@ -91,6 +96,16 @@ func newTaskID() string {
 func mustReadRandom(b []byte) error {
 	_, err := rand.Read(b)
 	return err
+}
+
+// EnsureMemoryDir creates <root>/.l4-memory with mode 0700 if missing.
+// Returns the absolute-or-joined directory path.
+func EnsureMemoryDir(root string) (string, error) {
+	dir := filepath.Join(root, ".l4-memory")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // PersistTask writes task state to <root>/.l4-tasks/<id>.json.
@@ -257,4 +272,60 @@ func ParseTaskID(raw string) string {
 	id = strings.TrimPrefix(id, "gcl-trace-")
 	id = strings.TrimSuffix(id, "-trace")
 	return id
+}
+
+// preFetchFailurePatterns loads failure_patterns.json for each skill
+// concurrently (capped at NumCPU). Best-effort: missing/unreadable skills
+// are omitted from the returned map. Shared by HandleFault and
+// RunExecutionLoop (Eng-M2 / T-7).
+func preFetchFailurePatterns(root string, skills []string) map[string][]map[string]any {
+	cache := map[string][]map[string]any{}
+	if len(skills) == 0 {
+		return cache
+	}
+	var mu sync.Mutex
+	g := new(errgroup.Group)
+	g.SetLimit(runtime.NumCPU())
+	for _, skill := range skills {
+		skill := skill
+		g.Go(func() error {
+			patterns, err := readFailurePatternsForSkill(root, skill)
+			if err == nil {
+				mu.Lock()
+				cache[skill] = patterns
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return cache
+}
+
+// readFailurePatternsForSkill loads <root>/<skill>/assets/failure_patterns.json.
+func readFailurePatternsForSkill(root, skill string) ([]map[string]any, error) {
+	if skill == "" || strings.Contains(skill, "..") || strings.ContainsAny(skill, `/\`) {
+		return nil, fmt.Errorf("invalid skill id %q", skill)
+	}
+	skillID := skill
+	if !strings.HasPrefix(skill, "huaweicloud-") {
+		skillID = "huaweicloud-" + skill + "-ops"
+	}
+	path := filepath.Join(root, skillID, "assets", "failure_patterns.json")
+	clean := filepath.Clean(path)
+	rootClean := filepath.Clean(root)
+	if !strings.HasPrefix(clean, rootClean+string(os.PathSeparator)) && clean != rootClean {
+		return nil, fmt.Errorf("skill path escapes root: %s", skill)
+	}
+	raw, err := os.ReadFile(clean)
+	if err != nil {
+		return nil, err
+	}
+	var data struct {
+		Patterns []map[string]any `json:"patterns"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	return data.Patterns, nil
 }

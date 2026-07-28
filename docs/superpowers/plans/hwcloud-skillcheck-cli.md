@@ -1,7 +1,7 @@
 # Plan: hwcloud-skillcheck — 跨平台单二进制 Skill 校验 CLI
 
-> Status: ✅ **COMPLETE** — all batches merged to main; DoD fully checked (2026-07-26)
-> Last updated: 2026-07-26
+> Status: ✅ **COMPLETE** — all batches merged to main; DoD fully checked (2026-07-26); Alpine no-python smoke wired 2026-07-28
+> Last updated: 2026-07-28
 > Execution model: **subagent-driven-development** (per user request + AGENTS.md orchestrator rule)
 
 ## Execution Approach
@@ -76,5 +76,5 @@
 - [x] B1–B5 全部合并 main
 - [x] Python A 类脚本已全部删除（-4,600 行）
 - [x] 三平台二进制可在 Release 下载（v0.1.4 已验证：6 个 artifact 均可在 GitHub Release 下载）
-- [ ] 干净容器（无 python3）中 `hwcloud-skillcheck validate --root <外部仓库>` 跑通（二进制为 CGO_ENABLED=0 静态链接，本地全绿已验证；Docker 环境不可用，待下次 tag push 时由 CI 自动验证）
+- [x] 干净容器（无 python3）中 `hwcloud-skillcheck validate --root <repo>` 跑通 — 由 `.github/workflows/build-skillcheck.yml` job `alpine-no-python-smoke` 在 `v*` tag 上验证（`CGO_ENABLED=0` 静态 Linux amd64 + Alpine，断言无 `python3`）
 - [x] T13 等价性套件全绿

@@ -313,6 +313,7 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **Executor / RealExecutor** | `RunExecutionLoop` 与 subprocess 的 interface seam | ADR-0010 |
 | **GCL** | Generator + Critic 双 Agent 闭环质量门控 | `docs/gcl-spec.md` |
 | **L4 Orchestrator** | 多 step 执行 + RBAC + GCL + topology + trust + healing | `internal/l4/` |
+| **Cross-skill delegation** | Orchestrator 经 `DelegatesTo` 扩计划并同步 pipeline 执行（非 skill 互调） | ADR-0011 |
 | **RBAC** | 按 `RBACRisk` 做操作前权限决策 | `internal/l4/rbac.go` |
 | **Topology Graph** | skill→resource 静态+动态依赖图 | `internal/l4/topology.go` |
 | **CADL** | 复利资产沉淀机制（见上文 §CADL） | 本节 |

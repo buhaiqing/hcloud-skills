@@ -53,3 +53,36 @@ func TestRunExecutionLoop_ZeroPolicyBehavesAsBefore(t *testing.T) {
 		t.Logf("result: %+v", out.Results[0])
 	}
 }
+
+func TestStripVolatileArgs_DropsTimeAndPaginationFlags(t *testing.T) {
+	in := "hcloud ces list-metrics --namespace SYS.ECS --query-window 1h --start-time 2026-07-28T00:00:00Z --marker abc --instance-id i-1"
+	got := stripVolatileArgs(in)
+	want := "hcloud ces list-metrics --namespace SYS.ECS --instance-id i-1"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestStripVolatileArgs_InlineEqualsForm(t *testing.T) {
+	in := "hcloud ces list-metrics --query-window=1h --end-time=2026-07-28T01:00:00Z --namespace SYS.ECS"
+	got := stripVolatileArgs(in)
+	want := "hcloud ces list-metrics --namespace SYS.ECS"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestHashContext_StableAcrossVolatileWindows(t *testing.T) {
+	a := hashContext("hcloud ces list-metrics --namespace SYS.ECS --query-window 1h --start-time 2026-07-28T00:00:00Z")
+	b := hashContext("hcloud ces list-metrics --namespace SYS.ECS --query-window 24h --start-time 2026-07-27T00:00:00Z")
+	if a != b {
+		t.Fatalf("volatile windows changed hash: %s vs %s", a, b)
+	}
+	c := hashContext("hcloud ces list-metrics --namespace SYS.ECS --instance-id i-other")
+	if a == c {
+		t.Fatal("stable resource id change should change hash")
+	}
+	if len(a) != 16 {
+		t.Fatalf("hash len=%d, want 16", len(a))
+	}
+}

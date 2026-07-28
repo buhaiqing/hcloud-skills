@@ -156,3 +156,99 @@ func TestOutcomeMemory_PruneOlderThan(t *testing.T) {
 		t.Fatalf("want [fresh], got %+v", got)
 	}
 }
+
+func TestOutcomeMemory_RecentCache_SkipsRescan(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	for i := 0; i < 5; i++ {
+		_ = mem.Record(OutcomeRecord{
+			ID:        string(rune('a' + i)),
+			Timestamp: time.Date(2026, 7, 28, 0, 0, i, 0, time.UTC).Format(time.RFC3339),
+			Skill:     "huaweicloud-ecs-ops",
+			Action:    "list",
+			Outcome:   "success",
+		})
+	}
+	base := mem.FullScans() // may include prune-on-open scan (0 when empty)
+
+	got, err := mem.RecentOutcomes("huaweicloud-ecs-ops", "list", 3)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("want 3, got %d", len(got))
+	}
+	afterLoad := mem.FullScans()
+	if afterLoad != base+1 {
+		t.Fatalf("first RecentOutcomes should full-scan once: base=%d got=%d", base, afterLoad)
+	}
+
+	got2, _ := mem.RecentOutcomes("huaweicloud-ecs-ops", "list", 3)
+	if mem.FullScans() != afterLoad {
+		t.Fatalf("second RecentOutcomes must hit cache; scans %d → %d", afterLoad, mem.FullScans())
+	}
+	if got2[0].ID != got[0].ID {
+		t.Fatalf("cache drift: %s vs %s", got2[0].ID, got[0].ID)
+	}
+
+	_ = mem.Record(OutcomeRecord{
+		ID: "new", Timestamp: "2026-07-28T01:00:00Z",
+		Skill: "huaweicloud-ecs-ops", Action: "list", Outcome: "failure",
+	})
+	got3, _ := mem.RecentOutcomes("huaweicloud-ecs-ops", "list", 3)
+	if mem.FullScans() != afterLoad {
+		t.Fatalf("Record+Recent must not rescan warm key; scans=%d", mem.FullScans())
+	}
+	if got3[0].ID != "new" {
+		t.Fatalf("warm cache should prepend Record; got %+v", got3)
+	}
+}
+
+func TestOutcomeMemory_RecentCache_CapsAt100(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	for i := 0; i < 150; i++ {
+		_ = mem.Record(OutcomeRecord{
+			ID:        fmtID(i),
+			Timestamp: time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC).Format(time.RFC3339),
+			Skill:     "s", Action: "a", Outcome: "success",
+		})
+	}
+	got, err := mem.RecentOutcomes("s", "a", outcomeKeyCacheSize)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(got) != outcomeKeyCacheSize {
+		t.Fatalf("want cache cap %d, got %d", outcomeKeyCacheSize, len(got))
+	}
+	// Newest first: last recorded id.
+	if got[0].ID != fmtID(149) {
+		t.Fatalf("newest=%s, want %s", got[0].ID, fmtID(149))
+	}
+}
+
+func TestOutcomeMemory_RecentOutcomes_NLeZeroUncapped(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewOutcomeMemory(dir)
+	for i := 0; i < 150; i++ {
+		_ = mem.Record(OutcomeRecord{
+			ID:        fmtID(i),
+			Timestamp: time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC).Format(time.RFC3339),
+			Skill:     "s", Action: "a", Outcome: "success",
+		})
+	}
+	got, err := mem.RecentOutcomes("s", "a", 0)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(got) != 150 {
+		t.Fatalf("n<=0 must return all matches uncapped; got %d", len(got))
+	}
+	if got[0].ID != fmtID(149) {
+		t.Fatalf("newest=%s, want %s", got[0].ID, fmtID(149))
+	}
+}
+
+func fmtID(i int) string {
+	return time.Date(2026, 1, 1, 0, 0, i, 0, time.UTC).Format("id-20060102T150405")
+}

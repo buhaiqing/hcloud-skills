@@ -1,6 +1,9 @@
 # AGENTS.md Glossary Update — Spec
 
 > Date: 2026-07-28
+> Status: **applied / superseded** (2026-07-28) — Layer 3 open follow-ups in this
+> note (trust Phase 4, RealExecutor, metrics, EnsureMemoryDir) are closed on main;
+> do not re-add stale rows.
 > Purpose: spec for the implementer who will apply this diff to `AGENTS.md` once the two worktrees land (ADR-0007 outcome memory + ADR-0008 context memory). The ADR-0009 trust-phase section is co-shipped here so the glossary is coherent at merge time.
 > Sources: `docs/architecture/0007-…md`, `docs/architecture/0008-…md`, `docs/architecture/0009-…md`, `docs/superpowers/specs/outcome-memory-self-healing.md`.
 

@@ -1,9 +1,36 @@
 package l4
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestEnsureMemoryDir(t *testing.T) {
+	root := t.TempDir()
+	dir, err := EnsureMemoryDir(root)
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if !strings.HasSuffix(dir, ".l4-memory") {
+		t.Fatalf("path %q should end with .l4-memory", dir)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("dir perm = %o, want 0700", perm)
+	}
+	dir2, err := EnsureMemoryDir(root)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if dir2 != dir {
+		t.Fatalf("second path %q != first %q", dir2, dir)
+	}
+}
 
 func TestPersistAndLoadTask(t *testing.T) {
 	root := t.TempDir()
@@ -192,6 +219,18 @@ func TestParseTaskID(t *testing.T) {
 		if got != c.expected {
 			t.Errorf("ParseTaskID(%q): got %q, want %q", c.input, got, c.expected)
 		}
+	}
+}
+
+func TestPreFetchFailurePatterns_EmptyAndMissing(t *testing.T) {
+	root := t.TempDir()
+	if got := preFetchFailurePatterns(root, nil); len(got) != 0 {
+		t.Fatalf("empty skills → empty cache, got %d", len(got))
+	}
+	// Missing skill assets are best-effort omitted (no panic, no error).
+	got := preFetchFailurePatterns(root, []string{"huaweicloud-ecs-ops", "huaweicloud-no-such-ops"})
+	if len(got) != 0 {
+		t.Fatalf("missing assets should omit entries, got %v", got)
 	}
 }
 

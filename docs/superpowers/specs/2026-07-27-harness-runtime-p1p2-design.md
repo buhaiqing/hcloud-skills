@@ -1,8 +1,9 @@
 # Spec: Harness Runtime v2 — P1 Trustworthy Evidence + P2 Efficiency
 
-> Status: **DRAFT** — pending user review
-> Last updated: 2026-07-27
+> Status: **Accepted** — P1+P2 shipped (2026-07-28); residual: optional ONNX provider + production golden fixtures soft-gated (`|| true`) until per-skill scenarios populate
+> Last updated: 2026-07-28
 > Build dependency: P0 trust boundary (commit `2b935ea`, `99996a2`, `deaf3b8` — done)
+> User approval: closed by doc/spec sync (implementation already on main; DRAFT header was stale)
 
 ## 1. Background & Goals
 
@@ -600,3 +601,4 @@ P1 + P2 ship in two separate plans. P1 must be complete and verified before P2 p
 | 0.5.0 | 2026-07-28 | Embedding Provider Strategy (Scheme 5): added §4.2.4 `Embedder` interface + ProviderConfig schema + 4-implementation matrix (`local-fasttext` / `huaweicloud-modelarts` / `onnx-runtime` / `pure-go-minilm`). Capability registry becomes the operational switch. A2.3 rubric relaxed from "actual ONNX" to "non-lexical embedding-based" via v5. Eliminates Jaccard lexical fallback as a class; provider selection is data-driven, no code change to migrate between providers. Outstanding: cloud sandbox provider impl (P3), pure-Go MiniLM impl (long-term). |
 | 0.5.2 | 2026-07-28 | No-sandbox provider (`none`) added; Router honours `fallback_chain` at runtime and records `EmbeddingProviderMeta.FallbackUsed` + `ActiveProvider`. HWS V1 signature upgraded to the canonical ModelArts format (host + signed-headers + payload SHA). `router embed-test` reports skipped rerank when `none` is selected. All three modes share one Preflight contract with concrete Fix messages. |
 | 0.5.1 | 2026-07-28 | Provider implementation completed: `local-fasttext` is the default local-process sandbox; `huaweicloud-modelarts` is the explicit cloud switch. Every provider runs side-effect-free, multi-issue `Preflight()` before initialization and exposes actionable `Fix` guidance through `router embed-test`. Provider metadata is persisted in router decisions. ONNX remains optional pending vendored native runtime assets. |
+| 0.6.0 | 2026-07-28 | Status DRAFT → **Accepted**. Doc/spec backlog close-out: header matches shipped P1 evidence + P2 router/budget/confusion/embedder on main. Residual tracked in changelog 0.4–0.5 (optional ONNX; golden CLI soft-gated). |

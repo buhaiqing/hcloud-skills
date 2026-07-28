@@ -240,6 +240,7 @@ func (t *TrustSourceCounter) Record(from string) {
 	switch from {
 	case "outcome_memory":
 		t.FromOutcomeMemory.Add(1)
+		bumpPersisted(func(s *CounterSnapshot) { s.TrustFromOutcome++ })
 	}
 }
 

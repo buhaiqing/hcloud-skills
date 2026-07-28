@@ -1,21 +1,27 @@
 package l4
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
-	"golang.org/x/sync/errgroup"
 )
 
-// primarySkillFromPlan returns the first step's skill (the "primary" skill
-// for trust-history lookup), or "" when the plan is empty.
+// primarySkillFromMatched returns the keyword-matched primary skill (not the
+// pipeline-reordered first step). Trust and context attribution must use this
+// so a high-trust monitoring delegate cannot auto-approve a low-trust primary.
+func primarySkillFromMatched(matched []MatchedSkill) string {
+	if len(matched) == 0 {
+		return ""
+	}
+	return matched[0].Skill
+}
+
+// primarySkillFromPlan returns the first step's skill after plan ordering.
+// Prefer primarySkillFromMatched for trust / fault attribution (ADR-0011).
 func primarySkillFromPlan(p *ExecutionPlan) string {
 	if p == nil || len(p.Steps) == 0 {
 		return ""
@@ -194,8 +200,10 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		primarySkills = append(primarySkills, m.Skill)
 	}
 	discovered := DiscoverTransitiveSkills(primarySkills)
-	strategy := SelectStrategy(len(discovered), len(discovered) > 1)
-	plan := BuildExecutionPlan(in.Fault, matched, strategy)
+	expanded := ExpandMatchedWithDelegates(matched, discovered, in.Skills)
+	hasDelegates := len(expanded) > len(matched)
+	strategy := SelectStrategy(len(expanded), hasDelegates)
+	plan := BuildExecutionPlan(in.Fault, expanded, strategy)
 	orch := OrchestrationResult{
 		PrimarySkills:          primarySkills,
 		TransitiveSkills:       discovered,
@@ -221,53 +229,17 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	gclRes := GCLResult{OverallSafety: true, Decisions: []GCLDecision{}}
 	passCount := 0
 	knownSkills := map[string]bool{}
-	for _, s := range matched {
+	for _, s := range expanded {
 		knownSkills[s.Skill] = true
 	}
 
-	// Pre-fetch failure patterns for every unique step.Skill concurrently
-	// BEFORE entering the step loop. With many steps referencing the same
-	// few skills, this collapses N sequential file reads into one fan-out
-	// (capped at NumCPU). Each read is a disjoint file (per-skill path),
-	// so the work is embarrassingly parallel.
-	patternCache := map[string][]map[string]any{}
-	if len(plan.Steps) > 0 {
-		skillSet := map[string]struct{}{}
-		for _, step := range plan.Steps {
-			if knownSkills[step.Skill] {
-				skillSet[step.Skill] = struct{}{}
-			}
-		}
-		if len(skillSet) > 0 {
-			skills := make([]string, 0, len(skillSet))
-			for s := range skillSet {
-				skills = append(skills, s)
-			}
-			var patternMu sync.Mutex
-			g, gCtx := errgroup.WithContext(context.Background())
-			g.SetLimit(runtime.NumCPU())
-			for _, skill := range skills {
-				skill := skill
-				g.Go(func() error {
-					select {
-					case <-gCtx.Done():
-						return gCtx.Err()
-					default:
-					}
-					patterns, err := readFailurePatternsForSkill(root, skill)
-					if err == nil {
-						patternMu.Lock()
-						patternCache[skill] = patterns
-						patternMu.Unlock()
-					}
-					return nil
-				})
-			}
-			// errors are best-effort; an empty cache for a skill means "no
-			// known patterns" and falls back to no pre-execution risk.
-			_ = g.Wait()
-		}
+	// Pre-fetch failure patterns for every unique plan skill concurrently
+	// BEFORE entering the step loop (Eng-M2 / T-7 shared helper).
+	skills := make([]string, 0, len(knownSkills))
+	for s := range knownSkills {
+		skills = append(skills, s)
 	}
+	patternCache := preFetchFailurePatterns(root, skills)
 
 	for _, step := range plan.Steps {
 		short := step.SkillShort
@@ -304,15 +276,19 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	gclRes.PassedSteps = passCount
 
 	// Step 5 — Trust (Phase 4: outcome-memory only, per ADR-0009 §Migration).
-	// The pre-Phase-4 trust_history.json curator pipeline is gone;
-	// trust now comes from mem.RecentOutcomes(skill, action) via
-	// LookupTrust. in.TrustData is preserved on the input struct for
-	// back-compat with older callers but is no longer consulted.
-	var firstAction string
-	if plan != nil && len(plan.Steps) > 0 {
-		firstAction = plan.Steps[0].Action
+	// Key by keyword-matched primary, NOT pipeline Steps[0]: delegates may
+	// reorder monitoring ahead of the fault's primary skill (code-review HIGH).
+	trustSkill := primarySkillFromMatched(matched)
+	trustAction := "diagnose_and_remediate"
+	if plan != nil {
+		for _, s := range plan.Steps {
+			if s.Skill == trustSkill && s.Action != "" {
+				trustAction = s.Action
+				break
+			}
+		}
 	}
-	score := LookupTrust(primarySkillFromPlan(plan), firstAction, mem)
+	score := LookupTrust(trustSkill, trustAction, mem)
 	eval := EvaluateOperation(score, risk, in.Fault)
 	trustRes := TrustResult{
 		TrustLevel:            score.Level,
@@ -401,6 +377,11 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			cm = nil
 		}
 	}
+	// Persist healing/trust counters so `metrics` scrape (separate process)
+	// can observe them (code-review HIGH).
+	SetMetricsPersistRoot(root)
+
+	faultPrimary := primarySkillFromMatched(matched)
 
 	if gclRes.OverallSafety && trustRes.AutoApprove {
 		decision = "auto_proceed"
@@ -410,17 +391,16 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 
 		// Record task creation in context memory.
 		if cm != nil {
-			primary := primarySkillFromPlan(plan)
 			_ = cm.RecordTask(TaskSummary{
 				TaskID:       task.ID,
 				Fault:        task.Fault,
 				StartedAt:    task.CreatedAt,
 				Status:       string(TaskStatusRunning),
-				PrimarySkill: primary,
+				PrimarySkill: faultPrimary,
 			})
 		}
 
-		executionTask = RunExecutionLoop(root, task, plan, matched, nil)
+		executionTask = RunExecutionLoopWithHealing(root, task, plan, expanded, mem, in.Policy, nil)
 
 		// Record final task status and record each failed step as an error.
 		if cm != nil {
@@ -430,14 +410,18 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 				StartedAt:    executionTask.CreatedAt,
 				FinishedAt:   executionTask.UpdatedAt,
 				Status:       string(executionTask.Status),
-				PrimarySkill: primarySkillOfTask(executionTask),
+				PrimarySkill: faultPrimary,
 			})
 			_ = cm.CloseTask(executionTask.ID)
 			for _, r := range executionTask.Results {
 				if !r.Success && r.Error != "" {
+					errSkill := r.Skill
+					if errSkill == "" {
+						errSkill = faultPrimary
+					}
 					_ = cm.RecordError(ErrorSummary{
 						Timestamp:  r.FinishedAt,
-						Skill:      primarySkillOfTask(executionTask),
+						Skill:      errSkill,
 						Action:     r.Command,
 						ErrorClass: "unknown",
 						ErrorMsg:   r.Error,
@@ -446,7 +430,6 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			}
 		}
 
-		executionTask = RunExecutionLoopWithHealing(root, task, plan, matched, mem, in.Policy, nil)
 		// Update decision based on execution result.
 		switch executionTask.Status {
 		case TaskStatusCompleted:
@@ -466,8 +449,14 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 				StartedAt:    startedAt,
 				FinishedAt:   NowISO(),
 				Status:       "human_review_required",
-				PrimarySkill: primarySkillFromPlan(plan),
+				PrimarySkill: faultPrimary,
 			})
+		}
+	}
+	// Eng-T5: mutations queue in-memory; one Flush at task-finalize.
+	if cm != nil {
+		if err := cm.Flush(); err != nil {
+			fmt.Fprintf(os.Stderr, "orchestrator: context memory flush: %v\n", err)
 		}
 	}
 	return &OrchestratorOutput{
@@ -492,32 +481,6 @@ func boolToFloat(b bool) float64 {
 		return 1.0
 	}
 	return 0.0
-}
-
-// readFailurePatternsForSkill is a thin shim over the learning package. It
-// returns the patterns slice for a skill, or an error if absent.
-func readFailurePatternsForSkill(root, skill string) ([]map[string]any, error) {
-	// Lazy import: defer the dependency to avoid an import cycle.
-	// The learning package already imports nothing from l4.
-	_ = root
-	_ = skill
-	// Inline loader: open <root>/<skill>/assets/failure_patterns.json.
-	skillID := skill
-	if !strings.HasPrefix(skill, "huaweicloud-") {
-		skillID = "huaweicloud-" + skill + "-ops"
-	}
-	path := filepath.Join(root, skillID, "assets", "failure_patterns.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var data struct {
-		Patterns []map[string]any `json:"patterns"`
-	}
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return nil, err
-	}
-	return data.Patterns, nil
 }
 
 // matchPreExecutionRisk is a structural-critic pre-execution risk check. It

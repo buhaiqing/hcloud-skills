@@ -9,13 +9,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
-	"golang.org/x/sync/errgroup"
 )
 
 // ExecutionResult captures the outcome of running one step.
@@ -173,7 +171,11 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 	}
 
 	// Pre-fetch failure patterns concurrently.
-	patternCache := preFetchPatterns(root, plan, knownSkills)
+	skills := make([]string, 0, len(knownSkills))
+	for s := range knownSkills {
+		skills = append(skills, s)
+	}
+	patternCache := preFetchFailurePatterns(root, skills)
 
 	// Main execution loop.
 	for {
@@ -208,6 +210,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 			// Record failed step and abort.
 			result := StepResult{
 				Step:         step.Step,
+				Skill:        step.Skill,
 				Command:      candidate,
 				StartedAt:    NowISO(),
 				FinishedAt:   NowISO(),
@@ -249,6 +252,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 		if crit.Scores["safety"] == 0.0 {
 			result := StepResult{
 				Step:         step.Step,
+				Skill:        step.Skill,
 				Command:      candidate,
 				StartedAt:    NowISO(),
 				FinishedAt:   NowISO(),
@@ -269,6 +273,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 		if gclBody.Decision != "PASS" && gclBody.Decision != "ACCEPT" {
 			task.Results = append(task.Results, StepResult{
 				Step:         step.Step,
+				Skill:        step.Skill,
 				Command:      candidate,
 				StartedAt:    NowISO(),
 				FinishedAt:   NowISO(),
@@ -294,6 +299,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 		}
 		result := StepResult{
 			Step:         step.Step,
+			Skill:        step.Skill,
 			Command:      candidate,
 			StartedAt:    startedAt,
 			FinishedAt:   finishedAt,
@@ -338,6 +344,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 			if d := PreExecHook(step, mem, p); d.Action == "skip" {
 				task.Results = append(task.Results, StepResult{
 					Step:        step.Step,
+					Skill:       step.Skill,
 					Command:     "hcloud " + skillShortOrDerived(step.Skill, step.SkillShort) + " " + step.Action,
 					StartedAt:   NowISO(),
 					FinishedAt:  NowISO(),
@@ -365,6 +372,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 		if !rbacDec.Allowed {
 			task.Results = append(task.Results, StepResult{
 				Step:         step.Step,
+				Skill:        step.Skill,
 				Command:      candidate,
 				StartedAt:    NowISO(),
 				FinishedAt:   NowISO(),
@@ -386,6 +394,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 		if crit.Scores["safety"] == 0.0 {
 			task.Results = append(task.Results, StepResult{
 				Step:         step.Step,
+				Skill:        step.Skill,
 				Command:      candidate,
 				StartedAt:    NowISO(),
 				FinishedAt:   NowISO(),
@@ -402,6 +411,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 
 		result := StepResult{
 			Step:         step.Step,
+			Skill:        step.Skill,
 			Command:      candidate,
 			StartedAt:    NowISO(),
 			FinishedAt:   NowISO(),
@@ -475,10 +485,84 @@ func skillShortOrDerived(skill, short string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(skill, "huaweicloud-", ""), "-ops", "")
 }
 
-// hashContext returns the first 16 hex chars of sha256(command).
+// hashContext returns the first 16 hex chars of sha256 over the *stable*
+// form of command (see stripVolatileArgs).
+//
+// Stable tokens (kept): CLI binary, product short-name, action/verb, and
+// non-volatile flags/values (resource IDs, names, specs).
+// Volatile tokens (stripped): time windows, pagination markers, client/
+// request IDs — otherwise every call hashes uniquely and MatchOutcomes
+// never correlates repeats (Eng-m1 / T-6).
 func hashContext(command string) string {
-	sum := sha256.Sum256([]byte(command))
+	sum := sha256.Sum256([]byte(stripVolatileArgs(command)))
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+// volatileFlagNames are CLI flag names (without leading dashes) whose
+// values change every invocation and must not enter ContextHash.
+var volatileFlagNames = map[string]bool{
+	"query-window": true,
+	"start-time":   true,
+	"end-time":     true,
+	"start_time":   true,
+	"end_time":     true,
+	"since":        true,
+	"until":        true,
+	"from-time":    true,
+	"to-time":      true,
+	"marker":       true,
+	"page":         true,
+	"offset":       true,
+	"client-token": true,
+	"request-id":   true,
+	"x-request-id": true,
+	"timestamp":    true,
+}
+
+// stripVolatileArgs drops known-volatile --flags (and their values) from a
+// shell command string. Supports both `--flag value` and `--flag=value`.
+// Resource IDs and non-listed flags are preserved.
+func stripVolatileArgs(command string) string {
+	tokens := strings.Fields(command)
+	if len(tokens) == 0 {
+		return command
+	}
+	out := make([]string, 0, len(tokens))
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		name, inlineVal, ok := splitFlag(tok)
+		if !ok {
+			out = append(out, tok)
+			continue
+		}
+		if !volatileFlagNames[name] {
+			out = append(out, tok)
+			continue
+		}
+		// Drop --flag=value (inline) or --flag + next token (separate value).
+		if inlineVal {
+			continue
+		}
+		if i+1 < len(tokens) && !strings.HasPrefix(tokens[i+1], "-") {
+			i++
+		}
+	}
+	return strings.Join(out, " ")
+}
+
+// splitFlag parses a CLI token. Returns (name, hasInlineValue, isFlag).
+// "--query-window=1h" → ("query-window", true, true)
+// "--query-window"    → ("query-window", false, true)
+// "ecs"               → ("", false, false)
+func splitFlag(tok string) (name string, inlineVal bool, isFlag bool) {
+	if !strings.HasPrefix(tok, "--") || len(tok) <= 2 {
+		return "", false, false
+	}
+	body := tok[2:]
+	if eq := strings.IndexByte(body, '='); eq >= 0 {
+		return body[:eq], true, true
+	}
+	return body, false, true
 }
 
 // newOutcomeID returns a 16-char hex string for OutcomeRecord.ID.
@@ -521,52 +605,6 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s[:n-3] + "..."
-}
-
-// preFetchPatterns loads failure patterns for all skills in the plan concurrently.
-func preFetchPatterns(root string, plan *ExecutionPlan, knownSkills map[string]bool) map[string][]map[string]any {
-	cache := map[string][]map[string]any{}
-
-	skillSet := map[string]struct{}{}
-	for _, step := range plan.Steps {
-		if knownSkills[step.Skill] {
-			skillSet[step.Skill] = struct{}{}
-		}
-	}
-
-	if len(skillSet) == 0 {
-		return cache
-	}
-
-	skills := make([]string, 0, len(skillSet))
-	for s := range skillSet {
-		skills = append(skills, s)
-	}
-
-	var mu sync.Mutex
-	g, gCtx := errgroup.WithContext(context.Background())
-	g.SetLimit(runtime.NumCPU())
-
-	for _, skill := range skills {
-		skill := skill
-		g.Go(func() error {
-			select {
-			case <-gCtx.Done():
-				return gCtx.Err()
-			default:
-			}
-			patterns, err := readFailurePatternsForSkill(root, skill)
-			if err == nil {
-				mu.Lock()
-				cache[skill] = patterns
-				mu.Unlock()
-			}
-			return nil
-		})
-	}
-
-	_ = g.Wait()
-	return cache
 }
 
 // BuildTaskFromPlan converts an ExecutionPlan into a TaskState for persistence.

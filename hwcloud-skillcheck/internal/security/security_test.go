@@ -171,6 +171,46 @@ func TestScanContentAlreadyMasked(t *testing.T) {
 	}
 }
 
+func TestScanJSON(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   []byte
+		want    int
+		wantTyp string
+		wantErr bool
+	}{
+		{"clean json", []byte(`{"a":"hello"}`), 0, "", false},
+		{"leak in scanned field", []byte(`{"request":"SK=abcdefghijklmnopqrstuvwxyz012345"}`), 1, "sk", false},
+		{"leak nested in array", []byte(`{"iterations":[{"command":"password=Sup3rS3cretValue"}]}`), 1, "password_assignment", false},
+		{"already masked skipped", []byte(`{"request":"SK=<masked>"}`), 0, "", false},
+		{"invalid json", []byte(`{not-json`), 0, "", true},
+		{"number UseNumber ok", []byte(`{"n":1,"request":"ok"}`), 0, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, err := ScanJSON(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(findings) != tc.want {
+				t.Fatalf("got %d findings, want %d: %v", len(findings), tc.want, findings)
+			}
+			if tc.wantTyp != "" {
+				f := find(t, findings, tc.wantTyp)
+				if !strings.Contains(f.Snippet, "<masked>") && tc.wantTyp != "private_key_block" {
+					t.Errorf("snippet should be masked, got %q", f.Snippet)
+				}
+			}
+		})
+	}
+}
+
 func TestMaskSecrets(t *testing.T) {
 	in := []byte("HW_SECRET_ACCESS_KEY=abc123DEF456 and SK=abcdefghijklmnopqrstuvwxyz012345")
 	out := MaskSecrets(in)

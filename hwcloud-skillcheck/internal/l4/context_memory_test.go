@@ -232,3 +232,66 @@ func TestContextMemory_SetPreference_AddsAndDeletes(t *testing.T) {
 		t.Fatalf("key not deleted: %+v", c.Preferences)
 	}
 }
+
+func TestContextMemory_BatchedMutations_DeferWriteUntilFlush(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	path := filepath.Join(dir, ".l4-memory", "context.json")
+
+	for i := 0; i < 5; i++ {
+		if err := mem.RecordTask(TaskSummary{
+			TaskID: fmt.Sprintf("t-%d", i), Status: "completed",
+		}); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+	_ = mem.RecordError(ErrorSummary{Timestamp: "x", Skill: "s", Action: "a", ErrorClass: "transient"})
+	_ = mem.SetPreference("region", "cn-north-4")
+
+	if !mem.Dirty() {
+		t.Fatal("want Dirty=true after mutations")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("context.json written before Flush: err=%v", err)
+	}
+
+	// Same-handle Load sees queued mutations without Flush.
+	c, err := mem.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(c.RecentTasks) != 5 {
+		t.Fatalf("in-memory recent_tasks=%d, want 5", len(c.RecentTasks))
+	}
+
+	if err := mem.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if mem.Dirty() {
+		t.Fatal("want Dirty=false after Flush")
+	}
+	if err := mem.Flush(); err != nil {
+		t.Fatalf("second flush: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat after flush: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("perm=%o, want 0600", info.Mode().Perm())
+	}
+
+	// Fresh handle sees the single batched write.
+	mem2, _ := NewContextMemory(dir)
+	c2, err := mem2.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if len(c2.RecentTasks) != 5 {
+		t.Fatalf("persisted recent_tasks=%d, want 5", len(c2.RecentTasks))
+	}
+	if c2.Preferences["region"] != "cn-north-4" {
+		t.Fatalf("preferences=%+v", c2.Preferences)
+	}
+}

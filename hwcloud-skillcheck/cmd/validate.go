@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
@@ -134,35 +134,27 @@ func hasKey(m map[string]any, key string) bool {
 // embedded eval-queries union schema, auto-detecting its format (array vs
 // object) and dispatching to the matching $def. Mirrors
 // scripts/validate_eval_queries_schema.py:validate_eval_document.
+//
+// Format detection is shared with validateEvalQueriesFile via detectEvalFormat
+// (WR-02): parse failures are hard errors; shape mismatches are soft messages.
 func validateEvalQueries(instanceData, schemaData []byte) ([]string, error) {
-	dec := json.NewDecoder(bytes.NewReader(instanceData))
-	dec.UseNumber()
-	var parsed any
-	if err := dec.Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("parse instance: %w", err)
+	defName, parsed, err := detectEvalFormat(instanceData)
+	if err != nil {
+		msg := err.Error()
+		if strings.HasPrefix(msg, "parse instance:") {
+			return nil, err
+		}
+		return []string{msg}, nil
 	}
 
-	var defName string
-	switch v := parsed.(type) {
-	case []any:
-		if len(v) == 0 {
-			return []string{"$: expected non-empty array"}, nil
-		}
-		first, ok := v[0].(map[string]any)
-		if !ok {
-			return []string{"$: every array item must be an object"}, nil
-		}
-		defName = evalArrayDefFor(first)
-		if defName == "" {
-			return []string{"$: unrecognized array entry shape"}, nil
-		}
+	if arr, ok := parsed.([]any); ok {
 		// Python validates each array item against the entry $def (the array
 		// itself has no schema). Validate every element, collecting errors.
 		var all []string
-		for i, item := range v {
-			itemBytes, err := json.Marshal(item)
-			if err != nil {
-				all = append(all, fmt.Sprintf("$[%d]: %v", i, err))
+		for i, item := range arr {
+			itemBytes, mErr := json.Marshal(item)
+			if mErr != nil {
+				all = append(all, fmt.Sprintf("$[%d]: %v", i, mErr))
 				continue
 			}
 			errs, verr := schema.ValidateDef(schemaData, defName, itemBytes)
@@ -174,13 +166,6 @@ func validateEvalQueries(instanceData, schemaData []byte) ([]string, error) {
 			}
 		}
 		return all, nil
-	case map[string]any:
-		defName = evalObjectDefFor(v)
-		if defName == "" {
-			return []string{"$: unrecognized object shape; expected evaluation_queries, should_match, or should_trigger"}, nil
-		}
-	default:
-		return []string{"$: expected array or object"}, nil
 	}
 
 	return schema.ValidateDef(schemaData, defName, instanceData)

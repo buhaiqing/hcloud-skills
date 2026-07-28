@@ -90,30 +90,27 @@ func TestHandleFault_PredictiveWithMetrics(t *testing.T) {
 
 func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	root := t.TempDir()
-	// "VPC subnet unreachable" matches the first FaultRule pattern (contains
-	// "unreachable") and only huaweicloud-vpc-ops has the required "connectivity"
-	// capability. ECS has "diagnostics" but not "connectivity", so vpc-ops wins.
-	//
-	// Phase 4: trust_history.json is no longer read by the orchestrator.
-	// Trust comes from OutcomeMemory; pre-seed it with enough successes to
-	// push trust past the L4 threshold.
+	// "VPC subnet unreachable" → keyword primary is huaweicloud-vpc-ops.
+	// Trust is keyed on that primary (not pipeline Steps[0] after domain reorder).
 	mem, err := NewOutcomeMemory(root)
 	if err != nil {
 		t.Fatalf("NewOutcomeMemory: %v", err)
 	}
+	matched := MatchFaultSkills("VPC subnet unreachable", nil)
+	if len(matched) == 0 {
+		t.Fatal("expected keyword matches for unreachable fault")
+	}
+	trustSkill := matched[0].Skill
 	now := time.Now().UTC()
 	for i := 0; i < 5; i++ {
 		ts := now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
 		if err := mem.Record(OutcomeRecord{
-			ID:        "vpc" + ts,
+			ID:        "trust" + ts,
 			Timestamp: ts,
-			Skill:     "huaweicloud-vpc-ops",
-			// Plan.Steps[0].Action for the unreachable fault is
-			// "diagnose_and_remediate" (orchestration.go) — must match
-			// exactly for LookupTrust's (skill, action) key.
-			Action:  "diagnose_and_remediate",
-			Outcome: "success",
-			Risk:    "medium",
+			Skill:     trustSkill,
+			Action:    "diagnose_and_remediate",
+			Outcome:   "success",
+			Risk:      "medium",
 		}); err != nil {
 			t.Fatalf("Record: %v", err)
 		}
@@ -125,17 +122,23 @@ func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 		Risk:     "low",
 		Mem:      mem,
 	}, nil)
-	// Trust must be loaded from OutcomeMemory and AutoApprove must be true
-	// for low risk with a populated success history.
 	if out.Trust.TrustLevel == "L0_new" {
-		t.Errorf("trust fallback did not load outcome memory: level=%s score=%v", out.Trust.TrustLevel, out.Trust.CompositeScore)
+		t.Errorf("trust fallback did not load outcome memory: level=%s score=%v (primary=%s)", out.Trust.TrustLevel, out.Trust.CompositeScore, trustSkill)
 	}
 	if !out.Trust.AutoApprove {
-		t.Errorf("AutoApprove=false for L4 trust (level=%s score=%v)", out.Trust.TrustLevel, out.Trust.CompositeScore)
+		t.Errorf("AutoApprove=false for L4 trust (level=%s score=%v, primary=%s)", out.Trust.TrustLevel, out.Trust.CompositeScore, trustSkill)
 	}
 	if out.Trust.RequiresHumanApproval {
 		t.Errorf("RequiresHumanApproval=true for L4 trust")
 	}
+}
+
+func skillNames(matches []MatchedSkill) []string {
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, m.Skill)
+	}
+	return out
 }
 func TestHandleFault_DecisionHumanReviewForHighRisk(t *testing.T) {
 	root := t.TempDir()
@@ -187,4 +190,31 @@ func TestHandleFault_DefaultRoot(t *testing.T) {
 		t.Error("default root should still produce a trace file")
 	}
 	_ = filepath.Join("a", "b") // keep import used
+}
+
+func TestHandleFault_CrossSkillPlanIncludesDelegates(t *testing.T) {
+	root := t.TempDir()
+	out := HandleFault(HandleFaultInput{
+		Root:     root,
+		Fault:    "RDS connection timeout",
+		Resource: "rds:instance",
+		Risk:     "medium",
+	}, nil)
+
+	if len(out.Orchestration.PrimarySkills) == 0 {
+		t.Fatal("expected primary skills for RDS fault")
+	}
+	if out.Orchestration.StepCount <= len(out.Orchestration.PrimarySkills) {
+		t.Errorf("step_count=%d should exceed primary_skills=%d when delegates are wired",
+			out.Orchestration.StepCount, len(out.Orchestration.PrimarySkills))
+	}
+	if out.Orchestration.Strategy != "pipeline" {
+		t.Errorf("strategy=%q, want pipeline for multi-skill delegation", out.Orchestration.Strategy)
+	}
+
+	// GCL should evaluate every planned step, including delegated skills.
+	if len(out.GCL.Decisions) != out.Orchestration.StepCount {
+		t.Errorf("gcl decisions=%d, want %d (one per planned step)",
+			len(out.GCL.Decisions), out.Orchestration.StepCount)
+	}
 }

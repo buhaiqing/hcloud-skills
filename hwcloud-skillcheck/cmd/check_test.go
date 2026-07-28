@@ -46,6 +46,17 @@ func TestCheckExampleConfigClean(t *testing.T) {
 	}
 }
 
+func TestDiscoverSkillDirsMissingRoot(t *testing.T) {
+	// WR-03: ReadDir failure must surface (not silently succeed with 0 skills).
+	_, err := discoverSkillDirs(filepath.Join(t.TempDir(), "no-such-dir"))
+	if err == nil {
+		t.Fatal("expected error for missing root")
+	}
+	if err := runCheck([]string{"example-config", "--root", filepath.Join(t.TempDir(), "missing")}); err == nil {
+		t.Fatal("example-config on missing root must fail")
+	}
+}
+
 func TestCheckExampleConfigPlaintextSecret(t *testing.T) {
 	root := t.TempDir()
 	// A real secret literal (secret: "value") must fail.

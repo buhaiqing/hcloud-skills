@@ -1,7 +1,8 @@
 # Spec: GCL Trust Boundary P0 — Critic/Generator Isolation + Confirmation Token
 
-> Status: **DRAFT** — pending user review
-> Last updated: 2026-07-27
+> Status: **Accepted** — shipped on main (2026-07-27/28)
+> Last updated: 2026-07-28
+> Evidence: `internal/gcl/{sanitizer,confirmation,retry}.go`, embed schemas, `docs/gcl-spec.md` §14, suite green
 
 ## Background
 
@@ -11,7 +12,8 @@ before destructive cloud operations (`delete`, `stop`, IAM/KMS/DDL,
 cluster reset). The runtime lives in `hwcloud-skillcheck/internal/gcl/`,
 port over from `scripts/gcl_runner.py`. The L4 trust layer
 (`internal/l4/`) tracks tasks, RBAC permissions, and confirmation
-tokens, but is **not yet wired into the GCL Runner**.
+tokens, and is wired into the GCL Runner via `ConfirmationRegistry` /
+pre-execution gate.
 
 Five P0 trust-boundary gaps were identified by self-review on
 2026-07-27:
@@ -410,3 +412,4 @@ Caller
 | Version | Date | Change |
 |---|---|---|
 | 0.1.0 | 2026-07-27 | Initial P0 design — trust boundary close-out |
+| 1.0.0 | 2026-07-28 | Status DRAFT → **Accepted**. Implementation on main; doc/spec backlog sync. |
