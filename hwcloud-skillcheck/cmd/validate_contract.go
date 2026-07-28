@@ -421,7 +421,6 @@ func findSkillcheckRoot() string {
 	return filepath.Join(result, "hwcloud-skillcheck")
 }
 
-
 func checkSafetyClassCode(skillcheckRoot string) []string {
 	var errors []string
 	// Check that the hwcloud-skillcheck binary's embedded sanitizer has the right values.
