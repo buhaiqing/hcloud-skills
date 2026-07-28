@@ -1,6 +1,7 @@
 package l4
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -115,4 +116,64 @@ func (m *ContextMemory) Save(c *Context) error {
 		return fmt.Errorf("context memory: rename: %w", err)
 	}
 	return nil
+}
+
+// Load reads the context document from disk. If the file does not exist,
+// returns a fresh zero-value Context with a newly generated session_id
+// and current timestamps (no persistence side-effect). If the document
+// has an unknown schema, returns an error. If the document's CreatedAt
+// is older than SessionRotateAfter, rotates the session_id and refreshes
+// CreatedAt; other fields are preserved.
+func (m *ContextMemory) Load() (*Context, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	raw, err := os.ReadFile(m.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return freshContext(), nil
+		}
+		return nil, fmt.Errorf("context memory: read: %w", err)
+	}
+	var c Context
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return nil, fmt.Errorf("context memory: parse: %w", err)
+	}
+	if c.Schema != ContextSchema {
+		return nil, fmt.Errorf("context memory: unknown schema %q (want %q)", c.Schema, ContextSchema)
+	}
+	// Session rotation.
+	if ts, err := time.Parse(time.RFC3339, c.CreatedAt); err == nil && time.Since(ts) > SessionRotateAfter {
+		c.SessionID = newSessionID()
+		c.CreatedAt = NowISO()
+		c.LastUpdated = NowISO()
+		return &c, nil
+	}
+	return &c, nil
+}
+
+// freshContext returns a zero-value Context with a fresh session_id and
+// current timestamps. It does NOT write to disk.
+func freshContext() *Context {
+	now := NowISO()
+	return &Context{
+		Schema:      ContextSchema,
+		SessionID:   newSessionID(),
+		CreatedAt:   now,
+		LastUpdated: now,
+		Preferences: map[string]string{},
+	}
+}
+
+// newSessionID returns a fresh uuid v4 string.
+func newSessionID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// crypto/rand should never fail on Linux/macOS; if it does, fall
+		// back to a non-cryptographic but unique-enough identifier.
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+	}
+	// RFC 4122 v4 layout.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }

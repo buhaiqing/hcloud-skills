@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContext_RoundTrip(t *testing.T) {
@@ -80,5 +81,70 @@ func TestContextMemory_Save_AtomicNoTempLeftBehind(t *testing.T) {
 		if strings.Contains(e.Name(), ".tmp.") {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestContextMemory_Load_FirstRunReturnsFreshContext(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	c, err := mem.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if c.Schema != ContextSchema {
+		t.Errorf("schema = %q", c.Schema)
+	}
+	if c.SessionID == "" {
+		t.Error("session_id empty")
+	}
+	if c.CreatedAt == "" || c.LastUpdated == "" {
+		t.Error("timestamps empty")
+	}
+	// No persistence side-effect: a subsequent Load returns a NEW session_id.
+	c2, _ := mem.Load()
+	if c.SessionID == c2.SessionID {
+		t.Error("first-run load should not have persisted; got same session_id twice")
+	}
+}
+
+func TestContextMemory_Load_RejectsUnknownSchema(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	// Write directly to disk to bypass Save's schema enforcement.
+	bad := &Context{Schema: "context-memory/v999", SessionID: "x", CreatedAt: "x", LastUpdated: "x"}
+	raw, _ := json.MarshalIndent(bad, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, ".l4-memory", "context.json"), append(raw, '\n'), 0o600); err != nil {
+		t.Fatalf("seed bad: %v", err)
+	}
+	if _, err := mem.Load(); err == nil {
+		t.Fatal("want error for unknown schema, got nil")
+	}
+}
+
+func TestContextMemory_Load_RotatesExpiredSession(t *testing.T) {
+	dir := t.TempDir()
+	mem, _ := NewContextMemory(dir)
+	old := time.Now().Add(-48 * time.Hour).UTC().Format(time.RFC3339)
+	c := &Context{
+		Schema: ContextSchema, SessionID: "old-session",
+		CreatedAt: old, LastUpdated: old,
+		RecentTasks: []TaskSummary{{TaskID: "t1", Status: "completed"}},
+	}
+	if err := mem.Save(c); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	loaded, err := mem.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.SessionID == "old-session" {
+		t.Fatal("session_id not rotated despite expired created_at")
+	}
+	// The RecentTasks should be preserved across rotation.
+	if len(loaded.RecentTasks) != 1 || loaded.RecentTasks[0].TaskID != "t1" {
+		t.Fatalf("recent_tasks not preserved on rotation: %+v", loaded.RecentTasks)
+	}
+	if !strings.HasPrefix(loaded.CreatedAt, time.Now().UTC().Format("2006-01-02")) {
+		t.Errorf("created_at not refreshed: %s", loaded.CreatedAt)
 	}
 }
