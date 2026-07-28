@@ -7,8 +7,89 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// trustOutcomeMaxRecords bounds the read window for outcome-memory backed
+// trust scoring (covers ~MinSamples*10 without scanning unbounded history).
+const trustOutcomeMaxRecords = 100
+
+// ComputeTrustScoreFromOutcome reads OutcomeRecord history for
+// (skill, action) and returns the composite TrustScore using the same
+// weights as the OpHistory-based path. Falls back to a zero-history score
+// when mem is nil or no records are present (same semantics as
+// ComputeTrustScore(nil)). policyHash is reserved for cache invalidation
+// across HealingPolicy changes per ADR-0009 §Consequences.
+func ComputeTrustScoreFromOutcome(skill, action string, mem *OutcomeMemory, policyHash string) TrustScore {
+	if mem == nil {
+		return ComputeTrustScore(nil)
+	}
+	recent, err := mem.RecentOutcomes(skill, action, trustOutcomeMaxRecords)
+	if err != nil || len(recent) < 1 {
+		return ComputeTrustScore(nil)
+	}
+	hist := make([]OpHistory, 0, len(recent))
+	for _, r := range recent {
+		// Per ADR-0009 §"Mapping OutcomeRecord → trust inputs": RBAC denied
+		// ("blocked") is a bad outcome and counts as failure for trust.
+		outcome := r.Outcome
+		if outcome == "blocked" {
+			outcome = "failure"
+		}
+		hist = append(hist, OpHistory{
+			Outcome:   outcome,
+			Timestamp: r.Timestamp,
+			RiskLevel: r.Risk,
+			HadRetry:  r.RetryCount > 0,
+		})
+	}
+	return ComputeTrustScore(hist)
+}
+
+// TrustSourceCounter tracks how trust lookups decided between the new
+// outcome-memory path and the legacy OpHistory path during the Phase 2
+// cutover. Exposed via `hwcloud-skillcheck trust stats`.
+type TrustSourceCounter struct {
+	FromOutcomeMemory atomic.Uint64
+	FromOpHistory     atomic.Uint64
+}
+
+// DefaultTrustSource is the process-wide counter for trust lookups.
+var DefaultTrustSource = &TrustSourceCounter{}
+
+// Record increments the counter for the named source. Unknown sources are
+// ignored (no panic) so callers can pass through free-form labels safely.
+func (t *TrustSourceCounter) Record(from string) {
+	if t == nil {
+		return
+	}
+	switch from {
+	case "outcome_memory":
+		t.FromOutcomeMemory.Add(1)
+	case "op_history":
+		t.FromOpHistory.Add(1)
+	}
+}
+
+var LastOutcomeLookup atomic.Pointer[string]
+
+// MarkLastOutcomeLookup stamps NowISO() as the most recent outcome-memory
+// trust lookup time.
+func MarkLastOutcomeLookup() {
+	ts := NowISO()
+	LastOutcomeLookup.Store(&ts)
+}
+
+// SnapshotLastOutcomeLookup returns the last lookup time or "" if never
+// recorded. Thread-safe.
+func SnapshotLastOutcomeLookup() string {
+	p := LastOutcomeLookup.Load()
+	if p == nil {
+		return ""
+	}
+	return *p
+}
 
 // TrustLevel describes a single trust tier.
 type TrustLevel struct {
