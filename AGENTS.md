@@ -292,6 +292,7 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 |------|------|------|
 | **Gartner Agentic AI 成熟度** | 业界用于评估 AI Agent 自治能力的 5 级模型（L1 手动 / L2 对话 / L3 任务自动化 / L4 领域自治 / L5 自演化） | （外部参考） |
 | **L3 → L4 跃迁** | 本项目当前目标：从「等人类触发才执行」进化到「领域内自治 + 自愈」。判据：跨调用 outcome memory + healing hooks | ADR-0007 / ADR-0008 |
+| **L4 → L5 跃迁** | 下一阶段：trust score 由 outcome memory 实时驱动，curated `OpHistory` 退役。判据：`trust_source{from="outcome_memory"}` 持续 1 个 release | ADR-0009 |
 
 ### Outcome Memory 与 Self-healing（ADR-0007）
 
@@ -309,6 +310,9 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **PostFailureHook(step, result, retryCount, mem, p)** | step 失败后的钩子。transient 错误（匹配 `timeout/401/429/503/token expired/connection reset`）且 `retryCount < MaxRetries` 且非 destructive → `retry`；否则 `escalate` |
 | **Destructive Verbs** | `HealingPolicy.DestructiveVerbs` 默认列表：`delete, terminate, destroy, drop, remove`。匹配这些动词的 step 永远不会被自愈重试 |
 | **Transient Pattern** | `isTransient(errMsg)` 内部识别的子串集合（大小写不敏感）：`timeout / token expired / 401 / 429 / 503 / connection reset` |
+| **`OutcomeMemory` (type)** | struct holding `path` (`<root>/.l4-memory/outcomes.jsonl`) + `sync.Mutex`。构造时 `PruneOlderThan(now-90d)` | ADR-0007 §Decision |
+| **`OutcomeMemory.Record(r)`** | 追加一行 `OutcomeRecord` 到 JSONL。原子按行写入。调用方填 `id` (uuid v4) + `ts` (ISO-8601 UTC) | ADR-0007 §FR-1 |
+| **Zero-value safety** | `OutcomeMemory=nil` 或 `HealingPolicy{}`（零值）时两个 hook 必须返回 `proceed` | ADR-0007 §Consequences |
 
 ### Cross-call Memory（ADR-0008）
 
@@ -323,6 +327,22 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 | **ContextMemory.RecordError(e)** | 头部插入一条 ErrorSummary，超 cap 时尾部截断 |
 | **ContextMemory.SetPreference(k, v)** | 设置 `preferences[k]=v`；`v==""` 时删除键 |
 | **ContextMemory.CloseTask(taskID)** | 从 `open_tasks` 移除指定 taskID |
+| **`ContextMemory` (type)** | struct holding `path` (`<root>/.l4-memory/context.json`) + `sync.Mutex` + in-memory `Context` 文档 | ADR-0008 §Decision |
+| **`ContextMemory.Load()`** | 启动时调用一次。读 JSON；`created_at` 超过 24h 时 rotate session | ADR-0008 §Decision |
+| **Schema versioning** | `schema="context-memory/v1"`。新字段一律带默认值；版本只升不降。无 migration machinery | ADR-0008 §Decision |
+| **Atomic write** | tmp 文件 + `os.Rename`。进程在写中途被 kill 时旧文件完好 | ADR-0008 §Decision |
+
+### Trust from Outcome Memory（ADR-0009）
+
+| 术语 | 定义 | 文档 |
+|------|------|------|
+| **Trust Phase 1 (coexist)** | 同 release 并存 `ComputeTrustScore([]OpHistory)` 与 `ComputeTrustScoreFromOutcome([]OutcomeRecord)`。新调用点走 outcome-memory 路径 | ADR-0009 §Migration |
+| **Trust Phase 2 (cutover)** | 默认新调用点走 outcome-memory 路径。配指标 `trust_source{from="outcome_memory"}` 监控切换 | ADR-0009 §Migration |
+| **Trust Phase 3 (deprecate)** | `ComputeTrustScore([]OpHistory)` 标 deprecated。curator pipeline 转为 back-fill | ADR-0009 §Migration |
+| **Trust Phase 4 (remove)** | 移除 curator pipeline。trust 单一来源 = outcome memory | ADR-0009 §Migration |
+| **error_recovery weight (new formula)** | 旧：curator 推断。新：`count(RetryCount > 0 AND Outcome == "success") / count(RetryCount > 0)` | ADR-0009 §Compute algorithm |
+| **trustCache** | 进程内 `map[skill]*TrustScore`。`Record()` 增量更新。cache key 含 policy hash | ADR-0009 §Decision |
+| **Outcome → trust inputs mapping** | `Outcome` → outcome（`blocked` 算失败）；`Timestamp` → ts；`Risk` → risk_level；`RetryCount > 0` → had_retry；`error_class` **不映射** | ADR-0009 §Data flow |
 
 ### 其他常用术语
 
@@ -330,10 +350,26 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 |------|------|
 | **GCL（Generator-Critic-Loop）** | Generator + Critic 双 Agent 闭环质量门控机制。详见 `docs/gcl-spec.md` |
 | **RBAC** | Role-Based Access Control。skill 操作前的权限检查，按 `RBACRisk ∈ {none,low,medium,high,critical}` 决策 allowed/denied。详见 `internal/l4/rbac.go` |
-| **Trust Score** | 历史 success_rate/consistency/recency/complexity_mastery/error_recovery 加权得分。映射到 L0_new ~ L4_autonomous。详见 `internal/l4/trust.go` |
+| **Trust Score** | history-derived score（success_rate / consistency / recency / complexity_mastery / error_recovery，权重 0.35 / 0.20 / 0.20 / 0.15 / 0.10）。Phase 1 之后：从 outcome memory 读取；之前：从 curated `OpHistory` 读取 | `internal/l4/trust.go`, ADR-0009 |
 | **L4 Orchestrator** | `hwcloud-skillcheck/internal/l4/`。执行多 step 任务、持久化 checkpoint、做 RBAC + GCL + topology + trust + healing 决策 |
 | **Topology Graph** | 静态 + 动态的 skill→resource→resource→skill 依赖图。`internal/l4/topology.go` |
 | **CADL** | Compound-Asset Distillation Loop。从执行经验中沉淀 reusable 资产的机制（见 AGENTS.md §CADL） |
+
+### 实现注意事项 (Implementation notes — reviewer-facing)
+
+1. **`p.IsZero()` is the only zero-value gate.** `HealingPolicy{}` 零值必须安全 — 两个 hook 都 `p.IsZero()` → `proceed`。sum-based check 加新字段就 silently break。
+2. **`Executor` interface seam.** 本迭代只交付 `StubExecutor`（测试用）。真实 Hive CLI 绑定在 ADR-0010。不要 new `RealExecutor`，不要改 interface 签名。
+3. **`ExtractHighRiskVerbs()` is the single source of truth.** destructive verb 列表统一从一个 helper 取。`HealingPolicy.DestructiveVerbs` 默认值是该列表的拷贝。hook 内不要重写。
+4. **`Verb` field on `TaskStep`.** destructive 匹配走 `step.Verb`，不走 `step.Action` 的 substring。Action 是 command 字符串，Verb 是结构化的首 token。
+
+### Open follow-ups
+
+| # | Item | Why deferred |
+|---|------|--------------|
+| 1 | **ADR-0010: Real Executor + subprocess semantics** | Hive CLI 绑定 + timeout + 结构化输出捕获。Seam 已就位 |
+| 2 | **L5 trajectory: trust score from outcome memory** | ADR-0009 phases 驱动。Phase 1 同 branch 交付；2-4 后续 ADR |
+| 3 | **Healing decision observability** | 单独 ADR：结构化日志 + `healing_decisions_total{action,reason}` + `memory inspect` 子命令 |
+| 4 | **`EnsureMemoryDir()` shared helper** | ADR-0007 + ADR-0008 都 mkdir `.l4-memory` (0700)。等第三个 caller 出现再抽 (YAGNI) |
 
 ---
 
