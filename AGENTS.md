@@ -274,9 +274,9 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 
 **反模式**：
 
-- ❌ 把 ADR 写到 `docs/adr/`、`docs/decisions/`、`docs/adr-NNNN/` 等其他目录
-- ❌ 把 Plan 写到 `docs/plans/`、`docs/<feature>.md`
-- ❌ 没有编号的 ADR（`architecture-decision.md` 不允许）
+- ❌ 把 ADR 写到 **docs/adr/**、**docs/decisions/**、**docs/adr-NNNN/** 等其他目录
+- ❌ 把 Plan 写到 **docs/plans/** 或根级 **docs/<feature>.md**
+- ❌ 没有编号的 ADR（如 architecture-decision.md 不允许）
 
 **Why**: 跨仓库协作时（如 GCL 生成新 skill 时引用 ADR），固定路径才能让引用稳定。`docs/architecture/` 是 hcloud-skills 项目的硬约定，所有 skill / generator / docs 工具都必须遵守。
 
