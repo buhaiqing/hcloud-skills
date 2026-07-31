@@ -92,6 +92,30 @@ L4 两大引擎(L4 orchestrator + GCL)已是**纯 Go 实现**,语言层面无障
 - 连续 K 次成功后信任提升至可自动执行区间(有测试断言)
 - 先验基线值有文档出处(不凭空设定)
 
+#### Phase 3 决策记录 (Decision Log)
+
+> 用户授权:方案设计与 N 取值由 agent 自主决定(A/B 测试选优),仅要求决策过程与最终方案存档。
+
+**Scope 取舍 (A vs B)**
+- A — 仅探索期门控(在 `trust.go` 内对单 (skill,action) 做连续成功计数封顶风险)
+- B — 探索期 + 跨 skill 信任传播(同 product 下相关操作部分继承信任)
+- **选定 A**。理由:信任传播(B)引入跨 skill 状态耦合,与 ADR-0009「trust 单一来源 = outcome memory」冲突,且冷启动窗口内传播高风险会放大首因错误;本阶段先交付可验证、可回滚的保守基线,B 留待 Phase 4 实测后评估。
+
+**Design (A 落地)**
+- `EvaluateOperationWithHistory(score, skill, action, opRisk, opType, mem)` 包裹 `EvaluateOperation`,叠加线性探索期封顶:
+  - `consecutiveSuccessCount(mem, skill, action)` 取最近 `ExplorationWindow` 条记录的尾部连续成功数 `k`
+  - `coldStartMaxRisk(k, window)` 阶梯:`k<2→none`, `2≤k<3→low`, `3≤k<window→medium`, `k≥window→""`(空=探索完成,回落到 tier 门控)
+  - 仅收紧、绝不放松安全:`EvaluateOperation` 内的 critical/destructive 硬覆盖仍优先
+- 调用点 `orchestrator.go:292` 传入真实 `trustSkill`/`trustAction`(修复了初版误传 `score.Level` 导致 `k` 恒为 0 的回归)
+
+**N 取值与出处**
+- `ExplorationWindow = 5`,出处 = `HealingPolicy.MinSamples = 5`(`self_healing.go`),作为「样本足以形成可信先验」的可文档化下限,避免凭空设定。
+
+**先验基线**
+- `zeroTrustScore() = 0.245 → L0_new`(always-confirm),已满足验收 #1「首次执行不自动放行」,无需新增非零先验常量;探索期门控在上层进一步收紧风险敞口。
+
+**测试断言** (`trust_phase3_test.go`):Ramp 表 (k=0,1→block; k=2 low→allow; k=3 medium→allow; k=5 high→allow)、FirstExecutionBlocked、MatureSkillUnaffected (≥window 不受限)、ConfigOverride。全量 `go test ./...` 绿。
+
 ---
 
 ## Phase 4: 端到端无人值守实测
