@@ -1,6 +1,7 @@
 package l4
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"sync/atomic"
@@ -316,6 +317,57 @@ func SetTrustConfig(c TrustConfig) { trustConfig = c }
 // this to avoid leaking overrides across cases.
 func ResetTrustConfig() { trustConfig = DefaultTrustConfig() }
 
+// ColdStartConfig governs the exploration period for new skills/operations
+// (Phase 3, Batch L4-C). Until `ExplorationWindow` consecutive successes
+// are recorded for a (skill, action) pair, auto-execution is gated by an
+// explicit supervision ramp rather than the trust tier alone.
+//
+// Provenance: ExplorationWindow defaults to 5, reusing HealingPolicy.
+// MinSamples (self_healing.go) — the repo's established threshold for
+// "enough samples to trust a success-rate statistic". This gives the
+// window a documentable source instead of an arbitrary constant.
+type ColdStartConfig struct {
+	ExplorationWindow int
+}
+
+// DefaultColdStartConfig returns the conservative default window.
+func DefaultColdStartConfig() ColdStartConfig {
+	return ColdStartConfig{ExplorationWindow: 5}
+}
+
+// coldStartConfig is the active exploration-period config.
+var coldStartConfig = DefaultColdStartConfig()
+
+// SetColdStartConfig overrides the active exploration config.
+func SetColdStartConfig(c ColdStartConfig) { coldStartConfig = c }
+
+// ResetColdStartConfig restores the default. Tests should defer this.
+func ResetColdStartConfig() { coldStartConfig = DefaultColdStartConfig() }
+
+// coldStartMaxRisk maps consecutive-success count k to the most
+// permissive risk tier allowed during exploration. Supervision decays
+// linearly from "always confirm" (k=0) to full tier-based autonomy
+// (k >= ExplorationWindow):
+//
+//	k < 2          -> none   (always require human confirmation)
+//	k in [2,3)     -> low
+//	k in [3,4)     -> medium
+//	k >= window    -> ""     (fall through to trust-tier MaxAutoRisk)
+//
+// Returns "" to signal "no cold-start cap; use the normal tier".
+func coldStartMaxRisk(k, window int) string {
+	switch {
+	case k < 2:
+		return "none"
+	case k < 3:
+		return "low"
+	case k < window:
+		return "medium"
+	default:
+		return ""
+	}
+}
+
 // TrustLevels is the active trust-tier table, ordered by MinScore desc.
 // It is a snapshot of the default config for external readers; the live
 // gating path reads trustConfig.Tiers directly so overrides apply
@@ -435,4 +487,59 @@ func EvaluateOperation(score TrustScore, opRisk, opType string) EvalResult {
 		RequiresConfirmation: !auto,
 		EvaluatedAt:          NowISO(),
 	}
+}
+
+// consecutiveSuccessCount returns the number of consecutive trailing
+// successes for (skill, action) in outcome memory. A single non-success
+// record breaks the streak. Used by the cold-start supervision ramp.
+func consecutiveSuccessCount(mem *OutcomeMemory, skill, action string) int {
+	if mem == nil {
+		return 0
+	}
+	// Pull a window large enough to capture the exploration period.
+	recent, err := mem.RecentOutcomes(skill, action, coldStartConfig.ExplorationWindow)
+	if err != nil || len(recent) == 0 {
+		return 0
+	}
+	k := 0
+	for i := len(recent) - 1; i >= 0; i-- {
+		if isSuccess(recent[i]) {
+			k++
+		} else {
+			break
+		}
+	}
+	return k
+}
+
+// EvaluateOperationWithHistory applies EvaluateOperation then layers the
+// Phase 3 cold-start supervision ramp on top. During the exploration
+// window, the allowed max-risk is capped by consecutiveSuccessCount via
+// coldStartMaxRisk, overriding the trust-tier MaxAutoRisk. Mature skills
+// (k >= window) are unaffected and fall through to normal tier gating.
+//
+// The critical/destructive hard overrides in EvaluateOperation still
+// apply — cold-start only ever tightens, never loosens, safety.
+func EvaluateOperationWithHistory(score TrustScore, skill, action, opRisk, opType string, mem *OutcomeMemory) EvalResult {
+	res := EvaluateOperation(score, opRisk, opType)
+	// Count consecutive successes for the real (skill, action) pair, not
+	// the trust tier label — see CA-1 style import-graph discipline and
+	// the Phase 3 test regression where score.Level shadowed the key.
+	k := consecutiveSuccessCount(mem, skill, action)
+	capRisk := coldStartMaxRisk(k, coldStartConfig.ExplorationWindow)
+	if capRisk == "" {
+		return res // exploration complete; trust tier governs
+	}
+	capVal := RiskOrder[capRisk]
+	riskVal := RiskOrder[opRisk]
+	if riskVal == 0 && opRisk != "none" {
+		riskVal = 4
+	}
+	if riskVal > capVal {
+		res.AutoApproved = false
+		res.RequiresConfirmation = true
+		res.Reason = fmt.Sprintf("cold-start: %d/%d consecutive successes — risk '%s' exceeds exploration cap '%s'",
+			k, coldStartConfig.ExplorationWindow, opRisk, capRisk)
+	}
+	return res
 }

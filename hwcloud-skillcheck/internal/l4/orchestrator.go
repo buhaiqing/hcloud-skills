@@ -289,7 +289,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		}
 	}
 	score := LookupTrust(trustSkill, trustAction, mem)
-	eval := EvaluateOperation(score, risk, in.Fault)
+	eval := EvaluateOperationWithHistory(score, trustSkill, trustAction, risk, in.Fault, mem)
 	trustRes := TrustResult{
 		TrustLevel:            score.Level,
 		CompositeScore:        score.Score,
