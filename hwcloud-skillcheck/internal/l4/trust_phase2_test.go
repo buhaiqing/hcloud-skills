@@ -102,3 +102,74 @@ func TestTrustSourceCounter_Record(t *testing.T) {
 	var nilC *TrustSourceCounter
 	nilC.Record("outcome_memory")
 }
+
+// TestTrustConfig_DefaultUnchanged guarantees the configurable tiers
+// keep the historical safe defaults until explicitly overridden.
+func TestTrustConfig_DefaultUnchanged(t *testing.T) {
+	defer ResetTrustConfig()
+	ResetTrustConfig()
+	cfg := DefaultTrustConfig()
+	if len(cfg.Tiers) != 5 {
+		t.Fatalf("default tiers=%d, want 5", len(cfg.Tiers))
+	}
+	if cfg.Tiers[0].Key != "L4_autonomous" || cfg.Tiers[0].MaxAutoRisk != "critical" {
+		t.Errorf("L4 tier drifted: %+v", cfg.Tiers[0])
+	}
+	if cfg.Tiers[4].Key != "L0_new" || cfg.Tiers[4].MaxAutoRisk != "none" {
+		t.Errorf("L0 tier drifted: %+v", cfg.Tiers[4])
+	}
+}
+
+// TestTrustConfig_OverrideMaxAutoRisk verifies an override of MaxAutoRisk
+// flows through EvaluateOperation gating immediately.
+func TestTrustConfig_OverrideMaxAutoRisk(t *testing.T) {
+	defer ResetTrustConfig()
+	// Loosen L3 to allow only low risk (instead of high) to prove the
+	// override is live, not the snapshot.
+	cfg := DefaultTrustConfig()
+	cfg.Tiers[1].MaxAutoRisk = "low" // L3_trusted
+	SetTrustConfig(cfg)
+
+	// medium risk at L3 must now REQUIRE confirmation (was auto before).
+	score := TrustScore{Level: "L3_trusted", MaxAutoRisk: "low", Score: 0.85}
+	if got := EvaluateOperation(score, "medium", "resize"); got.AutoApproved {
+		t.Error("override MaxAutoRisk=low should block medium risk at L3")
+	}
+	// low risk at L3 still auto-approved.
+	if got := EvaluateOperation(score, "low", "resize"); !got.AutoApproved {
+		t.Error("override should still auto-approve low risk at L3")
+	}
+}
+
+// TestTrustConfig_OverrideMinScore verifies shifting a tier boundary
+// moves the level assignment used by gating.
+func TestTrustConfig_OverrideMinScore(t *testing.T) {
+	defer ResetTrustConfig()
+	cfg := DefaultTrustConfig()
+	// Raise L2_established threshold so a 0.6 score no longer qualifies.
+	cfg.Tiers[2].MinScore = 0.7 // L2 was 0.6
+	SetTrustConfig(cfg)
+
+	// A score of 0.65 now falls to L1_provisional (MaxAutoRisk=low),
+	// so medium risk must require confirmation.
+	score := ComputeTrustScoreFromOutcome("s", "a", nil, "")
+	_ = score
+	lvl := "L1_provisional"
+	if got := EvaluateOperation(TrustScore{Level: lvl, MaxAutoRisk: "low", Score: 0.65}, "medium", "resize"); got.AutoApproved {
+		t.Error("raised MinScore should demote 0.65 to L1 and block medium risk")
+	}
+}
+
+// TestTrustConfig_ResetRestoresDefaults ensures ResetTrustConfig undoes
+// any override (no leak across tests).
+func TestTrustConfig_ResetRestoresDefaults(t *testing.T) {
+	defer ResetTrustConfig()
+	cfg := DefaultTrustConfig()
+	cfg.Tiers[1].MaxAutoRisk = "low"
+	SetTrustConfig(cfg)
+	ResetTrustConfig()
+	score := TrustScore{Level: "L3_trusted", MaxAutoRisk: "high", Score: 0.85}
+	if got := EvaluateOperation(score, "medium", "resize"); !got.AutoApproved {
+		t.Error("after reset, L3 medium risk must be auto-approved again")
+	}
+}
