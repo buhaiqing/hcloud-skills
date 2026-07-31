@@ -46,6 +46,34 @@ Minimum dimensions:
 
 **Safety = 0 → ABORT immediately**, regardless of total score.
 
+### 3.1 Conditional Critic Check — Cross-Language Migration Equivalence
+
+**Trigger**: The task migrates functionality from one language to another
+(e.g. Python → Go, shell → Go). This applies to runtime scripts, CLIs, and
+test harnesses alike — not only to `huaweicloud-*-ops` skills.
+
+**Mandatory Critic review items** (scored under the existing `correctness`
+dimension — missing or divergent behavior sets `correctness = 0`):
+
+| # | Check | Pass criterion |
+|---|-------|----------------|
+| M1 | **Feature-point coverage** | Every externally-observable behavior of the source is present in the target. Build it line-by-line: enumerate source functions/branches, confirm each has a target equivalent. Gap → `[BLOCKER]`. |
+| M2 | **No regression** | Target produces the same exit codes, same success/failure semantics, and equivalent error messages for the same inputs. Behavior drift (incl. silent "looks green but differs") → `[BLOCKER]`. |
+| M3 | **Complete, not partial** | No stubbed/placeholder/TODO paths left where the source had real logic. "TODO later" where source was functional → `[MAJOR]`. |
+| M4 | **Parity of edge cases** | CLI flags, argument overrides, env-var handling, cwd/root tolerance, and output formatting match. Missing flag/override → `[MAJOR]`. |
+| M5 | **Test equivalence** | If the source was a test/smoke harness, the target must exercise the same scenarios (and same pass/fail assertions). Dropped scenario → `[BLOCKER]`. |
+
+**Golden-snapshot rule**: When a migration is planned, capture a runtime
+output snapshot (golden) of the *source* **before** deleting it. Without the
+source or its snapshot, M2 (behavioral regression) can only be verified by
+static reasoning, not by re-running — the Critic MUST flag this as
+`[HUMAN_DECISION]` if no snapshot exists.
+
+**Orchestrator duty**: If the migration deletes the source file, the
+Orchestrator MUST confirm a golden snapshot was taken, OR explicitly record
+that behavioral comparison is no longer possible and rely on M1/M3/M4/M5
+static review only.
+
 ## 4. Loop Flow
 
 ```text
