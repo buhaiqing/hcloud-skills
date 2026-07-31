@@ -1,6 +1,6 @@
 // Package gcl — confirmation.go
 //
-// ConfirmationRegistry implements an in-memory nonce store for destructive-
+// ConfirmationRegistry implements a nonce store for destructive-
 // operation approvals. The GCL loop hands a fresh nonce to a human reviewer
 // when a request scores as destructive; the reviewer calls Verify (or
 // VerifyBound when the caller can supply the original intent+actor) to
@@ -8,8 +8,10 @@
 //
 // Design choices (matching the spec in docs/gcl-spec.md §confirmations):
 //
-//   - Storage is in-process: nonces never survive process restart. The
-//     producer (Runner) and consumer (review tool) MUST be the same process.
+//   - Storage is pluggable via ConfirmationStore. The default MemoryStore
+//     keeps entries in-process (nonces do NOT survive process restart);
+//     FileStore (confirmation_file.go) persists them to disk so a nonce
+//     issued before a restart can still be consumed afterwards.
 //   - TTL defaults to 60 seconds. Entries older than TTL are pruned either
 //     lazily on Verify (so callers never see a stale nonce) or eagerly by
 //     the background sweep loop.
@@ -26,7 +28,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 )
@@ -67,19 +68,43 @@ var ErrUnknown = errors.New("confirmation: nonce unknown")
 // match what the nonce was issued against.
 var errBindingMismatch = errors.New("confirmation: op/actor binding mismatch")
 
-// ConfirmationRegistry stores issued nonces with TTL and one-time semantics.
-// The zero value is NOT usable; construct via NewConfirmationRegistry.
-type ConfirmationRegistry struct {
-	mu       sync.Mutex
-	entries  map[string]*confirmationEntry
-	ttl      time.Duration
-	stopCh   chan struct{}
-	stopOnce sync.Once
-	now      func() time.Time
+// ConfirmationStoreEntry is the persistence-facing row handed to a
+// ConfirmationStore.Issue. It carries everything a backend needs to
+// enforce TTL + binding + one-time semantics later. Fields are exported
+// so durable backends (FileStore) can marshal them.
+type ConfirmationStoreEntry struct {
+	Nonce     string
+	Op        string
+	Actor     string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
 }
 
-// confirmationEntry is the internal store row. consumed flips once on the
-// first successful Verify.
+// ConfirmationStore is the pluggable persistence backend behind a
+// ConfirmationRegistry. Implementations MUST be safe for concurrent use.
+// The registry owns nonce minting, TTL computation, and the sweeper; the
+// store owns durability, one-time-consumption bookkeeping, and expiry
+// enforcement using the clock injected via SetClock.
+//
+// Consume performs an atomic check-and-consume:
+//   - unknown nonce            → (false, ErrUnknown)
+//   - already consumed         → (false, ErrReplay)
+//   - expired (now >= expiry)  → (false, ErrExpired)   [entry dropped]
+//   - enforceBinding && mismatch → (false, errBindingMismatch)
+//   - otherwise                → marks consumed, returns (true, nil)
+type ConfirmationStore interface {
+	Issue(entry ConfirmationStoreEntry) error
+	Consume(nonce, op, actor string, enforceBinding bool) (bool, error)
+	Revoke(nonce string) error
+	Pending() []Confirmation
+	PruneExpired()
+	// SetClock injects the clock the store uses for expiry decisions. The
+	// registry calls this so withClock() stays a single source of truth.
+	SetClock(now func() time.Time)
+}
+
+// confirmationEntry is the internal MemoryStore row. consumed flips once
+// on the first successful Consume.
 type confirmationEntry struct {
 	nonce     string
 	op        string
@@ -89,31 +114,58 @@ type confirmationEntry struct {
 	consumed  bool
 }
 
+// ConfirmationRegistry stores issued nonces with TTL and one-time semantics.
+// The zero value is NOT usable; construct via NewConfirmationRegistry or
+// NewConfirmationRegistryWithStore.
+type ConfirmationRegistry struct {
+	mu       sync.Mutex
+	store    ConfirmationStore
+	ttl      time.Duration
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	now      func() time.Time
+}
+
 // NewConfirmationRegistry starts the background sweeper and returns a
-// registry with the given TTL. Stop() must be called to release the
-// goroutine; tests use t.Cleanup / defer reg.Stop() for that.
+// registry with the given TTL, backed by an in-process MemoryStore. Stop()
+// must be called to release the goroutine; tests use t.Cleanup /
+// defer reg.Stop() for that.
 //
 // A ttl of zero or negative is normalized to DefaultConfirmationTTL.
 func NewConfirmationRegistry(ttl time.Duration) *ConfirmationRegistry {
+	return NewConfirmationRegistryWithStore(ttl, NewMemoryStore())
+}
+
+// NewConfirmationRegistryWithStore is like NewConfirmationRegistry but lets
+// the caller supply a durable ConfirmationStore (e.g. FileStore) so nonces
+// survive process restart. The registry drives the given store's clock; a
+// nil store panics (programmer error).
+func NewConfirmationRegistryWithStore(ttl time.Duration, store ConfirmationStore) *ConfirmationRegistry {
 	if ttl <= 0 {
 		ttl = DefaultConfirmationTTL
 	}
-	r := &ConfirmationRegistry{
-		entries: make(map[string]*confirmationEntry),
-		ttl:     ttl,
-		stopCh:  make(chan struct{}),
-		now:     time.Now,
+	if store == nil {
+		panic("gcl: NewConfirmationRegistryWithStore: nil store")
 	}
+	r := &ConfirmationRegistry{
+		store:  store,
+		ttl:    ttl,
+		stopCh: make(chan struct{}),
+		now:    time.Now,
+	}
+	r.store.SetClock(r.now)
 	go r.sweepLoop()
 	return r
 }
 
 // withClock lets tests inject a fake clock. Production never calls this;
-// the public API exposes a single constructor.
+// the public API exposes a single constructor. The clock is propagated to
+// the underlying store so expiry decisions stay consistent.
 func (r *ConfirmationRegistry) withClock(now func() time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.now = now
+	r.store.SetClock(now)
 }
 
 // Issue mints a fresh nonce bound to (op, actor) and stores it. The nonce
@@ -128,16 +180,19 @@ func (r *ConfirmationRegistry) Issue(op, actor string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("confirmation: mint nonce: %w", err)
 	}
-	now := r.now()
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.entries[nonce] = &confirmationEntry{
-		nonce:     nonce,
-		op:        op,
-		actor:     actor,
-		issuedAt:  now,
-		expiresAt: now.Add(r.ttl),
-		consumed:  false,
+	now := r.now()
+	ttl := r.ttl
+	store := r.store
+	r.mu.Unlock()
+	if err := store.Issue(ConfirmationStoreEntry{
+		Nonce:     nonce,
+		Op:        op,
+		Actor:     actor,
+		IssuedAt:  now,
+		ExpiresAt: now.Add(ttl),
+	}); err != nil {
+		return "", err
 	}
 	return nonce, nil
 }
@@ -172,14 +227,11 @@ func (r *ConfirmationRegistry) Verify(nonce string) (bool, error) {
 // unknown nonce returns ErrUnknown. A binding mismatch returns
 // errBindingMismatch.
 func (r *ConfirmationRegistry) ValidateAndConsume(nonce, skill, cmd string) error {
-	ok, err := r.verify(nonce, skill, cmd, true)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errBindingMismatch
-	}
-	return nil
+	// verify returns (true, nil) on success and (false, non-nil-err) on every
+	// failure path (unknown/replay/expired/binding-mismatch), so a nil error
+	// already implies ok==true — no separate !ok branch is reachable.
+	_, err := r.verify(nonce, skill, cmd, true)
+	return err
 }
 
 func (r *ConfirmationRegistry) verify(nonce, op, actor string, enforceBinding bool) (bool, error) {
@@ -187,25 +239,9 @@ func (r *ConfirmationRegistry) verify(nonce, op, actor string, enforceBinding bo
 		return false, ErrUnknown
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	entry, ok := r.entries[nonce]
-	if !ok {
-		return false, ErrUnknown
-	}
-	if entry.consumed {
-		return false, ErrReplay
-	}
-	if !r.now().Before(entry.expiresAt) {
-		// Eagerly remove the stale entry so Pending() never returns it.
-		delete(r.entries, nonce)
-		return false, ErrExpired
-	}
-	if enforceBinding && (entry.op != op || entry.actor != actor) {
-		return false, errBindingMismatch
-	}
-	entry.consumed = true
-	return true, nil
+	store := r.store
+	r.mu.Unlock()
+	return store.Consume(nonce, op, actor, enforceBinding)
 }
 
 // Revoke forcibly removes a nonce. Useful when an operation is cancelled
@@ -214,37 +250,18 @@ func (r *ConfirmationRegistry) verify(nonce, op, actor string, enforceBinding bo
 // already-unknown nonce is fine).
 func (r *ConfirmationRegistry) Revoke(nonce string) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.entries[nonce]; !ok {
-		return ErrUnknown
-	}
-	delete(r.entries, nonce)
-	return nil
+	store := r.store
+	r.mu.Unlock()
+	return store.Revoke(nonce)
 }
 
 // Pending returns a stable, time-sorted snapshot of issued nonces (most
 // recent first). The caller must not mutate the slice.
 func (r *ConfirmationRegistry) Pending() []Confirmation {
 	r.mu.Lock()
-	now := r.now()
-	out := make([]Confirmation, 0, len(r.entries))
-	for _, e := range r.entries {
-		if !now.Before(e.expiresAt) {
-			continue
-		}
-		out = append(out, Confirmation{
-			Nonce:     e.nonce,
-			Op:        e.op,
-			Actor:     e.actor,
-			IssuedAt:  e.issuedAt,
-			ExpiresAt: e.expiresAt,
-		})
-	}
+	store := r.store
 	r.mu.Unlock()
-	sort.SliceStable(out, func(i, j int) bool {
-		return out[i].IssuedAt.After(out[j].IssuedAt)
-	})
-	return out
+	return store.Pending()
 }
 
 // Stop halts the background sweeper. Safe to call multiple times.
@@ -279,13 +296,9 @@ func (r *ConfirmationRegistry) sweepLoop() {
 
 func (r *ConfirmationRegistry) sweepOnce() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	now := r.now()
-	for k, e := range r.entries {
-		if !now.Before(e.expiresAt) {
-			delete(r.entries, k)
-		}
-	}
+	store := r.store
+	r.mu.Unlock()
+	store.PruneExpired()
 }
 
 // PruneExpired is the spec-mandated (§5) public sweep. It removes all
