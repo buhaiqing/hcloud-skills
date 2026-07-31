@@ -416,6 +416,17 @@ CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Se
 | 同步索引 | `codegraph sync --quiet` |
 
 MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegraph` 在 PATH 中（`which codegraph` 验证）。
+
+#### GoLang 程序集成规范（hwcloud-skillcheck 等 Go 工程）
+
+`codegraph` 的索引基于 AST/调用图，对 Go 的符号命名有固定约定。在 Go 工程中集成或排查 CodeGraph 时必须遵守：
+
+1. **符号记法** — Go 符号用 `pkg.Symbol`（包路径末段 + 导出符号），例如 `internal/l4.TrustScore`、`internal/l4.EvaluateOperationWithHistory`。`codegraph explore` 入参区分大小写，仅索引导出符号（首字母大写）。
+2. **编译先行** — 任何 `codegraph explore/impact/callees` 针对 Go 符号前，先确保 `go build ./...` 通过。索引器解析依赖 AST，**编译失败 → 符号缺失 → 假阴性**。
+3. **写后 sync 强约束** — 修改 `internal/` 下任何 Go 文件（含 `_test.go`）后、提交前必须 `codegraph sync --quiet`。Go 的接口实现/动态派送（如 `Executor` interface、`HealingPolicy`）只在 sync 后才反映到调用图。
+4. **影响面分析优先于 grep** — 改 `internal/l4/` 等核心包前，先 `codegraph impact <pkg.Symbol>` 拿到真实调用方（含间接调用者），再决定是否需 cascade 修改；禁止仅凭 `grep` 判定「无调用方」。
+5. **vendor / 离线** — 沙箱无公网时 `codegraph sync` 可能拉取失败；此时回退到 `grep`/`read` 并标注 `// OFFLINE: codegraph unavailable`，不得假设索引存在。
+
 ### 版本升级规则
 
 重大功能重构或实现完成后，Git push 成功后必须升级版本：
