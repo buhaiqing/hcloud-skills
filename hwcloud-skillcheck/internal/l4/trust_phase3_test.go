@@ -50,13 +50,13 @@ func TestColdStart_Ramp(t *testing.T) {
 		opRisk   string
 		wantAuto bool
 	}{
-		{0, "low", false},      // k<2: always confirm
-		{1, "low", false},      // k<2: always confirm
-		{2, "low", true},       // k in [2,3): cap=low -> low allowed
-		{2, "medium", false},   // k in [2,3): cap=low -> medium blocked
-		{3, "medium", true},    // k in [3,window): cap=medium -> medium allowed
-		{3, "high", false},     // cap=medium -> high blocked
-		{5, "high", true},      // k>=window: fall through to tier (L3 allows high)
+		{0, "low", false},    // k<2: always confirm
+		{1, "low", false},    // k<2: always confirm
+		{2, "low", true},     // k in [2,3): cap=low -> low allowed
+		{2, "medium", false}, // k in [2,3): cap=low -> medium blocked
+		{3, "medium", true},  // k in [3,window): cap=medium -> medium allowed
+		{3, "high", false},   // cap=medium -> high blocked
+		{5, "high", true},    // k>=window: fall through to tier (L3 allows high)
 	}
 	for _, c := range cases {
 		ResetColdStartConfig()

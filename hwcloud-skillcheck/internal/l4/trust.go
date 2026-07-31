@@ -284,11 +284,11 @@ type TrustConfig struct {
 
 // TrustTier is one named tier in the trust table.
 type TrustTier struct {
-	Key         string
-	MinScore    float64
+	Key          string
+	MinScore     float64
 	Confirmation string
-	Description string
-	MaxAutoRisk string
+	Description  string
+	MaxAutoRisk  string
 }
 
 // DefaultTrustConfig returns the conservative, safe-by-default tiers.

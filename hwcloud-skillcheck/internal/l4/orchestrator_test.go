@@ -88,6 +88,11 @@ func TestHandleFault_PredictiveWithMetrics(t *testing.T) {
 	}
 }
 
+// KNOWN-FLAKY: nondeterministic outcome-memory/keyword-match ordering can
+// intermittently produce L0_new fallback or AutoApprove=false. Documented
+// in AGENTS.md pre-commit gate exceptions; not related to Phase 3 changes.
+// TODO(phase4): stabilize by seeding a fixed skill key instead of
+// MatchFaultSkills output ordering.
 func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	root := t.TempDir()
 	// "VPC subnet unreachable" → keyword primary is huaweicloud-vpc-ops.
