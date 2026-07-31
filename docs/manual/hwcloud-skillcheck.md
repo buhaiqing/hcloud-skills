@@ -335,6 +335,42 @@ hwcloud-skillcheck l4 handle --fault "ECS CPU at 95%" --metric-values 60,72,81,8
 
 Exit codes: `0` plan emitted, `1` missing `--fault` or parse error.
 
+### Trust Cold-Start Supervision (what to expect on first runs)
+
+When `l4 handle` encounters a `(skill, action)` pair it has **never seen
+succeed before**, it does not immediately trust it — even if the skill's
+overall trust level is high. A new operation gets a supervised "exploration
+window" before it can run unattended:
+
+| Consecutive successes on this exact `(skill, action)` | Max risk the engine will auto-approve |
+|------------------------------------------------------|---------------------------------------|
+| 0–1 | **none** — always asks for confirmation |
+| 2 | `low` only |
+| 3–4 | up to `medium` |
+| 5 or more | window complete — falls back to the skill's normal trust-tier rules |
+
+Plain-language summary:
+
+- **First time an operation runs, you will always be prompted** — this is by
+  design, not a bug.
+- **Each time it succeeds, the engine trusts it a little more**, widening the
+  risk tier it may run without asking.
+- **After 5 consecutive successes, supervision ends** for that operation and
+  the normal trust tier takes over.
+- **One failure resets the streak** — the count is measured from the most
+  recent success backward, so a single failure puts the operation back into
+  supervised mode.
+- **Safety is never relaxed.** Critical/destructive operations always require
+  confirmation regardless of streak.
+- The window length (default **5**) is configurable in code via
+  `SetColdStartConfig`; it is documented as derived from
+  `HealingPolicy.MinSamples` (the "enough samples to trust" threshold).
+
+This is implemented by `EvaluateOperationWithHistory` in
+`internal/l4/trust.go`; see `docs/architecture/0013-trust-cold-start.md` and
+`docs/superpowers/specs/trust-cold-start-phase3.md` for the full decision
+and spec.
+
 ## `hwcloud-skillcheck drift` Subcommands
 
 Verifies that the runtime copy of each skill (the working tree) matches its canonical (HEAD) copy, and reconciles drift when it does not.
