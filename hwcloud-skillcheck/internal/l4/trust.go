@@ -180,8 +180,8 @@ func finalizeTrustScore(weighted float64, components map[string]float64, n int) 
 	}
 	score := math.Round(weighted*10000) / 10000
 	level := "L0_new"
-	for _, l := range TrustLevels {
-		if score >= l.Def.MinScore {
+	for _, l := range trustConfig.Tiers {
+		if score >= l.MinScore {
 			level = l.Key
 			break
 		}
@@ -271,17 +271,75 @@ type TrustLevel struct {
 	MaxAutoRisk  string
 }
 
-// TrustLevels is the static trust-tier table, ordered by MinScore desc.
-var TrustLevels = []struct {
+// TrustConfig is the tunable trust-tier configuration. Phase 2 (Batch
+// L4-B) makes the previously-hardcoded tier table overridable so
+// operators can adjust autonomy boundaries without recompiling, while
+// the safe defaults stay in DefaultTrustConfig().
+type TrustConfig struct {
+	// Tiers must be ordered by MinScore descending; finalizeTrustScore
+	// relies on that order to pick the highest tier a score qualifies for.
+	Tiers []TrustTier
+}
+
+// TrustTier is one named tier in the trust table.
+type TrustTier struct {
+	Key         string
+	MinScore    float64
+	Confirmation string
+	Description string
+	MaxAutoRisk string
+}
+
+// DefaultTrustConfig returns the conservative, safe-by-default tiers.
+// These match the historical hardcoded values and must remain the
+// process default — any override is explicit and resettable.
+func DefaultTrustConfig() TrustConfig {
+	return TrustConfig{Tiers: []TrustTier{
+		{Key: "L4_autonomous", MinScore: 0.95, Confirmation: "never", Description: "Proven autonomous capability — full auto including destructive with rollback", MaxAutoRisk: "critical"},
+		{Key: "L3_trusted", MinScore: 0.8, Confirmation: "never", Description: "Excellent track record — auto-execute all except destructive", MaxAutoRisk: "high"},
+		{Key: "L2_established", MinScore: 0.6, Confirmation: "critical_only", Description: "Good track record — confirm only critical risk operations", MaxAutoRisk: "medium"},
+		{Key: "L1_provisional", MinScore: 0.3, Confirmation: "high_risk_only", Description: "Some success history — confirm only high/critical risk operations", MaxAutoRisk: "low"},
+		{Key: "L0_new", MinScore: 0.0, Confirmation: "always", Description: "New operation, no history — always require human confirmation", MaxAutoRisk: "none"},
+	}}
+}
+
+// trustConfig is the active configuration. Starts at the safe default;
+// SetTrustConfig overrides it (e.g. for tests or future config loader).
+var trustConfig = DefaultTrustConfig()
+
+// SetTrustConfig replaces the active trust configuration. Caller must
+// pass a fully-formed config (ordered by MinScore desc); no validation
+// is performed here to keep the hot path cheap.
+func SetTrustConfig(c TrustConfig) { trustConfig = c }
+
+// ResetTrustConfig restores the conservative default. Tests should defer
+// this to avoid leaking overrides across cases.
+func ResetTrustConfig() { trustConfig = DefaultTrustConfig() }
+
+// TrustLevels is the active trust-tier table, ordered by MinScore desc.
+// It is a snapshot of the default config for external readers; the live
+// gating path reads trustConfig.Tiers directly so overrides apply
+// immediately (see finalizeTrustScore / lookupTrust).
+func TrustLevelsSnapshot() []struct {
 	Key string
 	Def TrustLevel
-}{
-	{"L4_autonomous", TrustLevel{MinScore: 0.95, Confirmation: "never", Description: "Proven autonomous capability — full auto including destructive with rollback", MaxAutoRisk: "critical"}},
-	{"L3_trusted", TrustLevel{MinScore: 0.8, Confirmation: "never", Description: "Excellent track record — auto-execute all except destructive", MaxAutoRisk: "high"}},
-	{"L2_established", TrustLevel{MinScore: 0.6, Confirmation: "critical_only", Description: "Good track record — confirm only critical risk operations", MaxAutoRisk: "medium"}},
-	{"L1_provisional", TrustLevel{MinScore: 0.3, Confirmation: "high_risk_only", Description: "Some success history — confirm only high/critical risk operations", MaxAutoRisk: "low"}},
-	{"L0_new", TrustLevel{MinScore: 0.0, Confirmation: "always", Description: "New operation, no history — always require human confirmation", MaxAutoRisk: "none"}},
+} {
+	out := make([]struct {
+		Key string
+		Def TrustLevel
+	}, 0, len(trustConfig.Tiers))
+	for _, t := range trustConfig.Tiers {
+		out = append(out, struct {
+			Key string
+			Def TrustLevel
+		}{Key: t.Key, Def: TrustLevel{MinScore: t.MinScore, Confirmation: t.Confirmation, Description: t.Description, MaxAutoRisk: t.MaxAutoRisk}})
+	}
+	return out
 }
+
+// TrustLevels preserves the historical exported name as a snapshot of the
+// default config for callers that iterate tiers read-only.
+var TrustLevels = TrustLevelsSnapshot()
 
 // RiskOrder is the numeric ranking for risk levels.
 var RiskOrder = map[string]int{"none": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
@@ -320,9 +378,9 @@ type TrustScore struct {
 }
 
 func lookupTrust(key string) TrustLevel {
-	for _, l := range TrustLevels {
+	for _, l := range trustConfig.Tiers {
 		if l.Key == key {
-			return l.Def
+			return TrustLevel{MinScore: l.MinScore, Confirmation: l.Confirmation, Description: l.Description, MaxAutoRisk: l.MaxAutoRisk}
 		}
 	}
 	return TrustLevel{}
