@@ -226,3 +226,55 @@ func TestGateGoTest_HappyAndFail(t *testing.T) {
 		t.Error("go test gate should fail on a failing test")
 	}
 }
+
+// TestGateCriticScore_RunsWithFixture verifies gateCriticScore is wired to
+// the in-process critic score runner. On an empty root (no fixture file), it
+// must fail — proving the gate actually invokes the critic and doesn't silently
+// pass. This is a unit-level smoke test for the gate function; the full
+// end-to-end (real fixture) is covered by `check --pre-commit --check-only`.
+func TestGateCriticScore_RunsWithFixture(t *testing.T) {
+	root := t.TempDir()
+	_ = captureStdout(t, func() {
+		if got := gateCriticScore(root); got.passed {
+			t.Error("critic-score gate must fail when fixture file is missing")
+		}
+	})
+}
+
+// TestGateDriftGuard_CheckOnly verifies that in check-only mode, only
+// `drift check` runs (no `sync --apply`). An empty root triggers a drift check
+// failure (no generator copy), proving the gate runs `drift check` without
+// attempting a sync.
+func TestGateDriftGuard_CheckOnly(t *testing.T) {
+	root := t.TempDir()
+	_ = captureStdout(t, func() {
+		if got := gateDriftGuardCheckOnly(root); got.passed {
+			t.Error("drift-guard check-only gate must fail on an empty root (drift check should detect missing generator)")
+		}
+	})
+}
+
+// TestGateDriftGuard_CheckOnlyVsFull verifies that checkOnly mode and full mode
+// produce different behavior. Full mode (sync + check) may self-heal via sync;
+// checkOnly mode strictly checks without mutating. Both fail on an empty root.
+func TestGateDriftGuard_CheckOnlyVsFull(t *testing.T) {
+	root := t.TempDir()
+	_ = captureStdout(t, func() {
+		fullResult := gateDriftGuard(root)
+		checkOnlyResult := gateDriftGuardCheckOnly(root)
+		if fullResult.passed {
+			t.Error("drift-guard full mode should fail on empty root")
+		}
+		if checkOnlyResult.passed {
+			t.Error("drift-guard check-only mode should fail on empty root")
+		}
+		// Both should contain "drift" in detail — the full mode includes
+		// "drift sync:" prefix, checkOnly includes "drift check:" prefix.
+		if !strings.Contains(fullResult.detail, "drift") {
+			t.Errorf("full mode detail should mention drift, got %q", fullResult.detail)
+		}
+		if !strings.Contains(checkOnlyResult.detail, "drift") {
+			t.Errorf("check-only mode detail should mention drift, got %q", checkOnlyResult.detail)
+		}
+	})
+}

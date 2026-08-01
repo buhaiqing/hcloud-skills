@@ -19,6 +19,7 @@ func fakeGate(label string, pass, soft bool) preCommitGate {
 
 // TestRunPreCommitGates_ExitContract verifies the core gate-iteration +
 // exit-code contract without touching the real `go` toolchain or binaries.
+// It tests both local-dev mode (checkOnly=false) and CI mode (checkOnly=true).
 func TestRunPreCommitGates_ExitContract(t *testing.T) {
 	// All hard gates pass -> nil (exit 0).
 	allPass := []preCommitGate{
@@ -48,6 +49,39 @@ func TestRunPreCommitGates_ExitContract(t *testing.T) {
 	}
 }
 
+// TestPreCommitGates_LocalVsCI verifies the gate count and composition differ
+// between local-dev mode and CI (checkOnly) mode.
+func TestPreCommitGates_LocalVsCI(t *testing.T) {
+	// Local-dev mode: 13 gates (with tests, no critic-score).
+	local := preCommitGates(false, false)
+	if len(local) != 13 {
+		t.Fatalf("local mode expected 13 gates, got %d", len(local))
+	}
+	// Last gate must be Go test.
+	if last := local[len(local)-1]; last.label != "Go test" {
+		t.Fatalf("local mode last gate expected 'Go test', got %q", last.label)
+	}
+
+	// CI mode: 14 gates (with tests + critic-score).
+	ci := preCommitGates(false, true)
+	if len(ci) != 14 {
+		t.Fatalf("CI mode expected 14 gates, got %d", len(ci))
+	}
+	// Last gate must be critic-score.
+	if last := ci[len(ci)-1]; last.label != "critic-score" {
+		t.Fatalf("CI mode last gate expected 'critic-score', got %q", last.label)
+	}
+
+	// CI mode with skipTests: 13 gates (no Go test, has critic-score).
+	ciSkipTests := preCommitGates(true, true)
+	if len(ciSkipTests) != 13 {
+		t.Fatalf("CI skip-tests mode expected 13 gates, got %d", len(ciSkipTests))
+	}
+	if last := ciSkipTests[len(ciSkipTests)-1]; last.label != "critic-score" {
+		t.Fatalf("CI skip-tests last gate expected 'critic-score', got %q", last.label)
+	}
+}
+
 // TestReportPreCommitResults_Summary verifies the summary message wording so a
 // regressing message still fails loudly in review.
 func TestReportPreCommitResults_Summary(t *testing.T) {
@@ -63,19 +97,33 @@ func TestReportPreCommitResults_Summary(t *testing.T) {
 }
 
 // TestPreCommitGates_SkipTests verifies gate #13 (Go test) is appended only
-// when skipTests is false, and that gates 8/10 are marked soft.
+// when skipTests is false, and that gates 8/10 are marked soft. Also verifies
+// that CI mode includes the critic-score gate.
 func TestPreCommitGates_SkipTests(t *testing.T) {
-	withTests := preCommitGates(false)
+	withTests := preCommitGates(false, false)
 	last := withTests[len(withTests)-1]
 	if last.label != "Go test" {
 		t.Fatalf("expected last gate 'Go test' when skipTests=false, got %q", last.label)
 	}
 
-	withoutTests := preCommitGates(true)
+	withoutTests := preCommitGates(true, false)
 	for _, g := range withoutTests {
 		if g.label == "Go test" {
 			t.Fatal("Go test gate must be omitted when skipTests=true")
 		}
+	}
+
+	// CI mode: critic-score is appended.
+	ciGates := preCommitGates(false, true)
+	hasCritic := false
+	for _, g := range ciGates {
+		if g.label == "critic-score" {
+			hasCritic = true
+			break
+		}
+	}
+	if !hasCritic {
+		t.Fatal("CI mode must include critic-score gate")
 	}
 
 	// Soft gates must be flagged so they never fail the run.

@@ -76,13 +76,14 @@ func maskSecrets(s string) string {
 }
 
 // runCheckPreCommit implements `hwcloud-skillcheck check --pre-commit
-// [--skip-tests]`. It replaces scripts/pre_commit_check.sh: the same 13 gates,
-// the same hard/soft semantics, and the same exit-code contract (1 on any hard
-// failure, 0 otherwise). See ADR-0014.
+// [--skip-tests] [--check-only]`. It replaces scripts/pre_commit_check.sh: the
+// same 13 gates (14 with --check-only), the same hard/soft semantics, and the
+// same exit-code contract (1 on any hard failure, 0 otherwise). See ADR-0014.
 func runCheckPreCommit(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck check --pre-commit")
 	root := fs.String("root", ".", "skill repository root")
 	skipTests := fs.Bool("skip-tests", false, "skip the go test gate (git hook passes this; CI does not)")
+	checkOnly := fs.Bool("check-only", false, "CI mode: skip binary rebuild, drift-sync-only-check, and add critic-score gate")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -91,20 +92,16 @@ func runCheckPreCommit(args []string) error {
 		return err
 	}
 
-	// Defense-in-depth build: rebuild ./bin/hwcloud-skillcheck so a stale
-	// binary cannot drift from current source (mirrors shell line 39). The
-	// gates themselves call in-process funcs, so the built binary is only a
-	// safety net for external callers; skip it with SKILLCHECK_SKIP_BUILD=1.
-	gates := preCommitGates(*skipTests)
+	gates := preCommitGates(*skipTests, *checkOnly)
 	results := runPreCommitGates(gates, rootDir)
 
 	// Defense-in-depth build: rebuild ./bin/hwcloud-skillcheck so a stale
 	// binary cannot drift from current source (mirrors shell line 39). The
 	// gates themselves call in-process funcs, so the built binary is only a
 	// safety net for external callers; skip it with SKILLCHECK_SKIP_BUILD=1.
-	// A build failure is surfaced as a synthetic hard gate result so the
-	// summary and exit code stay consistent with the gate contract.
-	if os.Getenv("SKILLCHECK_SKIP_BUILD") != "1" {
+	// In --check-only mode (CI), the binary is built in a prior step, so this
+	// rebuild is skipped entirely.
+	if !*checkOnly && os.Getenv("SKILLCHECK_SKIP_BUILD") != "1" {
 		if err := rebuildSkillcheckBinary(rootDir); err != nil {
 			results = append(results, gateResult{
 				name:   "build hwcloud-skillcheck",
@@ -136,10 +133,15 @@ func rebuildSkillcheckBinary(rootDir string) error {
 	return nil
 }
 
-// preCommitGates returns the ordered 13-gate registry. Gates 8 (golden run)
-// and 10 (ab compare) are soft (warn but never fail). Gate 13 (go test) is
-// omitted when skipTests is set.
-func preCommitGates(skipTests bool) []preCommitGate {
+// preCommitGates returns the ordered gate registry. Gates 8 (golden run) and
+// 10 (ab compare) are soft (warn but never fail). Gate 13 (go test) is omitted
+// when skipTests is set. When checkOnly is true, drift guard runs in check-only
+// mode (skip sync --apply) and a 14th gate (critic-score) is appended.
+func preCommitGates(skipTests, checkOnly bool) []preCommitGate {
+	driftGuardFn := gateDriftGuard
+	if checkOnly {
+		driftGuardFn = gateDriftGuardCheckOnly
+	}
 	gates := []preCommitGate{
 		{"gofmt", gateGofmt},
 		{"go vet", gateGoVet},
@@ -152,10 +154,13 @@ func preCommitGates(skipTests bool) []preCommitGate {
 		{"hwcloud-skillcheck check lanes", gateCheckLanes},
 		{"hwcloud-skillcheck ab compare", gateABCompare}, // soft
 		{"hwcloud-skillcheck check advanced-coverage", gateAdvancedCoverage},
-		{"skill_generator drift guard", gateDriftGuard},
+		{"skill_generator drift guard", driftGuardFn},
 	}
 	if !skipTests {
 		gates = append(gates, preCommitGate{"Go test", gateGoTest})
+	}
+	if checkOnly {
+		gates = append(gates, preCommitGate{"critic-score", gateCriticScore})
 	}
 	return gates
 }
@@ -316,4 +321,20 @@ func gateDriftGuard(rootDir string) gateResult {
 		return gateResult{passed: false, detail: "drift check: " + err.Error()}
 	}
 	return gateResult{passed: true}
+}
+
+// gateDriftGuardCheckOnly runs only `drift check` (no sync --apply). This is
+// the CI-mode variant: the binary is built in a prior step and auto-healing
+// (sync --apply) is inappropriate in a read-only validation pipeline.
+func gateDriftGuardCheckOnly(rootDir string) gateResult {
+	if err := runDrift([]string{"check", "--root", rootDir}); err != nil {
+		return gateResult{passed: false, detail: "drift check: " + err.Error()}
+	}
+	return gateResult{passed: true}
+}
+
+// gateCriticScore runs `critic score` against the standard GCL quality summary
+// fixture. This is a CI-only smoke test (it does not run in the git hook).
+func gateCriticScore(rootDir string) gateResult {
+	return inProcessGate(runCritic, []string{"score", "--generator", filepath.Join(rootDir, "scripts", "fixtures", "gcl-quality-summary-healthy.json")}, false)
 }
