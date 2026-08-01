@@ -419,6 +419,11 @@ func checkMarkdownFile(root, path string) []string {
 				continue
 			}
 			if target := normalizeMDTarget(m[1]); target != "" {
+				// No real repo directory matches the huaweicloud-sdk- namespace,
+				// so it cannot shadow a real repo path.
+				if isGoSDKModulePath(target) {
+					continue
+				}
 				if !mdTargetExists(root, path, target) {
 					findings = append(findings, fmt.Sprintf("%s:%d: missing markdown link target: %s",
 						relDisplay(root, path), i+1, target))
@@ -454,6 +459,14 @@ func normalizeMDTarget(raw string) string {
 	return target
 }
 
+// isGoSDKModulePath reports whether text is a Go SDK module path
+// (e.g. huaweicloud-sdk-go-v3/... or huaweicloud-sdk-go-obs/...). No real repo
+// directory matches the huaweicloud-sdk- namespace, so it cannot shadow a real
+// repo path.
+func isGoSDKModulePath(text string) bool {
+	return strings.HasPrefix(text, "huaweicloud-sdk-")
+}
+
 func looksLikeRepoPath(text string) bool {
 	if strings.ContainsAny(text, " \t") {
 		return false
@@ -467,6 +480,11 @@ func looksLikeRepoPath(text string) bool {
 		return false
 	}
 	if strings.HasPrefix(text, "huaweicloud-") && !strings.Contains(text, "/") {
+		return false
+	}
+	// No real repo directory matches the huaweicloud-sdk- namespace, so it
+	// cannot shadow a real repo path.
+	if isGoSDKModulePath(text) {
 		return false
 	}
 	for _, p := range mdPathPrefixes {
@@ -716,6 +734,9 @@ func checkReferencesFile(root, path string, cache map[string][]string) []refFind
 			if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") ||
 				strings.HasPrefix(raw, "mailto:") || strings.HasPrefix(raw, "<") ||
 				strings.HasPrefix(raw, "{{") {
+				continue
+			}
+			if isGoSDKModulePath(raw) {
 				continue
 			}
 			linkPath, anchor := splitRefTarget(raw)

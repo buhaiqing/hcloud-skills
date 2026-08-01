@@ -134,6 +134,15 @@ func TestCheckMarkdownLinksExternalIgnored(t *testing.T) {
 	}
 }
 
+func TestCheckMarkdownLinksGoSDKPathIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeMD(t, root, "README.md",
+		"# Title\n[sdk](huaweicloud-sdk-go-v3/services/ecs/v2)\n")
+	if err := runCheck([]string{"markdown-links", "--root", root}); err != nil {
+		t.Fatalf("Go SDK module path link should be ignored, got: %v", err)
+	}
+}
+
 // --- check references-links ---
 
 func writeRefMD(t *testing.T, root, skill, name, content string) {
@@ -171,6 +180,15 @@ func TestCheckReferencesLinksJSON(t *testing.T) {
 	// JSON output must succeed and report ok.
 	if err := runCheck([]string{"references-links", "--root", root, "--json"}); err != nil {
 		t.Fatalf("references-links --json should pass, got: %v", err)
+	}
+}
+
+func TestCheckReferencesLinksGoSDKPathIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeRefMD(t, root, "huaweicloud-ecs-ops", "a.md",
+		"# Section One\n[x](huaweicloud-sdk-go-v3/services/ecs/v2)\n")
+	if err := runCheck([]string{"references-links", "--root", root}); err != nil {
+		t.Fatalf("Go SDK module path link should be ignored, got: %v", err)
 	}
 }
 
@@ -224,5 +242,43 @@ func TestCheckAdvancedCoverageJSONFail(t *testing.T) {
 	}
 	if !strings.Contains(output, `"skills_checked": 1`) {
 		t.Errorf("skills_checked should be 1; got:\n%s", output)
+	}
+}
+
+// --- looksLikeRepoPath (Go SDK module path false-positive fix) ---
+
+func TestLooksLikeRepoPath(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"sdk module path", "huaweicloud-sdk-go-v3/services/ecs/v2", false},
+		{"obs sibling module", "huaweicloud-sdk-go-obs", false},
+		{"bare sdk module no slash", "huaweicloud-sdk-go-v3", false},
+		{"real repo path", "huaweicloud-ecs-ops/SKILL.md", true},
+		{"full module path", "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cbr/v3", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := looksLikeRepoPath(tc.text); got != tc.want {
+				t.Errorf("looksLikeRepoPath(%q) = %v, want %v", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckMarkdownFileSkipsSDKPath(t *testing.T) {
+	root := t.TempDir()
+	md := filepath.Join(root, "SKILL.md")
+	content := "import `huaweicloud-sdk-go-v3/services/ecs/v2` in code\n"
+	if err := os.WriteFile(md, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	findings := checkMarkdownFile(root, md)
+	for _, f := range findings {
+		if strings.Contains(f, "missing backtick path target") {
+			t.Errorf("SDK path flagged as missing backtick path target: %s", f)
+		}
 	}
 }
