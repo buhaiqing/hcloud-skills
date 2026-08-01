@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // gateResult is the outcome of one pre-commit gate. A soft gate mirrors the
@@ -25,6 +26,9 @@ type gateResult struct {
 // still targets the right tree (CA-7: --root must be cwd-tolerant). An explicit
 // --root value is taken as-is via filepath.Abs.
 func resolveRepoRoot(raw string) (string, error) {
+	if raw == "" {
+		return "", fmt.Errorf("--root must not be empty (G8.1: input validation)")
+	}
 	if raw != "." {
 		return filepath.Abs(raw)
 	}
@@ -49,6 +53,14 @@ func resolveRepoRoot(raw string) (string, error) {
 	return filepath.Abs(wd)
 }
 
+// preCommitConfig bundles the options for pre-commit gate selection (G6.2:
+// structured config over positional bool params).
+type preCommitConfig struct {
+	skipTests   bool
+	checkOnly   bool
+	testRetries int
+}
+
 // preCommitGate binds a gate label to the function that runs it. Splitting the
 // registry from the runner keeps the exit-code contract independently testable
 // (a fake registry can be substituted in tests).
@@ -57,22 +69,40 @@ type preCommitGate struct {
 	run   func(rootDir string) gateResult
 }
 
-// maskSecrets scrubs anything resembling a Huawei Cloud credential from gate
-// detail strings so no secret can leak into stdout/stderr. Defense-in-depth:
-// gates shell out to `go` / call in-process funcs that should never surface
-// secrets, but a rogue error message must still be masked.
-var secretEnvKeys = []string{
-	"HW_SECRET_ACCESS_KEY", "HW_ACCESS_KEY_ID",
-	"TENCENTCLOUD_SECRET_KEY", "AWS_SECRET_ACCESS_KEY",
-}
+// secretReplacer is a strings.Replacer built once at init from env values, so
+// maskSecrets does a single pass without per-call os.Getenv or per-key loops.
+var secretReplacer *strings.Replacer
 
-func maskSecrets(s string) string {
-	for _, key := range secretEnvKeys {
+// goBinPath is cached at init time so goToolGate, rebuildSkillcheckBinary,
+// and gateGofmt avoid repeated exec.LookPath("go") calls.
+var goBinPath string
+
+func init() {
+	var pairs []string
+	for _, key := range []string{
+		"HW_SECRET_ACCESS_KEY", "HW_ACCESS_KEY_ID",
+		"TENCENTCLOUD_SECRET_KEY", "AWS_SECRET_ACCESS_KEY",
+	} {
 		if v := os.Getenv(key); v != "" {
-			s = strings.ReplaceAll(s, v, "***")
+			pairs = append(pairs, v, "***")
 		}
 	}
-	return s
+	if len(pairs) > 0 {
+		secretReplacer = strings.NewReplacer(pairs...)
+	}
+	if p, err := exec.LookPath("go"); err == nil {
+		goBinPath = p
+	}
+}
+
+// maskSecrets scrubs credential values from gate detail strings. Uses a
+// pre-built strings.Replacer (init-time) for O(n) single-pass replacement
+// instead of per-key os.Getenv + ReplaceAll loops.
+func maskSecrets(s string) string {
+	if secretReplacer == nil {
+		return s
+	}
+	return secretReplacer.Replace(s)
 }
 
 // runCheckPreCommit implements `hwcloud-skillcheck check --pre-commit
@@ -94,7 +124,7 @@ func runCheckPreCommit(args []string) error {
 		return err
 	}
 
-	gates := preCommitGates(*skipTests, *checkOnly, *testRetries)
+	gates := preCommitGates(preCommitConfig{skipTests: *skipTests, checkOnly: *checkOnly, testRetries: *testRetries})
 	results := runPreCommitGates(gates, rootDir)
 
 	// Defense-in-depth build: rebuild ./bin/hwcloud-skillcheck so a stale
@@ -119,12 +149,11 @@ func runCheckPreCommit(args []string) error {
 // rebuildSkillcheckBinary rebuilds ./bin/hwcloud-skillcheck from the module at
 // <rootDir>/hwcloud-skillcheck (mirrors the shell's conditional build step).
 func rebuildSkillcheckBinary(rootDir string) error {
-	goBin, err := exec.LookPath("go")
-	if err != nil {
+	if goBinPath == "" {
 		return fmt.Errorf("'go' toolchain not found on PATH")
 	}
 	out := filepath.Join(rootDir, "bin", "hwcloud-skillcheck")
-	cmd := exec.Command(goBin, "build", "-trimpath", "-o", out, ".")
+	cmd := exec.Command(goBinPath, "build", "-trimpath", "-o", out, ".")
 	cmd.Dir = filepath.Join(rootDir, "hwcloud-skillcheck")
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -140,9 +169,9 @@ func rebuildSkillcheckBinary(rootDir string) error {
 // when skipTests is set. When checkOnly is true, drift guard runs in check-only
 // mode (skip sync --apply) and CI-only gates (critic-score, gcl alarm-wire,
 // drift sync --dry-run) are appended.
-func preCommitGates(skipTests, checkOnly bool, testRetries int) []preCommitGate {
+func preCommitGates(cfg preCommitConfig) []preCommitGate {
 	driftGuardFn := gateDriftGuard
-	if checkOnly {
+	if cfg.checkOnly {
 		driftGuardFn = gateDriftGuardCheckOnly
 	}
 	gates := []preCommitGate{
@@ -159,44 +188,173 @@ func preCommitGates(skipTests, checkOnly bool, testRetries int) []preCommitGate 
 		{"hwcloud-skillcheck check advanced-coverage", gateAdvancedCoverage},
 		{"skill_generator drift guard", driftGuardFn},
 	}
-	if !skipTests {
+	if !cfg.skipTests {
 		gates = append(gates, preCommitGate{"Go test", func(rootDir string) gateResult {
-			return gateGoTestRetry(rootDir, testRetries)
+			return gateGoTestRetry(rootDir, cfg.testRetries)
 		}})
 	}
-	if checkOnly {
+	if cfg.checkOnly {
 		gates = append(gates,
-			preCommitGate{"drift sync --dry-run", gateDriftSyncDryRun}, // soft — exercises dry-run path
-			preCommitGate{"gcl alarm-wire", gateGclAlarmWire},          // soft — exercises alarm-wire wiring
-			preCommitGate{"critic-score", gateCriticScore},             // soft — fixture smoke test
+			preCommitGate{"drift sync --dry-run", gateDriftSyncDryRun}, // soft
+			preCommitGate{"gcl alarm-wire", gateGclAlarmWire},          // soft
+			preCommitGate{"critic-score", gateCriticScore},             // soft
 		)
 	}
 	return gates
 }
 
-// runPreCommitGates executes each gate in order, printing the shell-compatible
-// `==> [gate] <label>` header before running it.
+// runPreCommitGates executes each gate in dependency-order stages. Gates within
+// a stage are independent and run concurrently (no shared mutable state — each
+// gate reads files or shells out to the go toolchain independently). Stage
+// boundaries ensure that gates which depend on prior gate side-effects (e.g.
+// validate must finish before audit-results) are ordered correctly.
 func runPreCommitGates(gates []preCommitGate, rootDir string) []gateResult {
-	results := make([]gateResult, 0, len(gates))
-	for _, g := range gates {
+	// Group gates into stages. Within a stage, gates are independent and can
+	// run concurrently. Stages are sequential: stage N+1 starts after stage N
+	// completes.
+	stages := gateStages(gates)
+	var allResults []gateResult
+	for _, stage := range stages {
+		results := runStageConcurrently(stage, rootDir)
+		allResults = append(allResults, results...)
+	}
+	return allResults
+}
+
+// gateStages partitions gates into dependency-order stages. Gates that have
+// no inter-dependencies are grouped together for parallel execution.
+//
+// Stage layout:
+//
+//	Stage 0: gofmt (toolchain) + go vet (toolchain) — both read source only
+//	Stage 1: validate (reads all skills, writes nothing)
+//	Stage 2: audit-results + aggregate trace + learning gen + l4 handle
+//	         + golden run + check lanes + ab compare + advanced-coverage
+//	         (all read-only, no shared mutable state)
+//	Stage 3: drift guard (may mutate via sync --apply in local mode)
+//	Stage 4: go test (heavy, runs last in local; can run alongside CI-only in CI)
+//	Stage 5: CI-only gates (drift sync --dry-run, gcl alarm-wire, critic-score)
+func gateStages(gates []preCommitGate) [][]preCommitGate {
+	// Simple partitioning: consecutive independent gates form a stage.
+	// Dependencies: gofmt→go vet→validate→remaining (validate reads all files,
+	// so it should finish before audit-results etc. that depend on its output).
+	// Drift guard must run after validate (it syncs the generator).
+	// Go test is independent of everything except the source code itself.
+	var stages [][]preCommitGate
+	i := 0
+
+	// Stage 0: gofmt + go vet (both toolchain-only, read source)
+	if i < len(gates) && (gates[i].label == "gofmt" || gates[i].label == "go vet") {
+		stage := takeWhile(&i, gates, func(g preCommitGate) bool {
+			return g.label == "gofmt" || g.label == "go vet"
+		})
+		if len(stage) > 0 {
+			stages = append(stages, stage)
+		}
+	}
+
+	// Stage 1: validate (single gate, but could be grouped with other
+	// read-only in-process gates if they don't depend on validate output)
+	if i < len(gates) && gates[i].label == "hwcloud-skillcheck validate" {
+		stages = append(stages, []preCommitGate{gates[i]})
+		i++
+	}
+
+	// Stage 2: all remaining read-only in-process gates before drift guard
+	if i < len(gates) && gates[i].label != "skill_generator drift guard" && gates[i].label != "Go test" {
+		stage := takeWhile(&i, gates, func(g preCommitGate) bool {
+			return g.label != "skill_generator drift guard" && g.label != "Go test" &&
+				g.label != "drift sync --dry-run" && g.label != "gcl alarm-wire" && g.label != "critic-score"
+		})
+		if len(stage) > 0 {
+			stages = append(stages, stage)
+		}
+	}
+
+	// Stage 3: drift guard (may mutate)
+	if i < len(gates) && gates[i].label == "skill_generator drift guard" {
+		stages = append(stages, []preCommitGate{gates[i]})
+		i++
+	}
+
+	// Stage 4: Go test (heavy, independent)
+	if i < len(gates) && gates[i].label == "Go test" {
+		stages = append(stages, []preCommitGate{gates[i]})
+		i++
+	}
+
+	// Stage 5: remaining CI-only soft gates (all independent)
+	if i < len(gates) {
+		stage := gates[i:]
+		if len(stage) > 0 {
+			stages = append(stages, stage)
+		}
+	}
+
+	return stages
+}
+
+// takeWhile consumes gates from *i while fn returns true, returning the
+// consumed slice and advancing i.
+func takeWhile(i *int, gates []preCommitGate, fn func(preCommitGate) bool) []preCommitGate {
+	var stage []preCommitGate
+	for *i < len(gates) && fn(gates[*i]) {
+		stage = append(stage, gates[*i])
+		*i++
+	}
+	return stage
+}
+
+// runStageConcurrently executes all gates in a stage in parallel, collecting
+// results in order. Uses a mutex to serialize stdout/stderr output so gate
+// headers and results don't interleave.
+func runStageConcurrently(stage []preCommitGate, rootDir string) []gateResult {
+	if len(stage) == 1 {
+		// Fast path: single gate, no goroutine overhead.
+		g := stage[0]
 		fmt.Printf("==> [gate] %s\n", g.label)
 		res := g.run(rootDir)
 		res.name = g.label
-		if !res.passed {
-			tag := "FAIL"
-			if res.soft {
-				tag = "WARN"
-			}
-			detail := maskSecrets(res.detail)
-			if detail != "" {
-				fmt.Fprintf(os.Stderr, "%s: %s: %s\n", tag, g.label, detail)
-			} else {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", tag, g.label)
-			}
-		}
-		results = append(results, res)
+		printGateResult(res)
+		return []gateResult{res}
 	}
+
+	results := make([]gateResult, len(stage))
+	var wg sync.WaitGroup
+	var mu sync.Mutex // protects stdout/stderr interleaving
+
+	for idx, g := range stage {
+		wg.Add(1)
+		go func(i int, gate preCommitGate) {
+			defer wg.Done()
+			res := gate.run(rootDir)
+			res.name = gate.label
+			mu.Lock()
+			fmt.Printf("==> [gate] %s\n", gate.label)
+			printGateResult(res)
+			mu.Unlock()
+			results[i] = res
+		}(idx, g)
+	}
+	wg.Wait()
 	return results
+}
+
+// printGateResult outputs the failure/warning for a gate result. Must be called
+// with mu held in parallel mode.
+func printGateResult(res gateResult) {
+	if !res.passed {
+		tag := "FAIL"
+		if res.soft {
+			tag = "WARN"
+		}
+		detail := maskSecrets(res.detail)
+		if detail != "" {
+			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", tag, res.name, detail)
+		} else {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", tag, res.name)
+		}
+	}
 }
 
 // reportPreCommitResults prints the final summary and returns a non-nil error
@@ -278,11 +436,10 @@ func gateGoTestRetry(rootDir string, maxRetries int) gateResult {
 // goToolGate shells out to the `go` toolchain in <rootDir>/hwcloud-skillcheck,
 // treating a non-zero exit as a gate failure with the captured output as detail.
 func goToolGate(rootDir, failMsg string, goArgs ...string) gateResult {
-	goBin, err := exec.LookPath("go")
-	if err != nil {
+	if goBinPath == "" {
 		return gateResult{passed: false, detail: "'go' toolchain not found on PATH"}
 	}
-	cmd := exec.Command(goBin, goArgs...)
+	cmd := exec.Command(goBinPath, goArgs...)
 	cmd.Dir = filepath.Join(rootDir, "hwcloud-skillcheck")
 	var out bytes.Buffer
 	cmd.Stdout = &out

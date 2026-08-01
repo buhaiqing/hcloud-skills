@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func TestRunPreCommitGates_ExitContract(t *testing.T) {
 // between local-dev mode and CI (checkOnly) mode.
 func TestPreCommitGates_LocalVsCI(t *testing.T) {
 	// Local-dev mode: 13 gates (with tests, no CI-only gates).
-	local := preCommitGates(false, false, 0)
+	local := preCommitGates(preCommitConfig{skipTests: false, checkOnly: false, testRetries: 0})
 	if len(local) != 13 {
 		t.Fatalf("local mode expected 13 gates, got %d", len(local))
 	}
@@ -64,7 +65,7 @@ func TestPreCommitGates_LocalVsCI(t *testing.T) {
 
 	// CI mode: 16 gates (12 base + go test + 3 CI-only: drift sync --dry-run,
 	// gcl alarm-wire, critic-score).
-	ci := preCommitGates(false, true, 2)
+	ci := preCommitGates(preCommitConfig{skipTests: false, checkOnly: true, testRetries: 2})
 	if len(ci) != 16 {
 		t.Fatalf("CI mode expected 16 gates, got %d", len(ci))
 	}
@@ -74,7 +75,7 @@ func TestPreCommitGates_LocalVsCI(t *testing.T) {
 	}
 
 	// CI mode with skipTests: 15 gates (12 base + 3 CI-only, no go test).
-	ciSkipTests := preCommitGates(true, true, 0)
+	ciSkipTests := preCommitGates(preCommitConfig{skipTests: true, checkOnly: true, testRetries: 0})
 	if len(ciSkipTests) != 15 {
 		t.Fatalf("CI skip-tests mode expected 15 gates, got %d", len(ciSkipTests))
 	}
@@ -102,13 +103,13 @@ func TestReportPreCommitResults_Summary(t *testing.T) {
 // that CI mode includes the 3 CI-only gates (drift sync --dry-run,
 // gcl alarm-wire, critic-score) all as soft gates.
 func TestPreCommitGates_SkipTests(t *testing.T) {
-	withTests := preCommitGates(false, false, 0)
+	withTests := preCommitGates(preCommitConfig{skipTests: false, checkOnly: false, testRetries: 0})
 	last := withTests[len(withTests)-1]
 	if last.label != "Go test" {
 		t.Fatalf("expected last gate 'Go test' when skipTests=false, got %q", last.label)
 	}
 
-	withoutTests := preCommitGates(true, false, 0)
+	withoutTests := preCommitGates(preCommitConfig{skipTests: true, checkOnly: false, testRetries: 0})
 	for _, g := range withoutTests {
 		if g.label == "Go test" {
 			t.Fatal("Go test gate must be omitted when skipTests=true")
@@ -117,7 +118,7 @@ func TestPreCommitGates_SkipTests(t *testing.T) {
 
 	// CI mode: 3 CI-only gates are appended (drift sync --dry-run,
 	// gcl alarm-wire, critic-score), all soft.
-	ciGates := preCommitGates(false, true, 2)
+	ciGates := preCommitGates(preCommitConfig{skipTests: false, checkOnly: true, testRetries: 2})
 	ciOnlyLabels := []string{"drift sync --dry-run", "gcl alarm-wire", "critic-score"}
 	found := map[string]bool{}
 	for _, g := range ciGates {
@@ -148,8 +149,11 @@ func TestPreCommitGates_SkipTests(t *testing.T) {
 }
 
 // TestMaskSecrets verifies credential values are scrubbed from detail strings.
+// Since the replacer is built at init() time from real env vars, this test
+// must re-init the replacer after t.Setenv to observe the masking.
 func TestMaskSecrets(t *testing.T) {
 	t.Setenv("HW_SECRET_ACCESS_KEY", "super-secret-value")
+	initMaskSecrets() // re-init after t.Setenv
 	got := maskSecrets("connection failed for super-secret-value")
 	if strings.Contains(got, "super-secret-value") {
 		t.Fatalf("maskSecrets leaked secret: %q", got)
@@ -202,5 +206,159 @@ func TestReportPreCommitResults_BuildFailureAsGate(t *testing.T) {
 	}
 	if err := reportPreCommitResults(results); err == nil {
 		t.Fatal("expected non-nil error when build gate fails")
+	}
+}
+
+// TestRunStageConcurrently_NoDataRace verifies that running a stage with
+// multiple independent gates concurrently produces correct results without
+// data races. Each gate writes to a shared slice and prints to stdout/stderr
+// under a mutex.
+func TestRunStageConcurrently_NoDataRace(t *testing.T) {
+	stage := []preCommitGate{
+		fakeGate("gate-a", true, false),
+		fakeGate("gate-b", true, false),
+		fakeGate("gate-c", true, false),
+		fakeGate("gate-d", false, true), // soft failure
+	}
+	results := runStageConcurrently(stage, ".")
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(results))
+	}
+	for i, r := range results {
+		if r.name != stage[i].label {
+			t.Errorf("result[%d] name mismatch: expected %q, got %q", i, stage[i].label, r.name)
+		}
+	}
+	// gate-d is a soft failure: must be false, soft, not flip the overall exit.
+	if results[3].passed {
+		t.Error("gate-d (soft failure) must report passed=false")
+	}
+	if !results[3].soft {
+		t.Error("gate-d (soft failure) must report soft=true")
+	}
+}
+
+// TestGateStages_PartitionsCorrectly verifies that gateStages groups gates into
+// expected dependency stages.
+func TestGateStages_PartitionsCorrectly(t *testing.T) {
+	gates := preCommitGates(preCommitConfig{skipTests: false, checkOnly: true, testRetries: 2}) // CI mode: all 16 gates
+	stages := gateStages(gates)
+
+	if len(stages) < 2 {
+		t.Fatalf("expected at least 2 stages, got %d", len(stages))
+	}
+
+	// Stage 0 must contain gofmt + go vet.
+	hasGofmt := false
+	hasGoVet := false
+	for _, g := range stages[0] {
+		if g.label == "gofmt" {
+			hasGofmt = true
+		}
+		if g.label == "go vet" {
+			hasGoVet = true
+		}
+	}
+	if !hasGofmt || !hasGoVet {
+		t.Errorf("stage 0 must contain gofmt and go vet, got %v", stageLabels(stages[0]))
+	}
+
+	// Total gate count across all stages must match.
+	total := 0
+	for _, s := range stages {
+		total += len(s)
+	}
+	if total != len(gates) {
+		t.Fatalf("stage total %d != gate total %d", total, len(gates))
+	}
+}
+
+// stageLabels returns the labels of gates in a stage for diagnostics.
+func stageLabels(stage []preCommitGate) []string {
+	labels := make([]string, len(stage))
+	for i, g := range stage {
+		labels[i] = g.label
+	}
+	return labels
+}
+
+// TestMaskSecrets_ConcurrentSafety verifies maskSecrets is safe for concurrent
+// use (the strings.Replacer is immutable after init, so reads are safe).
+func TestMaskSecrets_ConcurrentSafety(t *testing.T) {
+	t.Setenv("HW_ACCESS_KEY_ID", "test-ak-12345")
+	// Re-init the replacer since we changed env vars.
+	initMaskSecrets()
+	const goroutines = 100
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			result := maskSecrets("using key test-ak-12345 for auth")
+			if strings.Contains(result, "test-ak-12345") {
+				t.Errorf("maskSecrets leaked secret in concurrent call: %q", result)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// initMaskSecrets rebuilds the secret replacer from current env state.
+// Exported for test use only.
+func initMaskSecrets() {
+	var pairs []string
+	for _, key := range []string{
+		"HW_SECRET_ACCESS_KEY", "HW_ACCESS_KEY_ID",
+		"TENCENTCLOUD_SECRET_KEY", "AWS_SECRET_ACCESS_KEY",
+	} {
+		if v := os.Getenv(key); v != "" {
+			pairs = append(pairs, v, "***")
+		}
+	}
+	if len(pairs) > 0 {
+		secretReplacer = strings.NewReplacer(pairs...)
+	} else {
+		secretReplacer = nil
+	}
+}
+
+// TestResolveRepoRoot_EmptyString verifies G8.1: empty --root must error rather
+// than silently resolving to cwd or a wrong directory.
+func TestResolveRepoRoot_EmptyString(t *testing.T) {
+	_, err := resolveRepoRoot("")
+	if err == nil {
+		t.Fatal("resolveRepoRoot(\"\") must return an error (G8.1: input validation)")
+	}
+}
+
+// TestResolveRepoRoot_PathTraversal verifies G8.3: path traversal attempts
+// (../../etc) are rejected or safely contained.
+func TestResolveRepoRoot_PathTraversal(t *testing.T) {
+	// "../../../etc" should be cleaned to "/etc" — but after filepath.Abs it
+	// becomes an absolute path outside the repo. The function should still
+	// resolve it (it's an explicit --root, so caller takes responsibility),
+	// but filepath.Clean must be applied.
+	got, err := resolveRepoRoot("../../../etc")
+	if err != nil {
+		t.Fatalf("explicit path should not error: %v", err)
+	}
+	if !filepath.IsAbs(got) {
+		t.Fatalf("explicit path must be absolute, got %q", got)
+	}
+	// The result must be clean (no .. components).
+	if strings.Contains(got, "..") {
+		t.Fatalf("resolved path must not contain '..': %q", got)
+	}
+}
+
+// TestResolveRepoRoot_NonExistent verifies G8.1: non-existent explicit path
+// should still resolve (filepath.Abs doesn't check existence).
+func TestResolveRepoRoot_NonExistent(t *testing.T) {
+	got, err := resolveRepoRoot("/nonexistent/path/for/testing")
+	if err != nil {
+		t.Fatalf("non-existent explicit path should resolve: %v", err)
+	}
+	if got != "/nonexistent/path/for/testing" {
+		t.Fatalf("expected path preserved, got %q", got)
 	}
 }

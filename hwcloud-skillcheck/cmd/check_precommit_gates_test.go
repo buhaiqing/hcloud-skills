@@ -268,7 +268,7 @@ func TestGateGclAlarmWire(t *testing.T) {
 	// Verify the gate function is defined (non-nil) and test the soft flag via
 	// the gate registry — the CI-only gates list in TestPreCommitGates_SkipTests
 	// already covers this.
-	ciGates := preCommitGates(false, true, 2)
+	ciGates := preCommitGates(preCommitConfig{skipTests: false, checkOnly: true, testRetries: 2})
 	found := false
 	for _, g := range ciGates {
 		if g.label == "gcl alarm-wire" {

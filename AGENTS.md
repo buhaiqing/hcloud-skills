@@ -225,6 +225,10 @@ AGENTS.md 是 **agent 上下文税**，不是 wiki。硬上限意识：
 - Tests live next to source as Go `_test.go` files; `go test ./...` runs them. Subagent-driven-development + race detector are how new functionality is verified before commit.
 - CI runs `hwcloud-skillcheck validate --root .` plus `go test ./... -race`; local dev MUST run the same suite before pushing.
 
+## Go 编码规范
+
+详见 [`references/go-coding-standards.md`](references/go-coding-standards.md)（G1-G9：可测试性、错误处理、并发安全、资源管理、性能、可扩展性、代码组织、输入验证、TDD 工作流）。所有 `hwcloud-skillcheck/` Go 代码必须遵守。
+
 ## Test Hermeticity — Runtime-State Tests (P0)
 
 Tests touching the real repo (`Path(__file__).resolve().parents[1]`) are **not hermetic by default** — they require state that doesn't exist on a fresh CI checkout (e.g. `audit-results/`, `.agents/skills/huaweicloud-skill-generator/`). Rules:
