@@ -26,9 +26,12 @@ import (
 
 // Verb classification.
 var (
-	readVerbs      = map[string]bool{"list": true, "show": true, "describe": true, "get": true, "fetch": true, "listquotas": true, "showquota": true}
-	writeVerbs     = map[string]bool{"create": true, "delete": true, "terminate": true, "remove": true, "update": true, "modify": true, "attach": true, "detach": true, "reboot": true, "restart": true, "stop": true, "start": true}
-	destructiveSet = []string{"delete", "terminate", "remove", "drop", "purge"}
+	readVerbs  = map[string]bool{"list": true, "show": true, "describe": true, "get": true, "fetch": true, "listquotas": true, "showquota": true}
+	writeVerbs = map[string]bool{"create": true, "delete": true, "terminate": true, "remove": true, "update": true, "modify": true, "attach": true, "detach": true, "reboot": true, "restart": true, "stop": true, "start": true}
+	// destructiveSet mirrors internal/l4.HighRiskVerbs (delete, terminate, destroy,
+	// drop, remove, rm, del) — the canonical list. Must stay in lock-step; if
+	// l4.HighRiskVerbs gains a verb, add it here too.
+	destructiveSet = []string{"delete", "terminate", "destroy", "drop", "remove", "rm", "del"}
 )
 
 // CostTable maps (skill_short, operation) → USD/call. Defaults to 0.001 when
