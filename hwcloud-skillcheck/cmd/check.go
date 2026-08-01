@@ -419,6 +419,11 @@ func checkMarkdownFile(root, path string) []string {
 				continue
 			}
 			if target := normalizeMDTarget(m[1]); target != "" {
+				// No real repo directory matches the huaweicloud-sdk- namespace,
+				// so it cannot shadow a real repo path.
+				if isGoSDKModulePath(target) {
+					continue
+				}
 				if !mdTargetExists(root, path, target) {
 					findings = append(findings, fmt.Sprintf("%s:%d: missing markdown link target: %s",
 						relDisplay(root, path), i+1, target))

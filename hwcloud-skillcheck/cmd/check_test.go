@@ -134,6 +134,15 @@ func TestCheckMarkdownLinksExternalIgnored(t *testing.T) {
 	}
 }
 
+func TestCheckMarkdownLinksGoSDKPathIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeMD(t, root, "README.md",
+		"# Title\n[sdk](huaweicloud-sdk-go-v3/services/ecs/v2)\n")
+	if err := runCheck([]string{"markdown-links", "--root", root}); err != nil {
+		t.Fatalf("Go SDK module path link should be ignored, got: %v", err)
+	}
+}
+
 // --- check references-links ---
 
 func writeRefMD(t *testing.T, root, skill, name, content string) {
@@ -171,6 +180,15 @@ func TestCheckReferencesLinksJSON(t *testing.T) {
 	// JSON output must succeed and report ok.
 	if err := runCheck([]string{"references-links", "--root", root, "--json"}); err != nil {
 		t.Fatalf("references-links --json should pass, got: %v", err)
+	}
+}
+
+func TestCheckReferencesLinksGoSDKPathIgnored(t *testing.T) {
+	root := t.TempDir()
+	writeRefMD(t, root, "huaweicloud-ecs-ops", "a.md",
+		"# Section One\n[x](huaweicloud-sdk-go-v3/services/ecs/v2)\n")
+	if err := runCheck([]string{"references-links", "--root", root}); err != nil {
+		t.Fatalf("Go SDK module path link should be ignored, got: %v", err)
 	}
 }
 
