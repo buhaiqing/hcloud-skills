@@ -179,6 +179,8 @@ Walks every Markdown file under `--root` and verifies that local relative links 
 
 Exit codes: `0` pass, `1` broken link(s).
 
+Go SDK module paths (`huaweicloud-sdk-*`, e.g. `huaweicloud-sdk-go-v3/...`) are intentionally excluded from backtick-path-target checks.
+
 ### `hwcloud-skillcheck check references-links --root <dir>`
 
 Validates `references/` anchor health for every skill under `--root`: every Markdown link target whose fragment is non-empty must point to a heading that exists in the linked file. Detects both stale anchors and missing targets.

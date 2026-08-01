@@ -236,6 +236,8 @@ func TestLooksLikeRepoPath(t *testing.T) {
 		want bool
 	}{
 		{"sdk module path", "huaweicloud-sdk-go-v3/services/ecs/v2", false},
+		{"obs sibling module", "huaweicloud-sdk-go-obs", false},
+		{"bare sdk module no slash", "huaweicloud-sdk-go-v3", false},
 		{"real repo path", "huaweicloud-ecs-ops/SKILL.md", true},
 		{"full module path", "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cbr/v3", false},
 	}
