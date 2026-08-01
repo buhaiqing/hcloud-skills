@@ -58,6 +58,9 @@ type MatchedSkill struct {
 	Domain          string
 	Capabilities    []string
 	MatchedKeywords []string
+	// Priority is the 0-based index in the FaultRule's PrioritySkills list.
+	// Used as a tie-breaker when multiple skills have equal confidence.
+	Priority int
 }
 
 // MatchFaultSkills scores every skill against the fault using the static
@@ -86,7 +89,7 @@ func MatchFaultSkills(fault string, available []string) []MatchedSkill {
 		if conf > 1.0 {
 			conf = 1.0
 		}
-		for _, skill := range rule.PrioritySkills {
+		for priIdx, skill := range rule.PrioritySkills {
 			if haveAvail && !avail[skill] {
 				continue
 			}
@@ -100,6 +103,7 @@ func MatchFaultSkills(fault string, available []string) []MatchedSkill {
 				Domain:          cap.Domain,
 				Capabilities:    cap.Capabilities,
 				MatchedKeywords: kws,
+				Priority:        priIdx,
 			})
 		}
 	}
@@ -113,7 +117,12 @@ func MatchFaultSkills(fault string, available []string) []MatchedSkill {
 	for _, m := range best {
 		out = append(out, m)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Confidence > out[j].Confidence })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Confidence != out[j].Confidence {
+			return out[i].Confidence > out[j].Confidence
+		}
+		return out[i].Priority < out[j].Priority
+	})
 	return out
 }
 

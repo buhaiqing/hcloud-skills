@@ -90,7 +90,6 @@ cd hwcloud-skillcheck && go test ./...
 ```
 
 - exit code ≠ 0 → **禁止 commit**，先修测试
-- 2 个预存已知失败（`TestConfirmationRegistry_ConcurrentSafety`、`TestHandleFault_DecisionAutoProceed`）已在 commit 中标注，后续应修复或标注 `// KNOWN-FLAKY: <reason>`
 - `git commit` 本身可正常执行（不自动触发 pre-commit hook 的 go test，因为 go test gate 在 `hwcloud-skillcheck check --pre-commit` 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit
 
 ## What This Repo Is
