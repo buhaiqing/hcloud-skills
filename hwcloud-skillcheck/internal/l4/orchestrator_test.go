@@ -226,3 +226,57 @@ func TestHandleFault_CrossSkillPlanIncludesDelegates(t *testing.T) {
 			len(out.GCL.Decisions), out.Orchestration.StepCount)
 	}
 }
+
+// TestMatchPreExecutionRisk_ReturnsFix verifies that a matched failure pattern
+// surfaces its fix.action/fix.strategy so an autofix executor can consume it
+// (Phase A — L4 self-evolution).
+func TestMatchPreExecutionRisk_ReturnsFix(t *testing.T) {
+	patterns := []map[string]any{
+		{
+			"id":   "ECS-FP001",
+			"risk": "high",
+			"signature": map[string]any{
+				"error_message_regex": "InsufficientResource",
+				"command_pattern":     "create-server",
+			},
+			"fix": map[string]any{
+				"strategy": "fallback",
+				"action":   "hcloud ECS listFlavors --az cn-north-4a",
+			},
+		},
+	}
+	got := matchPreExecutionRisk("hcloud ECS createServer InsufficientResource", patterns)
+	if got == nil {
+		t.Fatal("expected a match, got nil")
+	}
+	rm, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any, got %T", got)
+	}
+	if rm["matched_pattern_id"] != "ECS-FP001" {
+		t.Errorf("matched_pattern_id=%v, want ECS-FP001", rm["matched_pattern_id"])
+	}
+	fix, ok := rm["fix"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected fix map in result, got %#v", rm["fix"])
+	}
+	if fix["action"] != "hcloud ECS listFlavors --az cn-north-4a" {
+		t.Errorf("fix.action=%v, want remediation command", fix["action"])
+	}
+	if fix["strategy"] != "fallback" {
+		t.Errorf("fix.strategy=%v, want fallback", fix["strategy"])
+	}
+}
+
+// TestMatchPreExecutionRisk_NoMatch verifies nil when no pattern matches.
+func TestMatchPreExecutionRisk_NoMatch(t *testing.T) {
+	patterns := []map[string]any{
+		{
+			"id":        "X",
+			"signature": map[string]any{"error_message_regex": "NoSuchThing"},
+		},
+	}
+	if got := matchPreExecutionRisk("hcloud ECS listServers", patterns); got != nil {
+		t.Errorf("expected nil for non-matching command, got %#v", got)
+	}
+}

@@ -327,7 +327,14 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 // it defaults to NewRealExecutor() (ADR-0010). Otherwise it consults
 // OutcomeMemory pre-exec (skip-on-bad-history) and post-failure
 // (retry-on-transient / escalate-on-permanent).
-func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPlan, matched []MatchedSkill, mem *OutcomeMemory, p HealingPolicy, exec Executor) *TaskState {
+// AutofixFunc is an injectable autonomous-remediation hook. When provided,
+// RunExecutionLoopWithHealing calls it after a step fails permanently
+// (PostFailureHook escalates). The hook is bridged by the CLI layer to
+// internal/learning (loads playbooks, renders, executes, records outcome), so
+// internal/l4 stays import-cycle-free.
+type AutofixFunc func(skill, command string) AutofixResult
+
+func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPlan, matched []MatchedSkill, mem *OutcomeMemory, p HealingPolicy, exec Executor, autofix ...AutofixFunc) *TaskState {
 	if exec == nil {
 		exec = NewRealExecutor()
 	}
@@ -449,6 +456,19 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 				}
 				_ = PersistTask(root, task.ID, task)
 				continue // re-run the same step
+			}
+			// Permanent failure → attempt autonomous remediation (L4 autofix).
+			if len(autofix) > 0 && autofix[0] != nil {
+				candidate := "hcloud " + skillShortOrDerived(step.Skill, step.SkillShort) + " " + step.Action
+				fixRes := autofix[0](step.Skill, candidate)
+				if fixRes.Executed {
+					// The autofix hook ran a remediation; record it as a step outcome
+					// so the audit trace reflects the autonomous action.
+					result.Error = "escalated→autofix[" + fixRes.PlaybookID + "]: " + fixRes.Action
+					if fixRes.Success {
+						result.Success = true
+					}
+				}
 			}
 		}
 

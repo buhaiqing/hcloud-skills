@@ -3,6 +3,7 @@
 package learning
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -206,5 +207,90 @@ func writeTraceWithFailure(t *testing.T, p string, skill, cat, errStr, cmd strin
 	})
 	if err != nil {
 		t.Fatalf("write failure trace: %v", err)
+	}
+}
+
+// TestRecordFixOutcome_Success updates auto_fixed_count + success_rate.
+func TestRecordFixOutcome_Success(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "huaweicloud-ecs-ops", "assets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed a failure_patterns.json with one pattern, some prior failures.
+	fixture := `{
+		"$schema": "failure-patterns/v1",
+		"skill_id": "huaweicloud-ecs-ops",
+		"patterns": [{
+			"id": "ECS-FP001",
+			"category": "resource_state",
+			"signature": {"error_code": "Ecs.0801", "error_message_regex": "InsufficientResource", "command_pattern": "create-server"},
+			"fix": {"strategy": "fallback", "action": "Try different AZ"},
+			"stats": {
+				"occurrence_count": 10,
+				"first_seen": "2026-07-01T00:00:00Z",
+				"last_seen": "2026-07-31T00:00:00Z",
+				"auto_fixed_count": 4,
+				"escalated_count": 5,
+				"success_rate": 0.5
+			}
+		}]
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "failure_patterns.json"), []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordFixOutcome(root, "huaweicloud-ecs-ops", "ECS-FP001", true); err != nil {
+		t.Fatalf("RecordFixOutcome(success): %v", err)
+	}
+
+	data := LoadFailurePatterns(root, "huaweicloud-ecs-ops")
+	patterns := data["patterns"].([]any)
+	pm := patterns[0].(map[string]any)
+	stats := pm["stats"].(map[string]any)
+	if got := toFloat(stats["auto_fixed_count"]); got != 5 {
+		t.Errorf("auto_fixed_count=%v, want 5", got)
+	}
+	// success_rate recomputed = auto_fixed / (auto_fixed + escalated) = 5/10.
+	if got := toFloat(stats["success_rate"]); got != 0.5 {
+		t.Errorf("success_rate=%v, want 0.5 (5/10 after auto-fix)", got)
+	}
+}
+
+// TestRecordFixOutcome_FailureDeRanks verifies a failed fix bumps
+// escalated_count and lowers success_rate (de-ranks the fix).
+func TestRecordFixOutcome_FailureDeRanks(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "huaweicloud-ecs-ops", "assets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := `{
+		"$schema": "failure-patterns/v1",
+		"skill_id": "huaweicloud-ecs-ops",
+		"patterns": [{
+			"id": "ECS-FP002",
+			"category": "resource_state",
+			"signature": {"error_code": "X", "error_message_regex": "Y", "command_pattern": "*"},
+			"fix": {"strategy": "retry", "action": "fix"},
+			"stats": {"occurrence_count": 10, "auto_fixed_count": 5, "escalated_count": 5, "success_rate": 0.5}
+		}]
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "failure_patterns.json"), []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordFixOutcome(root, "huaweicloud-ecs-ops", "ECS-FP002", false); err != nil {
+		t.Fatalf("RecordFixOutcome(failure): %v", err)
+	}
+
+	data := LoadFailurePatterns(root, "huaweicloud-ecs-ops")
+	pm := data["patterns"].([]any)[0].(map[string]any)
+	stats := pm["stats"].(map[string]any)
+	if got := toFloat(stats["escalated_count"]); got != 6 {
+		t.Errorf("escalated_count=%v, want 6", got)
+	}
+	if got := toFloat(stats["success_rate"]); got >= 0.5 {
+		t.Errorf("success_rate=%v, want < 0.5 (de-ranked)", got)
 	}
 }

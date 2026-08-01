@@ -49,6 +49,11 @@ type HandleFaultInput struct {
 	// Policy configures self-healing behavior. Zero value = no healing
 	// (same behavior as before this feature existed).
 	Policy HealingPolicy
+	// Autofix is an injectable autonomous-remediation hook. When non-nil,
+	// it is threaded into RunExecutionLoopWithHealing and invoked on a step's
+	// permanent failure. The CLI layer bridges it to internal/learning so
+	// internal/l4 stays import-cycle-free.
+	Autofix AutofixFunc
 }
 
 // TopologyResult is the public topology block in the orchestrator output.
@@ -422,7 +427,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			})
 		}
 
-		executionTask = RunExecutionLoopWithHealing(root, task, plan, expanded, mem, in.Policy, nil)
+		executionTask = RunExecutionLoopWithHealing(root, task, plan, expanded, mem, in.Policy, nil, in.Autofix)
 
 		// Record final task status and record each failed step as an error.
 		if cm != nil {
@@ -507,7 +512,10 @@ func boolToFloat(b bool) float64 {
 }
 
 // matchPreExecutionRisk is a structural-critic pre-execution risk check. It
-// scans the command for tokens in any pattern's error_message_regex.
+// scans the command for tokens in any pattern's error_message_regex. On a match
+// it returns the matched pattern's id/risk/signature PLUS the fix.action /
+// fix.strategy so an autofix executor can consume the remediation (L4
+// self-evolution closed loop).
 func matchPreExecutionRisk(command string, patterns []map[string]any) any {
 	for _, p := range patterns {
 		sig, _ := p["signature"].(map[string]any)
@@ -523,6 +531,7 @@ func matchPreExecutionRisk(command string, patterns []map[string]any) any {
 				"matched_pattern_id": p["id"],
 				"risk_level":         "high",
 				"signature":          sig,
+				"fix":                p["fix"],
 			}
 		}
 	}

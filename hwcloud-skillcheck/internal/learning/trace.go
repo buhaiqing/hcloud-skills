@@ -217,6 +217,66 @@ func countFromStats(s map[string]any) int {
 	return 0
 }
 
+// RecordFixOutcome updates a failure pattern's stats after an autonomous fix
+// attempt (L4 self-evolution closed loop). On success it bumps
+// auto_fixed_count; on failure it bumps escalated_count. It then recomputes
+// success_rate = auto_fixed_count / (auto_fixed_count + escalated_count). A
+// failed fix lowers success_rate, which de-ranks the pattern below its
+// auto_execute_threshold so the autofix executor blocks it next time.
+func RecordFixOutcome(root, skill, patternID string, success bool) error {
+	data := LoadFailurePatterns(root, skill)
+	patterns, _ := data["patterns"].([]any)
+	for _, p := range patterns {
+		pm, _ := p.(map[string]any)
+		if pm == nil {
+			continue
+		}
+		if id, _ := pm["id"].(string); id != patternID {
+			continue
+		}
+		stats, _ := pm["stats"].(map[string]any)
+		if stats == nil {
+			stats = map[string]any{}
+			pm["stats"] = stats
+		}
+		// auto_fixed_count / escalated_count are float64 in JSON.
+		autoFixed := toFloat(stats["auto_fixed_count"])
+		escalated := toFloat(stats["escalated_count"])
+		if success {
+			autoFixed++
+			stats["auto_fixed_count"] = autoFixed
+		} else {
+			escalated++
+			stats["escalated_count"] = escalated
+		}
+		total := autoFixed + escalated
+		var rate float64
+		if total > 0 {
+			rate = autoFixed / total
+		}
+		stats["success_rate"] = rate
+		stats["last_seen"] = NowISO()
+		_, err := SaveFailurePatterns(root, skill, data)
+		return err
+	}
+	return nil
+}
+
+// toFloat reads a numeric value from an any (JSON float64 / int / int64).
+func toFloat(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case float32:
+		return float64(x)
+	}
+	return 0
+}
+
 // ScanTraces returns all gcl-trace-*.json files for a skill, optionally
 // filtered by mtime.
 type TraceFile struct {
