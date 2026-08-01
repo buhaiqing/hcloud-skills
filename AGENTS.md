@@ -4,10 +4,16 @@
 
 收到任务后，**先跑以下 checklist，再动手**：
 
-1. **GCL 触发检查** — 见下方 §GCL Auto-Execution Gate；满足触发条件 → 启动 GCL 多子 Agent 架构
-2. **Orchestrator 触发检查** — 任务是否涉及多文件 / 多阶段 / 多 skill / 用户提到「orchestrator」？→ 是则加载 `subagent-orchestrator` skill，跑 `python3 scripts/decide.py decide <task_type> <complexity> <risk> <count>` 输出决策 JSON，再执行
+1. **GCL 触发检查（质量门禁）** — 见下方 §GCL Auto-Execution Gate；满足触发条件 A-E 任一 → 启动 GCL 多子 Agent 架构（详见 §GCL）
+2. **Orchestrator 触发检查（执行编排方式）** — 任务是否涉及多文件 / 多阶段 / 多 skill / 用户提到「orchestrator」？→ 是则加载 `subagent-orchestrator` skill，在其 `scripts/` 下运行 `python3 decide.py decide <task_type> <complexity> <risk> <count>` 输出决策 JSON，再按决策执行
 3. **Skill generator 检查** — 是否在创建 / 更新 `huaweicloud-*-ops`？→ 是则加载 `huaweicloud-skill-generator` skill
 4. **直接执行** — 以上均否 → 直接做
+
+> **GCL 与 Orchestrator 的关系（正交，不冲突）**：GCL 是**质量门禁**（决定「是否用多子 Agent 评审」），
+> orchestrator 是**执行编排**（决定「怎么拆/并行还是串行」）。两者独立判定：
+> - 触发了 GCL → 走 §GCL 多子 Agent 评审
+> - 触发了 orchestrator → 用 decide.py 定编排策略（direct_exec 则主 agent 直接做）
+> - 两者同时触发（如多文件 Go 重构）→ **GCL 评审优先**，编排策略服从 GCL 的 Generator/Critic 结构
 
 > 违反此 gate = 流程违规，即使结果正确也需复盘。
 
@@ -35,7 +41,7 @@
 收到任务
   ├─ 触发条件 A-E 任一满足？
   │   ├─ YES → 启动 GCL 多子 Agent 架构
-  │   │         ├─ 创建 worktree（`git-worktree.md`）
+  │   │         ├─ 创建 worktree（用户级 `~/.codebuddy/rules/git-worktree.md`）
   │   │         ├─ 输出模型配置公示
   │   │         ├─ spawn Generator（后台）
   │   │         ├─ spawn ≥2 Critics（后台，并行，不同厂商模型）
