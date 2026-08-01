@@ -10,7 +10,7 @@
 on every required/recommended skill to add an adversarial quality gate
 before destructive cloud operations (`delete`, `stop`, IAM/KMS/DDL,
 cluster reset). The runtime lives in `hwcloud-skillcheck/internal/gcl/`,
-port over from `scripts/gcl_runner.py`. The L4 trust layer
+port over from scripts/gcl_runner.py (removed in Go migration). The L4 trust layer
 (`internal/l4/`) tracks tasks, RBAC permissions, and confirmation
 tokens, and is wired into the GCL Runner via `ConfirmationRegistry` /
 pre-execution gate.
@@ -54,7 +54,7 @@ boundary gaps and establish the trust contract for P1 features
 
 - Multi-agent GCL fan-out (L5) — P1.
 - Persistent confirmation ledger — out of scope; in-memory only.
-- Replacing the existing Python `scripts/gcl_runner.py` shim —
+- Replacing the existing Python scripts/gcl_runner.py (removed in Go migration) shim —
   defer to a P1 cleanup pass once P0 ships.
 - Any new `huaweicloud-*-ops/SKILL.md` content.
 
@@ -397,7 +397,7 @@ Caller
 ## Out of Scope
 
 - Persistent nonce ledger (P1; consider SQLite via `internal/l4/persistence.go` pattern).
-- Replacing `scripts/gcl_runner.py` shim.
+- Replacing scripts/gcl_runner.py (removed in Go migration) shim.
 - Skill-level (`huaweicloud-*-ops/SKILL.md`) updates — defer until GCL confirms adoption.
 - New YAML / example-config changes.
 

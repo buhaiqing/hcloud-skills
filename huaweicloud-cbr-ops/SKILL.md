@@ -449,7 +449,7 @@ its result is returned. Read-only are GCL-**exempt**.
 | Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
 | Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` |
 
-Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill cbr --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
+Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill cbr --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy Python runner removed in the Go migration; use `hwcloud-skillcheck gcl run`).
 | Independence | Generator and Critic in **isolated** sub-agent / session contexts |
 
 ### Five-Dimension Rubric (summary)
