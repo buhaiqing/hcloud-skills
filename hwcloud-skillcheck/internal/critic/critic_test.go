@@ -119,6 +119,8 @@ func TestHasCredentialLeak(t *testing.T) {
 		{"SECRET_ACCESS_KEY=foo bar", true},
 		{"SecretAccessKey:xxxxx", true},
 		{"SK=ABCDEFGHIJKLMNOPQRSTUVWXYZ123456", true},
+		{"hw_secret_access_key=abc123def456ghi789jkl", true}, // 小写，(?i) 应匹配
+		{"sk=abcdefghijklmnopqrstuvwxyz012345", true},        // 小写，(?i) 应匹配
 		{"HW_SECRET_ACCESS_KEY=<masked>", false},
 		{"plain text without secrets", false},
 	}

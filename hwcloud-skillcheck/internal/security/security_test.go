@@ -85,6 +85,35 @@ func TestScanContentSK(t *testing.T) {
 	}
 }
 
+func TestScanContentLowercaseSecret(t *testing.T) {
+	// security 的 secretPatterns 和 MaskSecrets 必须与 critic 一致使用 (?i)，
+	// 小写凭据变量名（如 hw_secret_access_key=...）应被同等检测和屏蔽。
+	data := []byte("hw_secret_access_key=abc123DEF456ghi789")
+	findings, err := ScanContent(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	f := find(t, findings, "hw_secret_access_key")
+	if !strings.Contains(f.Snippet, "<masked>") {
+		t.Errorf("小写凭据应被屏蔽，got %q", f.Snippet)
+	}
+}
+
+func TestMaskSecretsLowercase(t *testing.T) {
+	in := []byte("export hw_secret_access_key=abc123DEF456 and secret_access_key=ZmFrZQ==")
+	out := MaskSecrets(in)
+	s := string(out)
+	if !strings.Contains(s, "hw_secret_access_key=<masked>") {
+		t.Errorf("小写 HW key 应被屏蔽，got %q", s)
+	}
+	if !strings.Contains(s, "secret_access_key=<masked>") {
+		t.Errorf("小写 secret key 应被屏蔽，got %q", s)
+	}
+	if strings.Contains(s, "abc123") || strings.Contains(s, "ZmFrZQ") {
+		t.Errorf("屏蔽后不应含原始凭据值，got %q", s)
+	}
+}
+
 func TestScanContentBearerToken(t *testing.T) {
 	data := []byte("Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
 	findings, err := ScanContent(data)

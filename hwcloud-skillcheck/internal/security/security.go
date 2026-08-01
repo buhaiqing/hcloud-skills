@@ -37,14 +37,16 @@ type Finding struct {
 }
 
 // secretPattern pairs a stable finding type with its compiled regex.
+// All patterns are case-insensitive (mirrors critic's (?i) convention) so
+// lowercase variants (e.g. hw_secret_access_key=...) are caught equally.
 var secretPatterns = []struct {
 	typ string
 	re  *regexp.Regexp
 }{
-	{"hw_secret_access_key", regexp.MustCompile(`HW_SECRET_ACCESS_KEY\s*=\s*[^\s"']+`)},
-	{"secret_access_key", regexp.MustCompile(`SECRET_ACCESS_KEY\s*=\s*[^\s"']+`)},
-	{"secret_access_key_camel", regexp.MustCompile(`SecretAccessKey\s*[=:]\s*[^\s"']+`)},
-	{"sk", regexp.MustCompile(`SK\s*[=:]\s*[A-Za-z0-9/+]{20,}`)},
+	{"hw_secret_access_key", regexp.MustCompile(`(?i)HW_SECRET_ACCESS_KEY\s*=\s*[^\s"']+`)},
+	{"secret_access_key", regexp.MustCompile(`(?i)SECRET_ACCESS_KEY\s*=\s*[^\s"']+`)},
+	{"secret_access_key_camel", regexp.MustCompile(`(?i)SecretAccessKey\s*[=:]\s*[^\s"']+`)},
+	{"sk", regexp.MustCompile(`(?i)SK\s*[=:]\s*[A-Za-z0-9/+]{20,}`)},
 }
 
 // extraPatterns mirror gcl_security_scan.EXTRA_PATTERNS. They cover cases not
@@ -82,13 +84,13 @@ func allPatterns() []struct {
 func maskedSnippets(typ string, s string) string {
 	switch typ {
 	case "hw_secret_access_key":
-		return regexp.MustCompile(`(HW_SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
+		return regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
 	case "secret_access_key":
-		return regexp.MustCompile(`(SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
+		return regexp.MustCompile(`(?i)(SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
 	case "secret_access_key_camel":
-		return regexp.MustCompile(`(SecretAccessKey\s*[=:]\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
+		return regexp.MustCompile(`(?i)(SecretAccessKey\s*[=:]\s*)[^\s"']+`).ReplaceAllString(s, `$1<masked>`)
 	case "sk":
-		return regexp.MustCompile(`(SK\s*[=:]\s*)[A-Za-z0-9/+]{20,}`).ReplaceAllString(s, `$1<masked>`)
+		return regexp.MustCompile(`(?i)(SK\s*[=:]\s*)[A-Za-z0-9/+]{20,}`).ReplaceAllString(s, `$1<masked>`)
 	case "bearer_token":
 		// Keep the "Bearer " scheme, mask the token that follows.
 		return regexp.MustCompile(`(Bearer\s+)[A-Za-z0-9._\-]+`).ReplaceAllString(s, `$1<masked>`)
@@ -243,10 +245,10 @@ func MaskSecrets(data []byte) []byte {
 		re *regexp.Regexp
 		rp string
 	}{
-		{regexp.MustCompile(`(HW_SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`), `$1<masked>`},
-		{regexp.MustCompile(`(SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`), `$1<masked>`},
-		{regexp.MustCompile(`(SecretAccessKey\s*[=:]\s*)[^\s"']+`), `$1<masked>`},
-		{regexp.MustCompile(`(SK\s*[=:]\s*)[A-Za-z0-9/+]{20,}`), `$1<masked>`},
+		{regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`), `$1<masked>`},
+		{regexp.MustCompile(`(?i)(SECRET_ACCESS_KEY\s*=\s*)[^\s"']+`), `$1<masked>`},
+		{regexp.MustCompile(`(?i)(SecretAccessKey\s*[=:]\s*)[^\s"']+`), `$1<masked>`},
+		{regexp.MustCompile(`(?i)(SK\s*[=:]\s*)[A-Za-z0-9/+]{20,}`), `$1<masked>`},
 	}
 	for _, r := range replacements {
 		s = r.re.ReplaceAllString(s, r.rp)
