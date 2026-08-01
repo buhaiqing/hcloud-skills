@@ -42,3 +42,6 @@
 - 2026-07-28: T-9 `metrics` subcommand serves healing/trust counters in Prometheus text on `:9090/metrics`
 - 2026-07-28: T-10 `EnsureMemoryDir()` shared helper — `NewOutcomeMemory` / `NewContextMemory` both call it
 - 2026-07-28: Doc/Spec backlog closed — GCL trust-boundary P0 + Harness P1P2 specs → Accepted; P1 evidence DoD checked; CLI Alpine no-python smoke wired; `.planning/.../l4-orchestration/SPEC-PLAN.md` superseded by Go L4 + ADR-0007…0011; `02-REVIEW.md` WR-02/03/04/06 closed
+- 2026-08-01: `check merge-verify` added — parallel-execution collection gate (cross-file consistency + per-agent log); docs + fixture + unit/integration tests
+- 2026-08-01: Broken `scripts/gcl_runner.py` backtick refs removed from 24 SKILL.md + 3 spec docs (commit 7170b6f)
+- 2026-08-01: Go SDK module paths (`huaweicloud-sdk-*`) no longer misclassified as repo paths in markdown-links (backtick + regular link) and references-links — shared `isGoSDKModulePath` helper; GCL 3-round review (commit 83c2759)
