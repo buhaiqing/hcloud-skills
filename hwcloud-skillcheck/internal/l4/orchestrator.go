@@ -113,6 +113,15 @@ type LearningResult struct {
 	KnowledgeBaseSkillsUsed []string `json:"knowledge_base_skills_used"`
 }
 
+// StageMarker records one phase of the L4 closed-loop pipeline. Phase 4
+// (end-to-end autonomous test) asserts all five appear in order on the
+// emitted trace — this is the objective "Detect→Diagnose→Execute→Verify→Learn"
+// evidence contract from docs/superpowers/plans/2026-07-31-l4-maturity-upgrade.md §Phase 4.
+type StageMarker struct {
+	Stage string `json:"stage"` // detect | diagnose | execute | verify | learn
+	Done  bool   `json:"done"`
+}
+
 // OrchestratorOutput is the top-level result.
 type OrchestratorOutput struct {
 	FaultID          string              `json:"fault_id"`
@@ -127,6 +136,7 @@ type OrchestratorOutput struct {
 	GCL              GCLResult           `json:"gcl"`
 	Trust            TrustResult         `json:"trust"`
 	Learning         LearningResult      `json:"learning"`
+	Stages           []StageMarker       `json:"stages"`
 	Decision         string              `json:"decision"`
 }
 
@@ -321,6 +331,17 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		PatternsMatched:         patternsMatched,
 		KnowledgeBaseSkillsUsed: usedSkills,
 	}
+	// Phase 4 evidence contract: the closed loop always Detects (topology)
+	// and Diagnoses (skill match); it Executes+Verifies only when trust
+	// auto-approves (the autonomous path); Learn (trace persist) always runs.
+	executed := gclRes.OverallSafety && trustRes.AutoApprove
+	stages := []StageMarker{
+		{Stage: "detect", Done: true},
+		{Stage: "diagnose", Done: true},
+		{Stage: "execute", Done: executed},
+		{Stage: "verify", Done: executed},
+		{Stage: "learn", Done: true},
+	}
 	trace := map[string]any{
 		"trace_id":         faultID,
 		"skill":            primary,
@@ -350,6 +371,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		"orchestration": orch,
 		"gcl":           gclRes,
 		"learning":      learning,
+		"stages":        stages,
 	}
 	if !gclRes.OverallSafety {
 		trace["status"] = "fail"
@@ -472,6 +494,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		GCL:              gclRes,
 		Trust:            trustRes,
 		Learning:         learning,
+		Stages:           stages,
 		Decision:         decision,
 	}
 }

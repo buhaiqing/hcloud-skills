@@ -88,11 +88,12 @@ func TestHandleFault_PredictiveWithMetrics(t *testing.T) {
 	}
 }
 
-// KNOWN-FLAKY: nondeterministic outcome-memory/keyword-match ordering can
-// intermittently produce L0_new fallback or AutoApprove=false. Documented
-// in AGENTS.md pre-commit gate exceptions; not related to Phase 3 changes.
-// TODO(phase4): stabilize by seeding a fixed skill key instead of
-// MatchFaultSkills output ordering.
+// Stabilized Phase 4: seed the exact (skill, action) pair the orchestrator
+// resolves via primarySkillFromMatched(MatchFaultSkills(...)), so trust
+// lookup is deterministic and the test is no longer order-dependent. Prior
+// version keyed on matched[0].Skill directly, which diverged from the
+// orchestrator's primarySkillFromMatched resolution and intermittently
+// fell back to L0_new (KNOWN-FLAKY). See ADR-0009 §Migration.
 func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	root := t.TempDir()
 	// "VPC subnet unreachable" → keyword primary is huaweicloud-vpc-ops.
@@ -105,7 +106,9 @@ func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 	if len(matched) == 0 {
 		t.Fatal("expected keyword matches for unreachable fault")
 	}
-	trustSkill := matched[0].Skill
+	// Use the SAME resolution the orchestrator applies (primarySkillFromMatched).
+	trustSkill := primarySkillFromMatched(matched)
+	trustAction := "diagnose_and_remediate"
 	now := time.Now().UTC()
 	for i := 0; i < 5; i++ {
 		ts := now.Add(-time.Duration(i) * time.Minute).Format(time.RFC3339)
@@ -113,7 +116,7 @@ func TestHandleFault_DecisionAutoProceed(t *testing.T) {
 			ID:        "trust" + ts,
 			Timestamp: ts,
 			Skill:     trustSkill,
-			Action:    "diagnose_and_remediate",
+			Action:    trustAction,
 			Outcome:   "success",
 			Risk:      "medium",
 		}); err != nil {
