@@ -203,6 +203,38 @@ Validates TE-7 advanced-section coverage: every `huaweicloud-*-ops/SKILL.md` und
 
 Exit codes: `0` pass, `1` any skill missing the advanced section.
 
+### `hwcloud-skillcheck check merge-verify --log <path> [--root <dir>]`
+
+Parallel-execution collection gate. When multiple subagents modify files in
+parallel, the orchestrator runs this after collection to (a) validate
+cross-file consistency (markdown links / backtick path targets) across every
+changed file, and (b) emit a per-agent execution log summarising who changed
+what and whether each file verifies.
+
+The `--log` file is a JSON array of per-agent contributions:
+
+```json
+[
+  {"agent": "sa-1", "files": ["huaweicloud-ecs-ops/SKILL.md"], "status": "success", "result": "updated"},
+  {"agent": "sa-2", "files": ["huaweicloud-ecs-ops/references/cli-usage.md"], "status": "failed", "result": "broken link"}
+]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--log <path>` | Path to parallel-execution log JSON (required) |
+| `--root <dir>` | Skill repository root (default `.`) |
+
+Each entry's `files` are validated with the same cross-file link check as
+`check markdown-links` (reusing `checkMarkdownFile`). Files that fail are
+flagged with `!!`; a subagent reporting `status: "failed"` fails the whole
+gate (exit `1`).
+
+Example fixture: `scripts/fixtures/merge-verify-example.json`.
+
+Exit codes: `0` all files verify and no subagent reported failure, `1` broken
+reference(s) or a failed subagent.
+
 ## `hwcloud-skillcheck scan` Subcommands
 
 ### `hwcloud-skillcheck scan secret <kind> --root <dir>`

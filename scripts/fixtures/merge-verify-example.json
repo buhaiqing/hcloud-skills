@@ -1,0 +1,20 @@
+[
+  {
+    "agent": "sa-ecs-docs",
+    "files": [
+      "huaweicloud-ecs-ops/references/cli-usage.md",
+      "huaweicloud-ecs-ops/references/troubleshooting.md"
+    ],
+    "status": "success",
+    "result": "updated ECS skill references"
+  },
+  {
+    "agent": "sa-rds-docs",
+    "files": [
+      "huaweicloud-rds-ops/references/cli-usage.md",
+      "huaweicloud-rds-ops/references/troubleshooting.md"
+    ],
+    "status": "success",
+    "result": "updated RDS skill references"
+  }
+]
