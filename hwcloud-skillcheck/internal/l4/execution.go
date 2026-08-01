@@ -338,6 +338,10 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 	if exec == nil {
 		exec = NewRealExecutor()
 	}
+	// Pre-load failure patterns once for the pre-execution pattern risk gate.
+	// A command matching a high-risk failure pattern is skipped (prevent)
+	// rather than executed-then-failed (react).
+	patternCache := preFetchFailurePatterns(root, matchedSkills(matched))
 	for {
 		if task.CurrentStep >= len(task.Steps) {
 			CompleteTask(task)
@@ -367,6 +371,28 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 
 		short := skillShortOrDerived(step.Skill, step.SkillShort)
 		candidate := "hcloud " + short + " " + step.Action
+
+		// PRE-EXECUTION PATTERN RISK GATE: a command matching a high-risk
+		// failure pattern is skipped (prevent > react). The matched pattern's
+		// fix.action is surfaced so an autofix hook can remediate proactively.
+		if patterns, ok := patternCache[step.Skill]; ok && len(patterns) > 0 {
+			if preRisk := matchPreExecutionRisk(candidate, patterns); preRisk != nil {
+				task.Results = append(task.Results, StepResult{
+					Step:         step.Step,
+					Skill:        step.Skill,
+					Command:      candidate,
+					StartedAt:    NowISO(),
+					FinishedAt:   NowISO(),
+					Success:      false,
+					Error:        "skipped: high-risk failure pattern matched",
+					RBACApproved: true,
+					GCLDecision:  "SKIPPED_BY_PATTERN_RISK",
+				})
+				task.CurrentStep++
+				_ = PersistTask(root, task.ID, task)
+				continue
+			}
+		}
 
 		risk := step.Risk
 		if risk == "" {
@@ -503,6 +529,20 @@ func skillShortOrDerived(skill, short string) string {
 		return short
 	}
 	return strings.ReplaceAll(strings.ReplaceAll(skill, "huaweicloud-", ""), "-ops", "")
+}
+
+// matchedSkills extracts the unique skill IDs from a matched-skill list, for
+// pre-fetching failure patterns in the execution loop.
+func matchedSkills(matched []MatchedSkill) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range matched {
+		if m.Skill != "" && !seen[m.Skill] {
+			seen[m.Skill] = true
+			out = append(out, m.Skill)
+		}
+	}
+	return out
 }
 
 // hashContext returns the first 16 hex chars of sha256 over the *stable*

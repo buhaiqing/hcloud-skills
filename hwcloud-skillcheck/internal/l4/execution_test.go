@@ -1,6 +1,7 @@
 package l4
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -84,5 +85,55 @@ func TestHashContext_StableAcrossVolatileWindows(t *testing.T) {
 	}
 	if len(a) != 16 {
 		t.Fatalf("hash len=%d, want 16", len(a))
+	}
+}
+
+// TestRunExecutionLoop_PatternRiskSkipsStep verifies the pre-execution pattern
+// risk gate: a command matching a high-risk failure pattern is skipped
+// (SKIPPED_BY_PATTERN_RISK) instead of executed (prevent > react).
+func TestRunExecutionLoop_PatternRiskSkipsStep(t *testing.T) {
+	root := t.TempDir()
+	dir := root + "/huaweicloud-ecs-ops/assets"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// failure_patterns.json with a high-risk pattern whose error_message_regex
+	// token appears in the command "createServer" (matchPreExecutionRisk scans
+	// the command for the regex's first token).
+	fixture := `{
+		"$schema": "failure-patterns/v1",
+		"skill_id": "huaweicloud-ecs-ops",
+		"patterns": [{
+			"id": "ECS-FP001",
+			"category": "resource_state",
+			"signature": {"error_code": "Ecs.0801", "error_message_regex": "createServer", "command_pattern": "create-server"},
+			"fix": {"strategy": "fallback", "action": "Try different AZ"},
+			"stats": {"occurrence_count": 10, "success_rate": 0.2}
+		}]
+	}`
+	if err := os.WriteFile(dir+"/failure_patterns.json", []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	task := &TaskState{
+		ID: "risk-test", Status: TaskStatusRunning, CurrentStep: 0,
+		Steps: []TaskStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "createServer", Verb: "create", Risk: "medium"}},
+	}
+	plan := &ExecutionPlan{Steps: []PlanStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "createServer"}}}
+	// matched provides the skills list for pattern pre-fetch.
+	matched := []MatchedSkill{{Skill: "huaweicloud-ecs-ops"}}
+
+	out := RunExecutionLoopWithHealing(root, task, plan, matched, nil, HealingPolicy{}, nil)
+	if out.Status != TaskStatusCompleted {
+		t.Fatalf("want completed, got %s", out.Status)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(out.Results))
+	}
+	if out.Results[0].GCLDecision != "SKIPPED_BY_PATTERN_RISK" {
+		t.Fatalf("want SKIPPED_BY_PATTERN_RISK, got %q (err=%v)", out.Results[0].GCLDecision, out.Results[0].Error)
+	}
+	if out.Results[0].Success {
+		t.Fatal("skipped step must not be success")
 	}
 }
