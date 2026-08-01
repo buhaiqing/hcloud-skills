@@ -53,6 +53,7 @@
 | **G5.3** 避免不必要的分配 | `[]byte` 和 `string` 转换只在必要时做；`bytes.Contains` 优于 `strings.Contains(string(b))` |
 | **G5.4** map/slice 预分配 | 已知大小的 map 用 `make(map[K]V, hint)`；slice 用 `make([]T, 0, cap)` |
 | **G5.5** Benchmark | 性能敏感的代码路径必须有 `BenchmarkXxx` 测试 |
+| **G5.6** init-time 缓存 + 测试重置 | `init()` 中缓存的环境变量/路径必须有导出重置函数供测试使用；测试中 `t.Setenv` 不影响 `init()` 已缓存的值 |
 
 ## G6. 可扩展性
 
@@ -80,6 +81,7 @@
 | **G8.1** 公开函数验证参数 | 所有导出函数的参数必须验证（nil check、空字符串、非法值） |
 | **G8.2** 防御性编程 | `path.Join` 前验证非空；`slice[i]` 前验证 `i < len` |
 | **G8.3** 用户输入净化 | CLI flag 值在传递前验证格式/范围；`filepath.Clean` 防路径穿越 |
+| **G8.4** 空字符串即非法 | `--root ""` 等空值参数必须返回明确错误，不得静默 fallback 到 cwd 或其他默认值 |
 
 ## G9. TDD 工作流
 
@@ -91,3 +93,17 @@
 ```
 
 **门禁**：`go test -race ./...` 全绿 + `go vet ./...` 零 warning 才允许提交。
+
+## G10. Shell→Go 迁移专项
+
+> Phase 5 (pre-commit gate Go migration) 经验沉淀。
+
+| 规则 | 要点 |
+|------|------|
+| **G10.1** 行为矩阵对照 | 迁移前列出旧脚本每个步骤的完整行为矩阵：命令、参数、exit-code 处理（hard/soft）、retry 逻辑、环境变量依赖。逐项对账，不允许「看起来差不多」。 |
+| **G10.2** `os.Exit` 检测 | in-process gate 实现前 grep 目标函数确认无 `os.Exit`；如有则 shell out 到子进程（`exec.Command`），并在注释中标注原因。 |
+| **G10.3** `|| true` → `soft: true` | shell 的 `|| true` 语义必须显式映射为 gate 的 `soft: true` 字段；不依赖「exit code 0」或「ignore error」隐含 soft。 |
+| **G10.4** Retry 逻辑保持 | shell 中的 retry loop（如 `for i in 1 2; do ...; done`）必须保留为 Go 的显式重试逻辑；不简化为单次调用。 |
+| **G10.5** CI-only vs local 分化 | 如果 CI 和本地行为不同，用显式 flag（如 `--check-only`）区分模式，不在代码中硬编码环境检测（如 `if os.Getenv("CI") != ""`）。 |
+| **G10.6** 删除旧脚本 | 迁移完成后立即删除旧 shell 脚本（不保留 thin wrapper）；更新所有引用文档；`grep` 验证零残留。 |
+
