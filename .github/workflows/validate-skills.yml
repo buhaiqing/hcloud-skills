@@ -24,86 +24,17 @@ jobs:
         working-directory: hwcloud-skillcheck
         run: go build -trimpath -o ../bin/hwcloud-skillcheck .
 
-      - name: gofmt clean
-        working-directory: hwcloud-skillcheck
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then
-            echo "These files need gofmt:"; echo "$unformatted"; exit 1
-          fi
-
-      - name: go vet
-        working-directory: hwcloud-skillcheck
-        run: go vet ./...
-
-      - name: Go test (with retry for flaky race detection)
-        working-directory: hwcloud-skillcheck
-        run: |
-          for i in 1 2; do
-            if go test ./... -count=1; then
-              exit 0
-            fi
-            echo "Retry $i failed, trying once more..."
-          done
-          go test ./... -count=1
-
-      # --- Go: run the A-class total entry (replaces the prior Python per-check steps;
-      #    `validate` already runs markdown-links, references-links, example-config,
-      #    and advanced-coverage) ---
-      - name: hwcloud-skillcheck validate (A-class total entry)
-        run: ./bin/hwcloud-skillcheck validate --root .
-
-      - name: hwcloud-skillcheck check audit-results
-        # Not part of the `validate` total entry — kept as a dedicated gate so a
-        # regression in audit-results persistence cannot pass CI unnoticed.
-        run: ./bin/hwcloud-skillcheck check audit-results --root .
-
-      # --- Go: GCL surface ---
-      - name: hwcloud-skillcheck aggregate trace
-        # --require-traces makes the gate fail on a fresh CI checkout with no
-        # trace files instead of silently passing — the parsing path must be
-        # exercised every run.
-        run: ./bin/hwcloud-skillcheck aggregate trace --require-traces --root .
-
-      - name: hwcloud-skillcheck gcl alarm-wire (no mutations)
-        run: |
-          ./bin/hwcloud-skillcheck gcl alarm-wire --root . \
-            --plan-file scripts/fixtures/gcl-quality-summary-healthy.json || true
-
-      # --- Go: new learning + l4 subcommands ---
-      - name: hwcloud-skillcheck learning gen (idempotent)
-        run: ./bin/hwcloud-skillcheck learning gen --root .
-
-      - name: hwcloud-skillcheck l4 handle smoke
-        run: ./bin/hwcloud-skillcheck l4 handle --fault "smoke" --risk low --root .
-
-      # --- Go: drift guard (sync --apply self-heals on fresh CI checkouts) ---
-      - name: hwcloud-skillcheck drift sync (smoke)
-        # Exercises the dry-run path so a wrong default flag can't ship.
-        run: ./bin/hwcloud-skillcheck drift sync --dry-run --root .
-
-      - name: skill_generator drift guard
-        # The runtime copy under .agents/skills/ is gitignored, so a fresh CI
-        # checkout has no runtime copy yet — sync --apply bootstraps it on
-        # demand before check verifies byte-for-byte equality.
-        run: |
-          ./bin/hwcloud-skillcheck drift sync --apply --root .
-          ./bin/hwcloud-skillcheck drift check --root .
-      # --- P1: Trustworthy Evidence Layer gates ---
-      - name: hwcloud-skillcheck golden run
-        run: ./bin/hwcloud-skillcheck golden run --root . || true
-
-      - name: hwcloud-skillcheck check lanes
-        run: ./bin/hwcloud-skillcheck check lanes --root .
-
-      - name: hwcloud-skillcheck ab compare
-        run: ./bin/hwcloud-skillcheck ab compare --root . || true
-
-      - name: hwcloud-skillcheck check advanced-coverage
-        run: ./bin/hwcloud-skillcheck check advanced-coverage --root .
-
-      # --- Go: rule-based Critic scorer (smoke against an embedded fixture) ---
-      - name: hwcloud-skillcheck critic score (smoke)
-        # Reads the embedded trace fixture inside the binary and verifies the
-        # 5-dimension scoring + blocking logic wires up end-to-end.
-        run: ./bin/hwcloud-skillcheck critic score --generator scripts/fixtures/gcl-quality-summary-healthy.json || true
+      # --- Unified pre-commit gate ---
+      # `check --pre-commit --check-only` runs 14 gates in a single pass:
+      #   1. gofmt clean        2. go vet
+      #   3. go test            4. validate (markdown-links, references-links,
+      #                             example-config, advanced-coverage)
+      #   5. check audit-results 6. aggregate trace (--require-traces)
+      #   7. gcl alarm-wire     8. learning gen (idempotent)
+      #   9. l4 handle smoke   10. drift sync --dry-run (smoke path)
+      #  11. drift check       12. golden run
+      #  13. check lanes       14. ab compare
+      #  15. check advanced-coverage
+      #  16. critic score (smoke fixture)
+      - name: hwcloud-skillcheck check --pre-commit (unified gate)
+        run: ./bin/hwcloud-skillcheck check --pre-commit --check-only --root .
