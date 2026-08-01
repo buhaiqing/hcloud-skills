@@ -4,11 +4,82 @@
 
 收到任务后，**先跑以下 checklist，再动手**：
 
-1. **Orchestrator 触发检查** — 任务是否涉及多文件 / 多阶段 / 多 skill / 用户提到「orchestrator」？→ 是则加载 `subagent-orchestrator` skill 并输出决策 JSON，再执行
-2. **Skill generator 检查** — 是否在创建 / 更新 `huaweicloud-*-ops`？→ 是则加载 `huaweicloud-skill-generator` skill
-3. **直接执行** — 以上均否 → 直接做
+1. **GCL 触发检查** — 见下方 §GCL Auto-Execution Gate；满足触发条件 → 启动 GCL 多子 Agent 架构
+2. **Orchestrator 触发检查** — 任务是否涉及多文件 / 多阶段 / 多 skill / 用户提到「orchestrator」？→ 是则加载 `subagent-orchestrator` skill 并输出决策 JSON，再执行
+3. **Skill generator 检查** — 是否在创建 / 更新 `huaweicloud-*-ops`？→ 是则加载 `huaweicloud-skill-generator` skill
+4. **直接执行** — 以上均否 → 直接做
 
 > 违反此 gate = 流程违规，即使结果正确也需复盘。
+
+### GCL Auto-Execution Gate（强制 — 每次编码/配置任务前判定）
+
+> 详细 GCL 规范见用户级 `~/.codebuddy/rules/gcl-rules.md`。
+> 本节是 **hcloud-skills 项目专用的最小可执行决策树**，确保 GCL 不会因 Agent 疏忽而跳过。
+
+#### 触发判定（满足任一即触发 GCL）
+
+| # | 条件 | 示例 |
+|---|------|------|
+| A | 预计代码变更 > 5 行 | 新增功能、重构、bug fix |
+| B | 修改运维配置文件 | `.yml`、`.yaml`、`.json`、`.tf`、`.hcl`、`.toml` |
+| C | 任务含触发关键词 | 修复/新增/重构/变更/优化/测试、fix/add/refactor/change/optimize/test |
+| D | 修改 GCL 核心文件 | `SKILL.md`、`rubric.md`、`prompt-templates.md`、`AGENTS.md` §GCL |
+| E | 修改 Go 代码 | `hwcloud-skillcheck/**/*.go`、`scripts/**/*.go` |
+
+**例外（仅代码变更）**：< 5 行的 typo/注释/格式化改动可跳过 GCL，但须执行 2-round self-review。
+**运维配置变更无例外**：所有 `.yml`/`.yaml`/`.json`/`.tf` 等变更必须走 GCL。
+
+#### 执行决策树
+
+```
+收到任务
+  ├─ 触发条件 A-E 任一满足？
+  │   ├─ YES → 启动 GCL 多子 Agent 架构
+  │   │         ├─ 创建 worktree（`git-worktree.md`）
+  │   │         ├─ 输出模型配置公示
+  │   │         ├─ spawn Generator（后台）
+  │   │         ├─ spawn ≥2 Critics（后台，并行，不同厂商模型）
+  │   │         ├─ 执行 GCL 循环（最多 3 轮）
+  │   │         └─ 汇总结果，写入 memory
+  │   └─ NO  → 直接执行 + 2-round self-review
+```
+
+#### 模型选型（硬约束）
+
+| 角色 | 模型要求 | 厂商要求 |
+|------|----------|----------|
+| Generator | 中等模型 | 厂商 A |
+| Critics (≥2) | 旗舰模型 | 厂商 B（不同厂商）或同厂商更高等级 |
+
+**启动前必须向用户输出模型配置公示**。
+
+#### GCL 门禁阈值
+
+| 维度 | 阈值 | 不达标处理 |
+|------|------|------------|
+| Correctness | ≥ 0.5 | 重试（最多 3 轮） |
+| Safety | = 1.0 | **立即中止**，不生成部分结果 |
+| Idempotency | ≥ 0.5 | 重试 |
+| Traceability | ≥ 0.5 | 重试 |
+| Spec Compliance | ≥ 0.5 | 重试 |
+
+#### 子 Agent 失败处理
+
+| 失败类型 | 处理 |
+|----------|------|
+| API 限流 (429) | 主 Agent 直接接管 |
+| 上下文超限 | 拆分任务，重新 spawn |
+| 连续 2 次失败 | 主 Agent 直接接管 |
+| 子 Agent 卡死 (>10min 无输出) | 发送询问 → 30s 无响应 → 强制停止，主 Agent 接管 |
+
+#### 收尾检查清单（GCL 通过后、commit 前）
+
+- [ ] `go test -race ./...` 全绿
+- [ ] `go vet ./...` 零 warning
+- [ ] `gofmt -l .` 空输出
+- [ ] 无凭据泄露（`maskSecrets` 覆盖所有 detail 输出）
+- [ ] memory 文件已写入（`feedback_gcl_auto_trigger.md`、`feedback_gcl_execution.md`）
+- [ ] 如涉及文档变更：`hwcloud-skillcheck validate --root .` 通过
 
 ### Commit Gate（强制 — 不可跳过）
 
@@ -514,3 +585,9 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 ### CA-14. `os.Exit()` 在 in-process gate 中会杀死测试进程
 **Rule**: in-process gate 调用的函数如果内部有 `os.Exit()`，会直接终止测试进程（不是返回 error），导致测试框架无法捕获失败。这类 gate 必须 shell out 到子进程执行（如 `gateGclAlarmWire` 使用 `exec.Command` 而非 `inProcessGate`）。**Why**: Phase 5 E3 中 `gateGclAlarmWire` 最初使用 `inProcessGate(runGCLAlarmWire, ...)`，而 `runGCLAlarmWire` 内部有 `os.Exit(1)`——测试进程被直接杀死，输出为空，排查困难。**How to apply**: 在 in-process gate 实现前，先 grep 目标函数确认无 `os.Exit`；如有则使用子进程方式（`exec.Command`），并在 gate 注释中标注原因。
+
+### CA-15. GCL 是每次编码任务的强制前置步骤
+**Rule**: 任何涉及代码/配置变更的任务，在动手前必须先跑 GCL Auto-Execution Gate 决策树（§GCL Auto-Execution Gate）。满足触发条件 A-E 任一 → 必须启动 GCL 多子 Agent 架构；不允许「先写代码再补 GCL」或「这次变更小，跳过 GCL」。**Why**: Phase 5 中 E1-E4 每批次都通过 GCL 多子 Agent 架构评审，Critic 共发现 1 个 BLOCKER（bin/ gitignored）和 4 个 MAJOR（test retry、alarm-wire、soft gates、drift dry-run），这些在自审中均未被发现。如果没有 GCL 门禁，这些问题会直接合入 main。**How to apply**: 收到编码任务后，第一步对照 §GCL Auto-Execution Gate 的 5 个触发条件判定；满足任一则立即启动 GCL（创建 worktree → 公示模型 → spawn Generator + ≥2 Critics → 循环评审）。
+
+### CA-16. Critic 模型必须强于 Generator
+**Rule**: Critic 必须使用比 Generator 更强的模型（不同厂商最优，同厂商更高等级次之）。不能用相同模型做 Generator 和 Critic——同构模型会产生同构盲区，漏掉 Generator 的系统性错误。**Why**: Phase 5 中 E1-E3 的 Critics 使用了与 Generator 不同的模型组合，发现了 Generator 自审无法发现的 BLOCKER（bin/ gitignored）和行为丢失（test retry、alarm-wire 等）。**How to apply**: 启动 GCL 前公示模型配置；Critic ≥2 个，必须包含至少一个不同厂商的旗舰模型。
