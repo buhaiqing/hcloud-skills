@@ -3,6 +3,27 @@
 All notable changes to hcloud-skills are documented here. Versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.1] - 2026-08-01
+
+### Fixed
+- **security: case-insensitive credential detection** — `MaskSecrets` and
+  `secretPatterns` in the security scanner now use `(?i)` prefix matching the
+  critic's `HasCredentialLeak` patterns. Previously lowercase credential variable
+  names (e.g. `hw_secret_access_key=...`) bypassed both scanning and masking.
+- **critic: destructive verb list aligned with l4/gcl** — `destructiveSet` now
+  mirrors `l4.HighRiskVerbs` (added `destroy`, `rm`, `del`; removed `purge` as
+  a verb). Previously critic missed destructive commands like `hcloud rds destroy`.
+- **gcl run: expose budget_exceeded in CLI output** — `printGCLRunHuman` and
+  `printGCLRunJSON` now annotate SAFETY_VIOLATION with `budget_exceeded=<kind>`
+  detail, letting oncall/CI distinguish retryable resource exhaustion from real
+  safety violations. Exit code 2 and trace SAFETY_FAIL contract preserved (fail-closed).
+- **subagent-orchestrator: GCL gate edge cases** — gcl+risk≥3 no longer collapses
+  to serial (preserves parallel read-only Critics with `gcl_high_risk` fallback);
+  `gcl_eligible` signal field added for coding/cross-skill/emergency task types;
+  preflight RISK_FORCE_SERIAL exempted for GCL; gcl batch guaranteed ≥3 (1 Generator
+  + ≥2 Critics); MISSING_TASKS_PLAN now checks quantity consistency; soft_warnings
+  documented as reserved field.
+
 ## [v0.4.0] - 2026-08-01
 
 ### Added
