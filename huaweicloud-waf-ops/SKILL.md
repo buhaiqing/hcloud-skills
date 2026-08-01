@@ -587,6 +587,8 @@ func main() {
 | Rubric 实例 | [`references/rubric.md`](references/rubric.md) |
 | Prompt 模板 | [`references/prompt-templates.md`](references/prompt-templates.md) |
 | Trace 路径 | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+
+Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill waf --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
 | 独立性 | Generator 与 Critic 必须在 **隔离** 的子代理/会话中运行 |
 
 ### 五维评分(摘要)

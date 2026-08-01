@@ -501,6 +501,8 @@ delete, trigger create / enable / disable / delete, config update — runs throu
 | Rubric instance | [`references/rubric.md`](references/rubric.md) |
 | Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
 | Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+
+Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill functiongraph --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
 | Independence | Generator and Critic in **isolated** sub-agent / session contexts |
 
 ### Five-Dimension Rubric (summary)

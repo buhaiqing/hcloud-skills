@@ -440,6 +440,8 @@ This skill uses Generator-Critic-Loop runtime validation for cloud operations.
 - `references/prompt-templates.md` — 7 sections: Generator, Critic, Orchestrator, pre-flight, anti-patterns, changelog.
 - `SKILL.md` metadata `gcl` block — `required: true`, `default_max_iter: 2`, `rubric_version: "v1"`, `trace_path: "./audit-results/"`.
 
+Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill kms --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
+
 ## Reference Directory
 
 - [Core Concepts](references/core-concepts.md) — CMK model, key types, HSM, rotation
