@@ -280,3 +280,54 @@ func TestMatchPreExecutionRisk_NoMatch(t *testing.T) {
 		t.Errorf("expected nil for non-matching command, got %#v", got)
 	}
 }
+
+// TestMatchPreExecutionRisk_FirstMatch verifies the first matching pattern wins
+// (loop returns on first hit, not last).
+func TestMatchPreExecutionRisk_FirstMatch(t *testing.T) {
+	patterns := []map[string]any{
+		{"id": "FP-A", "signature": map[string]any{"error_message_regex": "alpha"}, "fix": map[string]any{"action": "fix-a"}},
+		{"id": "FP-B", "signature": map[string]any{"error_message_regex": "alpha"}, "fix": map[string]any{"action": "fix-b"}},
+	}
+	got := matchPreExecutionRisk("hcloud ecs alpha", patterns)
+	if got == nil {
+		t.Fatal("expected a match")
+	}
+	rm := got.(map[string]any)
+	if rm["matched_pattern_id"] != "FP-A" {
+		t.Fatalf("want first matching pattern FP-A, got %v", rm["matched_pattern_id"])
+	}
+}
+
+// TestMatchPreExecutionRisk_SkipsPatternWithoutRegex verifies a pattern with an
+// empty error_message_regex is skipped (no panic, no match).
+func TestMatchPreExecutionRisk_SkipsPatternWithoutRegex(t *testing.T) {
+	patterns := []map[string]any{
+		{"id": "FP-EMPTY", "signature": map[string]any{"error_message_regex": ""}},
+		{"id": "FP-OK", "signature": map[string]any{"error_message_regex": "alpha"}, "fix": map[string]any{"action": "x"}},
+	}
+	got := matchPreExecutionRisk("hcloud ecs alpha", patterns)
+	if got == nil {
+		t.Fatal("expected FP-OK to match")
+	}
+	rm := got.(map[string]any)
+	if rm["matched_pattern_id"] != "FP-OK" {
+		t.Fatalf("want FP-OK (first with non-empty regex), got %v", rm["matched_pattern_id"])
+	}
+}
+
+// TestMatchPreExecutionRisk_SkipsNilSignature verifies a pattern with a nil
+// signature is skipped (no panic).
+func TestMatchPreExecutionRisk_SkipsNilSignature(t *testing.T) {
+	patterns := []map[string]any{
+		{"id": "FP-NIL", "signature": nil},
+		{"id": "FP-OK", "signature": map[string]any{"error_message_regex": "alpha"}, "fix": map[string]any{"action": "x"}},
+	}
+	got := matchPreExecutionRisk("hcloud ecs alpha", patterns)
+	if got == nil {
+		t.Fatal("expected FP-OK to match")
+	}
+	rm := got.(map[string]any)
+	if rm["matched_pattern_id"] != "FP-OK" {
+		t.Fatalf("want FP-OK, got %v", rm["matched_pattern_id"])
+	}
+}

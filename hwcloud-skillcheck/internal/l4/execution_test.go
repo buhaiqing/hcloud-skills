@@ -137,3 +137,132 @@ func TestRunExecutionLoop_PatternRiskSkipsStep(t *testing.T) {
 		t.Fatal("skipped step must not be success")
 	}
 }
+
+// writePatternFixture writes a failure_patterns.json for a skill into root.
+func writePatternFixture(t *testing.T, root, skill string, patterns string) {
+	t.Helper()
+	dir := root + "/" + skill + "/assets"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := `{"$schema":"failure-patterns/v1","skill_id":"` + skill + `","patterns":` + patterns + `}`
+	if err := os.WriteFile(dir+"/failure_patterns.json", []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRunExecutionLoop_PatternRiskNoMatchExecutes verifies a command that does
+// NOT match any pattern is executed normally (no SKIPPED_BY_PATTERN_RISK).
+func TestRunExecutionLoop_PatternRiskNoMatchExecutes(t *testing.T) {
+	root := t.TempDir()
+	// Pattern regex token "deleteInstance" does not appear in command "listServers".
+	writePatternFixture(t, root, "huaweicloud-ecs-ops", `[{"id":"FP1","signature":{"error_message_regex":"deleteInstance"},"fix":{"action":"x"}}]`)
+
+	task := &TaskState{
+		ID: "t-nomatch", Status: TaskStatusRunning, CurrentStep: 0,
+		Steps: []TaskStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list", Verb: "list", Risk: "low"}},
+	}
+	plan := &ExecutionPlan{Steps: []PlanStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list"}}}
+	matched := []MatchedSkill{{Skill: "huaweicloud-ecs-ops"}}
+	exec := &StubExecutor{Outcomes: []StubStep{{ExitCode: 0, Stdout: "[]"}}}
+
+	out := RunExecutionLoopWithHealing(root, task, plan, matched, nil, HealingPolicy{}, exec)
+	if out.Status != TaskStatusCompleted {
+		t.Fatalf("want completed, got %s", out.Status)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(out.Results))
+	}
+	if out.Results[0].GCLDecision == "SKIPPED_BY_PATTERN_RISK" {
+		t.Fatalf("non-matching command must not be skipped, got %q", out.Results[0].GCLDecision)
+	}
+	if !out.Results[0].Success {
+		t.Fatalf("non-matching command should execute successfully, err=%v", out.Results[0].Error)
+	}
+}
+
+// TestRunExecutionLoop_PatternRiskNoPatternFile verifies behavior is unchanged
+// when no failure_patterns.json exists for the skill.
+func TestRunExecutionLoop_PatternRiskNoPatternFile(t *testing.T) {
+	root := t.TempDir() // no failure_patterns.json written
+	task := &TaskState{
+		ID: "t-nopat", Status: TaskStatusRunning, CurrentStep: 0,
+		Steps: []TaskStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list", Verb: "list", Risk: "low"}},
+	}
+	plan := &ExecutionPlan{Steps: []PlanStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list"}}}
+	matched := []MatchedSkill{{Skill: "huaweicloud-ecs-ops"}}
+	exec := &StubExecutor{Outcomes: []StubStep{{ExitCode: 0, Stdout: "[]"}}}
+
+	out := RunExecutionLoopWithHealing(root, task, plan, matched, nil, HealingPolicy{}, exec)
+	if out.Status != TaskStatusCompleted {
+		t.Fatalf("want completed, got %s", out.Status)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(out.Results))
+	}
+	if out.Results[0].GCLDecision == "SKIPPED_BY_PATTERN_RISK" {
+		t.Fatalf("no pattern file must not skip, got %q", out.Results[0].GCLDecision)
+	}
+}
+
+// TestRunExecutionLoop_PatternRiskSkipsThenContinues verifies a multi-step task:
+// step1 matches a pattern → skipped; step2 does not → executed.
+func TestRunExecutionLoop_PatternRiskSkipsThenContinues(t *testing.T) {
+	root := t.TempDir()
+	// Pattern matches "deleteInstance" (step1 command), not "listServers" (step2).
+	writePatternFixture(t, root, "huaweicloud-ecs-ops", `[{"id":"FP1","signature":{"error_message_regex":"deleteInstance"},"fix":{"action":"x"}}]`)
+
+	task := &TaskState{
+		ID: "t-2step", Status: TaskStatusRunning, CurrentStep: 0,
+		Steps: []TaskStep{
+			{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "deleteInstance", Verb: "delete", Risk: "high"},
+			{Step: 2, Skill: "huaweicloud-ecs-ops", Action: "list", Verb: "list", Risk: "low"},
+		},
+	}
+	plan := &ExecutionPlan{Steps: []PlanStep{
+		{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "deleteInstance"},
+		{Step: 2, Skill: "huaweicloud-ecs-ops", Action: "list"},
+	}}
+	matched := []MatchedSkill{{Skill: "huaweicloud-ecs-ops"}}
+	exec := &StubExecutor{Outcomes: []StubStep{{ExitCode: 0, Stdout: "[]"}}}
+
+	out := RunExecutionLoopWithHealing(root, task, plan, matched, nil, HealingPolicy{}, exec)
+	if out.Status != TaskStatusCompleted {
+		t.Fatalf("want completed, got %s", out.Status)
+	}
+	if len(out.Results) != 2 {
+		t.Fatalf("want 2 results, got %d", len(out.Results))
+	}
+	if out.Results[0].GCLDecision != "SKIPPED_BY_PATTERN_RISK" {
+		t.Fatalf("step1 want SKIPPED_BY_PATTERN_RISK, got %q", out.Results[0].GCLDecision)
+	}
+	if out.Results[1].GCLDecision == "SKIPPED_BY_PATTERN_RISK" {
+		t.Fatalf("step2 (non-matching) must not be skipped, got %q", out.Results[1].GCLDecision)
+	}
+	if !out.Results[1].Success {
+		t.Fatalf("step2 should execute successfully, err=%v", out.Results[1].Error)
+	}
+}
+
+// TestMatchedSkills_Deduplicates verifies the helper drops duplicate skill IDs.
+func TestMatchedSkills_Deduplicates(t *testing.T) {
+	in := []MatchedSkill{{Skill: "huaweicloud-ecs-ops"}, {Skill: "huaweicloud-ecs-ops"}, {Skill: "huaweicloud-rds-ops"}}
+	got := matchedSkills(in)
+	if len(got) != 2 {
+		t.Fatalf("want 2 unique skills, got %d: %v", len(got), got)
+	}
+	seen := map[string]bool{}
+	for _, s := range got {
+		if seen[s] {
+			t.Fatalf("duplicate skill %q in output", s)
+		}
+		seen[s] = true
+	}
+}
+
+// TestMatchedSkills_Empty verifies empty input → empty output (no panic).
+func TestMatchedSkills_Empty(t *testing.T) {
+	if got := matchedSkills(nil); len(got) != 0 {
+		t.Fatalf("want 0 skills for nil input, got %v", got)
+	}
+}
