@@ -171,3 +171,82 @@ func TestCheckPermission_Immutables(t *testing.T) {
 		t.Error("delete-security-group should have immutable constraint")
 	}
 }
+
+func TestTrustToMaxRisk_ByLevel(t *testing.T) {
+	cases := []struct {
+		level string
+		want  RBACRisk
+	}{
+		{"L4_autonomous", RBACRiskCritical},
+		{"L3_trusted", RBACRiskHigh},
+		{"L2_established", RBACRiskMedium},
+		{"L1_provisional", RBACRiskLow},
+		{"L0_new", RBACRiskNone},
+		{"UNKNOWN", RBACRiskNone}, // default → none (only read-only bypass)
+	}
+	for _, c := range cases {
+		if got := trustToMaxRisk(c.level, 0.5); got != c.want {
+			t.Errorf("trustToMaxRisk(%s): got %s, want %s", c.level, got, c.want)
+		}
+	}
+}
+
+func TestTrustToMaxRisk_ScoreIndependent(t *testing.T) {
+	// trustToMaxRisk maps by level only; score is a separate signal.
+	for _, score := range []float64{0.0, 0.5, 1.0} {
+		if got := trustToMaxRisk("L2_established", score); got != RBACRiskMedium {
+			t.Errorf("trustToMaxRisk(L2, %.1f): got %s, want medium", score, got)
+		}
+	}
+}
+
+func TestCheckCommandPermission_EmptyCommand(t *testing.T) {
+	// Empty command → no action extractable → denied (critical).
+	d := CheckCommandPermission("", "L4_autonomous", 0.99)
+	if d.Allowed {
+		t.Error("empty command must not be allowed")
+	}
+	if d.Risk != RBACRiskCritical {
+		t.Errorf("empty command risk=%s, want critical", d.Risk)
+	}
+}
+
+func TestCheckCommandPermission_SingleToken(t *testing.T) {
+	// A command with <3 tokens has no extractable action → denied.
+	d := CheckCommandPermission("hcloud", "L4_autonomous", 0.99)
+	if d.Allowed {
+		t.Error("single-token command must not be allowed")
+	}
+}
+
+func TestCheckCommandPermission_UnknownActionDefaultsHigh(t *testing.T) {
+	// Unknown action (not in DefaultOperationPermissions, not a known high-risk
+	// verb) defaults to high risk.
+	d := CheckCommandPermission("hcloud ecs somethingObscure", "L2_established", 0.65)
+	if d.Allowed {
+		t.Error("unknown action defaulting to high must not be auto-approved at L2")
+	}
+	if d.Risk != RBACRiskHigh {
+		t.Errorf("unknown action risk=%s, want high", d.Risk)
+	}
+}
+
+func TestCheckCommandPermission_ReadOnlyAtAllLevels(t *testing.T) {
+	// Read-only (low risk) is auto-approved at every trust level, even L0.
+	for _, level := range []string{"L0_new", "L1_provisional", "L2_established", "L3_trusted", "L4_autonomous"} {
+		d := CheckCommandPermission("hcloud ecs list", level, 0.0)
+		if !d.Allowed {
+			t.Errorf("read-only list not auto-approved at %s: %+v", level, d)
+		}
+	}
+}
+
+func TestCheckPermission_UnknownVerbHighRiskMatch(t *testing.T) {
+	// A verb not in DefaultOperationPermissions but matching a HighRiskVerbs
+	// regex is classified high risk.
+	// delete is immutable; use a verb with "delete" substring that isn't a known op.
+	d := CheckPermission("force-delete", "L2_established", 0.65)
+	if d.Allowed {
+		t.Error("force-delete should not be auto-approved at L2")
+	}
+}

@@ -266,3 +266,40 @@ func TestMatchedSkills_Empty(t *testing.T) {
 		t.Fatalf("want 0 skills for nil input, got %v", got)
 	}
 }
+
+// TestInferRiskFromAction_Destructive verifies destructive verbs → high.
+func TestInferRiskFromAction_Destructive(t *testing.T) {
+	for _, action := range []string{"delete-instance", "terminate", "destroy", "drop-table", "remove-node"} {
+		if got := inferRiskFromAction(action); got != "high" {
+			t.Errorf("inferRiskFromAction(%q): got %q, want high", action, got)
+		}
+	}
+}
+
+// TestInferRiskFromAction_ReadOnly verifies read-only verbs → low.
+func TestInferRiskFromAction_ReadOnly(t *testing.T) {
+	for _, action := range []string{"list", "describe-instance", "show", "get-alarm", "query-metrics", "search-logs"} {
+		if got := inferRiskFromAction(action); got != "low" {
+			t.Errorf("inferRiskFromAction(%q): got %q, want low", action, got)
+		}
+	}
+}
+
+// TestInferRiskFromAction_Unknown verifies unknown verbs → medium.
+func TestInferRiskFromAction_Unknown(t *testing.T) {
+	for _, action := range []string{"doSomething", "fooBar", "xyz"} {
+		if got := inferRiskFromAction(action); got != "medium" {
+			t.Errorf("inferRiskFromAction(%q): got %q, want medium", action, got)
+		}
+	}
+}
+
+// TestInferRiskFromAction_CaseInsensitive verifies uppercase input is handled.
+func TestInferRiskFromAction_CaseInsensitive(t *testing.T) {
+	if got := inferRiskFromAction("DELETE-INSTANCE"); got != "high" {
+		t.Errorf("uppercase DELETE-INSTANCE: got %q, want high", got)
+	}
+	if got := inferRiskFromAction("ListServers"); got != "low" {
+		t.Errorf("mixed-case ListServers: got %q, want low", got)
+	}
+}
