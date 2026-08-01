@@ -4,6 +4,12 @@
 // into .git/hooks/pre-commit by this program. The destination is owned by the
 // user, so re-running is idempotent.
 //
+// WORKTREES: The hook is installed into the main repo's .git/hooks/pre-commit
+// and shared by ALL worktrees via core.hooksPath. The hook uses `git rev-parse
+// --show-toplevel` to resolve the correct worktree root. On first use in a
+// worktree, the hook auto-builds bin/hwcloud-skillcheck (gitignored) if missing.
+// Each worktree must be able to `go build` independently.
+//
 // Usage:
 //   go run scripts/install_hook.go           # install
 //   go run scripts/install_hook.go --check   # print status

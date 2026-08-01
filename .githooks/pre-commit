@@ -4,5 +4,15 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 if git diff --cached --name-only | grep -qE '^(hwcloud-skillcheck/.*\.go|hwcloud-skillcheck/testdata/.*\.py|scripts/.*\.go)$'; then
+  # bin/ is gitignored (.gitignore:255). On a fresh clone / fresh worktree the
+  # binary does not exist. Build it on demand so the commit is never hard-blocked
+  # by a missing binary (ADR-0014 chicken-and-egg: check --pre-commit is inside
+  # the binary it needs to launch). See Critic-B finding #1 and install_hook.go.
+  if [ ! -x "$ROOT/bin/hwcloud-skillcheck" ]; then
+    (cd "$ROOT/hwcloud-skillcheck" && go build -trimpath -o "$ROOT/bin/hwcloud-skillcheck" .) || {
+      echo 'pre-commit: build failed — commit blocked' >&2
+      exit 1
+    }
+  fi
   exec "$ROOT/bin/hwcloud-skillcheck" check --pre-commit --skip-tests
 fi
