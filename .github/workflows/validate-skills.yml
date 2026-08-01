@@ -25,13 +25,17 @@ jobs:
         run: go build -trimpath -o ../bin/hwcloud-skillcheck .
 
       # --- Unified pre-commit gate (ADR-0014) ---
-      # `check --pre-commit --check-only` runs 14 gates in a single pass:
-      #   [1] gofmt    [2] go vet    [3] validate (frontmatter+eval-queries+
-      #       product-assessment+markdown-links+example-config+advanced-coverage)
-      #   [4] audit-results    [5] aggregate trace (--require-traces)
-      #   [6] learning gen    [7] l4 handle smoke    [8] golden run (soft)
-      #   [9] check lanes    [10] ab compare (soft)    [11] advanced-coverage
-      #   [12] drift guard (check-only in CI)    [13] go test
-      #   [14] critic score (fixture smoke)
+      # `check --pre-commit --check-only --test-retries 2` runs 16 gates:
+      #   [1] gofmt (hard)   [2] go vet (hard)
+      #   [3] validate (hard — frontmatter+eval-queries+product-assessment+
+      #       markdown-links+example-config+advanced-coverage)
+      #   [4] audit-results (hard)   [5] aggregate trace (hard)
+      #   [6] learning gen (hard)   [7] l4 handle smoke (hard)
+      #   [8] golden run (soft)   [9] check lanes (hard)
+      #   [10] ab compare (soft)   [11] advanced-coverage (hard)
+      #   [12] drift guard (hard — check-only in CI, no sync --apply)
+      #   [13] go test (hard, 3 attempts with --test-retries 2)
+      #   [14] drift sync --dry-run (soft)   [15] gcl alarm-wire (soft)
+      #   [16] critic score (soft — fixture smoke)
       - name: hwcloud-skillcheck check --pre-commit (unified gate)
-        run: ./bin/hwcloud-skillcheck check --pre-commit --check-only --root .
+        run: ./bin/hwcloud-skillcheck check --pre-commit --check-only --test-retries 2 --root .

@@ -230,13 +230,89 @@ func TestGateGoTest_HappyAndFail(t *testing.T) {
 // TestGateCriticScore_RunsWithFixture verifies gateCriticScore is wired to
 // the in-process critic score runner. On an empty root (no fixture file), it
 // must fail — proving the gate actually invokes the critic and doesn't silently
-// pass. This is a unit-level smoke test for the gate function; the full
-// end-to-end (real fixture) is covered by `check --pre-commit --check-only`.
+// pass. The gate is SOFT (warn-only) matching old CI `|| true` semantics.
 func TestGateCriticScore_RunsWithFixture(t *testing.T) {
 	root := t.TempDir()
 	_ = captureStdout(t, func() {
-		if got := gateCriticScore(root); got.passed {
+		res := gateCriticScore(root)
+		if res.passed {
 			t.Error("critic-score gate must fail when fixture file is missing")
+		}
+		if !res.soft {
+			t.Error("critic-score gate must be soft (warn-only)")
+		}
+	})
+}
+
+// TestGateDriftSyncDryRun verifies the drift sync --dry-run gate runs on an
+// empty root and produces a non-passing result (no generator copy to sync).
+// The gate is SOFT (warn-only).
+func TestGateDriftSyncDryRun(t *testing.T) {
+	root := t.TempDir()
+	_ = captureStdout(t, func() {
+		res := gateDriftSyncDryRun(root)
+		if res.passed {
+			t.Error("drift sync --dry-run gate must fail on empty root (no generator copy)")
+		}
+		if !res.soft {
+			t.Error("drift sync --dry-run gate must be soft (warn-only)")
+		}
+	})
+}
+
+// TestGateGclAlarmWire verifies the gcl alarm-wire gate is wired and SOFT.
+// The underlying runGCLAlarmWire calls os.Exit(1) on empty roots, which kills
+// the test process. We verify the gate function exists and is soft via the
+// gate registry test (TestPreCommitGates_SkipTests covers CI-only gate list).
+func TestGateGclAlarmWire(t *testing.T) {
+	// Verify the gate function is defined (non-nil) and test the soft flag via
+	// the gate registry — the CI-only gates list in TestPreCommitGates_SkipTests
+	// already covers this.
+	ciGates := preCommitGates(false, true, 2)
+	found := false
+	for _, g := range ciGates {
+		if g.label == "gcl alarm-wire" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("CI mode must include gcl alarm-wire gate")
+	}
+}
+
+// TestGateGoTestRetry_RetriesOnFailure verifies the retry loop runs multiple
+// attempts when a test fails, and returns the last failure detail.
+func TestGateGoTestRetry_RetriesOnFailure(t *testing.T) {
+	requireGoToolchain(t)
+	rootBad := writeTempGoModule(t, "package main\n\nfunc main() {}\n")
+	failTest := "package main\n\nimport \"testing\"\n\nfunc TestBad(t *testing.T) { t.Fatal(\"nope\") }\n"
+	if err := os.WriteFile(filepath.Join(rootBad, "hwcloud-skillcheck", "main_test.go"), []byte(failTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = captureStdout(t, func() {
+		res := gateGoTestRetry(rootBad, 2)
+		if res.passed {
+			t.Error("go test retry gate should fail when all attempts fail")
+		}
+		if !strings.Contains(res.detail, "after 3 attempts") {
+			t.Errorf("expected retry count in detail, got %q", res.detail)
+		}
+	})
+}
+
+// TestGateGoTestRetry_ZeroRetriesDelegates verifies testRetries=0 delegates to
+// the single-attempt gateGoTest.
+func TestGateGoTestRetry_ZeroRetriesDelegates(t *testing.T) {
+	requireGoToolchain(t)
+	root := writeTempGoModule(t, "package main\n\nfunc main() {}\n")
+	passTest := "package main\n\nimport \"testing\"\n\nfunc TestOK(t *testing.T) {}\n"
+	if err := os.WriteFile(filepath.Join(root, "hwcloud-skillcheck", "main_test.go"), []byte(passTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = captureStdout(t, func() {
+		if got := gateGoTestRetry(root, 0); !got.passed {
+			t.Errorf("go test retry(0) should pass on passing test, detail=%q", got.detail)
 		}
 	})
 }

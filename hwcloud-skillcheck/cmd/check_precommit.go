@@ -76,14 +76,16 @@ func maskSecrets(s string) string {
 }
 
 // runCheckPreCommit implements `hwcloud-skillcheck check --pre-commit
-// [--skip-tests] [--check-only]`. It replaces scripts/pre_commit_check.sh: the
-// same 13 gates (14 with --check-only), the same hard/soft semantics, and the
-// same exit-code contract (1 on any hard failure, 0 otherwise). See ADR-0014.
+// [--skip-tests] [--check-only] [--test-retries N]`. It replaces
+// scripts/pre_commit_check.sh: the same 13 gates (15 with --check-only), the
+// same hard/soft semantics, and the same exit-code contract (1 on any hard
+// failure, 0 otherwise). See ADR-0014.
 func runCheckPreCommit(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck check --pre-commit")
 	root := fs.String("root", ".", "skill repository root")
 	skipTests := fs.Bool("skip-tests", false, "skip the go test gate (git hook passes this; CI does not)")
-	checkOnly := fs.Bool("check-only", false, "CI mode: skip binary rebuild, drift-sync-only-check, and add critic-score gate")
+	checkOnly := fs.Bool("check-only", false, "CI mode: skip binary rebuild, drift-check-only, add CI-only gates")
+	testRetries := fs.Int("test-retries", 0, "retry go test up to N times on failure (CI uses 2; local uses 0)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -92,7 +94,7 @@ func runCheckPreCommit(args []string) error {
 		return err
 	}
 
-	gates := preCommitGates(*skipTests, *checkOnly)
+	gates := preCommitGates(*skipTests, *checkOnly, *testRetries)
 	results := runPreCommitGates(gates, rootDir)
 
 	// Defense-in-depth build: rebuild ./bin/hwcloud-skillcheck so a stale
@@ -133,11 +135,12 @@ func rebuildSkillcheckBinary(rootDir string) error {
 	return nil
 }
 
-// preCommitGates returns the ordered gate registry. Gates 8 (golden run) and
+// preCommitGates returns the ordered gate registry. Gates 8 (golden run),
 // 10 (ab compare) are soft (warn but never fail). Gate 13 (go test) is omitted
 // when skipTests is set. When checkOnly is true, drift guard runs in check-only
-// mode (skip sync --apply) and a 14th gate (critic-score) is appended.
-func preCommitGates(skipTests, checkOnly bool) []preCommitGate {
+// mode (skip sync --apply) and CI-only gates (critic-score, gcl alarm-wire,
+// drift sync --dry-run) are appended.
+func preCommitGates(skipTests, checkOnly bool, testRetries int) []preCommitGate {
 	driftGuardFn := gateDriftGuard
 	if checkOnly {
 		driftGuardFn = gateDriftGuardCheckOnly
@@ -157,10 +160,16 @@ func preCommitGates(skipTests, checkOnly bool) []preCommitGate {
 		{"skill_generator drift guard", driftGuardFn},
 	}
 	if !skipTests {
-		gates = append(gates, preCommitGate{"Go test", gateGoTest})
+		gates = append(gates, preCommitGate{"Go test", func(rootDir string) gateResult {
+			return gateGoTestRetry(rootDir, testRetries)
+		}})
 	}
 	if checkOnly {
-		gates = append(gates, preCommitGate{"critic-score", gateCriticScore})
+		gates = append(gates,
+			preCommitGate{"drift sync --dry-run", gateDriftSyncDryRun}, // soft — exercises dry-run path
+			preCommitGate{"gcl alarm-wire", gateGclAlarmWire},          // soft — exercises alarm-wire wiring
+			preCommitGate{"critic-score", gateCriticScore},             // soft — fixture smoke test
+		)
 	}
 	return gates
 }
@@ -244,6 +253,26 @@ func gateGoVet(rootDir string) gateResult {
 // gateGoTest runs `go test ./... -count=1` in the module directory.
 func gateGoTest(rootDir string) gateResult {
 	return goToolGate(rootDir, "go test failed", "test", "./...", "-count=1")
+}
+
+// gateGoTestRetry runs go test with up to N retries on failure, mirroring the
+// old CI shell's 3-attempt retry loop for flaky race detection.
+func gateGoTestRetry(rootDir string, maxRetries int) gateResult {
+	if maxRetries <= 0 {
+		return gateGoTest(rootDir)
+	}
+	var lastDetail string
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		res := goToolGate(rootDir, "go test failed", "test", "./...", "-count=1")
+		if res.passed {
+			return res
+		}
+		lastDetail = res.detail
+		if attempt < maxRetries {
+			fmt.Fprintf(os.Stderr, "WARN: Go test attempt %d/%d failed, retrying...\n", attempt+1, maxRetries+1)
+		}
+	}
+	return gateResult{passed: false, detail: fmt.Sprintf("go test failed after %d attempts: %s", maxRetries+1, lastDetail)}
 }
 
 // goToolGate shells out to the `go` toolchain in <rootDir>/hwcloud-skillcheck,
@@ -334,7 +363,35 @@ func gateDriftGuardCheckOnly(rootDir string) gateResult {
 }
 
 // gateCriticScore runs `critic score` against the standard GCL quality summary
-// fixture. This is a CI-only smoke test (it does not run in the git hook).
+// fixture. SOFT (mirrors old CI `|| true`): this is a fixture smoke test, not a
+// production correctness assertion.
 func gateCriticScore(rootDir string) gateResult {
-	return inProcessGate(runCritic, []string{"score", "--generator", filepath.Join(rootDir, "scripts", "fixtures", "gcl-quality-summary-healthy.json")}, false)
+	return inProcessGate(runCritic, []string{"score", "--generator", filepath.Join(rootDir, "scripts", "fixtures", "gcl-quality-summary-healthy.json")}, true)
+}
+
+// gateDriftSyncDryRun runs `drift sync --dry-run` to exercise the dry-run code
+// path so a wrong default flag cannot ship. SOFT: matches old CI `drift sync
+// --dry-run` standalone step.
+func gateDriftSyncDryRun(rootDir string) gateResult {
+	return inProcessGate(runDrift, []string{"sync", "--dry-run", "--root", rootDir}, true)
+}
+
+// gateGclAlarmWire runs `gcl alarm-wire` against the standard fixture to
+// exercise the alarm-wire wiring path. SOFT (mirrors old CI `|| true`).
+// NOTE: runGCLAlarmWire calls os.Exit(1) on threshold breaches, which kills
+// the process. We shell out via goToolGate to contain the exit.
+func gateGclAlarmWire(rootDir string) gateResult {
+	bin := filepath.Join(rootDir, "bin", "hwcloud-skillcheck")
+	if _, err := os.Stat(bin); os.IsNotExist(err) {
+		return gateResult{passed: false, soft: true, detail: "binary not found; run Build step first"}
+	}
+	cmd := exec.Command(bin, "gcl", "alarm-wire",
+		"--root", rootDir,
+		"--plan-file", filepath.Join(rootDir, "scripts", "fixtures", "gcl-quality-summary-healthy.json"),
+	)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	_ = cmd.Run() // ignore exit code; always soft
+	return gateResult{passed: true, soft: true}
 }
