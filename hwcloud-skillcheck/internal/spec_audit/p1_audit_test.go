@@ -51,12 +51,17 @@ func TestP1Acceptance_AuditsAllCriteria(t *testing.T) {
 
 func TestP1GatesWired(t *testing.T) {
 	// Uses `hwcloud-skillcheck check --pre-commit` (ADR-0014, Phase 5 Go migration).
+	// The binary must be pre-built; in CI the Validate Skills workflow builds it
+	// to bin/, but the Build workflow does not. Skip gracefully when absent.
 	scriptPath := filepath.Join(repoRoot(), "bin", "hwcloud-skillcheck")
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		t.Skipf("binary not found at %s; build it first (e.g. go build -trimpath -o ../bin/hwcloud-skillcheck .)", scriptPath)
+	}
 	cmd := exec.Command(scriptPath, "check", "--pre-commit", "--skip-tests")
 	cmd.Dir = repoRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Logf("script error: %v\noutput: %s", err, string(out))
+		t.Fatalf("check --pre-commit failed: %v\noutput: %s", err, string(out))
 	}
 	text := string(out)
 	needed := []string{"golden run", "check lanes", "ab compare", "check advanced-coverage"}
