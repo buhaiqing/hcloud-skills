@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Repository-managed pre-commit hook: runs the unified Go gate so local and
+# CI share one definition (ADR-0014). Markdown-only commits skip the gate.
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+if git diff --cached --name-only | grep -qE '^hwcloud-skillcheck/.*\.go$'; then
+  exec "$ROOT/bin/hwcloud-skillcheck" check --pre-commit --skip-tests
+fi

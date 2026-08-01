@@ -16,13 +16,19 @@ import (
 
 // --- in-process gate failure paths (empty root => underlying command fails) ---
 //
-// These gates validate repo state that cannot exist under an empty root, so
-// an empty t.TempDir() is a clean, hermetic failure trigger. advanced-coverage
-// is NOT here: it is a coverage survey that returns OK on a zero-skill tree
-// (no errors to report), so it tolerates an empty root like the gates below.
-// aggregate-trace, learning-gen, l4-handle, check-lanes intentionally TOLERATE
-// absent state (runtime creates artifacts on demand — see AGENTS.md
-// "Test Hermeticity"); an empty root is a happy path for them.
+// These gates validate repo state that cannot exist under an empty root, so an
+// empty t.TempDir() is a clean, hermetic failure trigger:
+//   - validate:      no huaweicloud-*-ops/*/SKILL.md etc.
+//   - audit-results: audit-results guard finds missing/blocked artifacts
+//   - drift-guard:   drift sync finds the generator copy missing
+//
+// advanced-coverage is NOT here: with zero skill dirs it reports 0 skills / 0
+// errors and PASSES, so its failure path needs a crafted broken skill (see
+// TestGateAdvancedCoverage_FailsOnBrokenSkill). The gates below
+// (aggregate-trace, learning-gen, l4-handle, check-lanes, advanced-coverage)
+// intentionally TOLERATE absent state or a vacuous zero-skill tree (runtime
+// creates artifacts on demand — see AGENTS.md "Test Hermeticity"); an empty root
+// is a happy path for them, pinned by TestStateTolerantGates_PassOnEmptyRoot.
 
 func TestInProcessGates_FailOnEmptyRoot(t *testing.T) {
 	root := t.TempDir()
@@ -34,10 +40,6 @@ func TestInProcessGates_FailOnEmptyRoot(t *testing.T) {
 		{"audit-results", gateAuditResults},
 		{"drift-guard", gateDriftGuard},
 	}
-	// advanced-coverage is intentionally excluded: coverage.ValidateAll's
-	// behavior on an empty tree depends on process-level state (cwd/env), so an
-	// empty t.TempDir() is not a stable hermetic trigger. It is covered by the
-	// registry test (TestPreCommitGates_SkipTests) and the real repo in CI.
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Suppress the command's own stdout so test output stays readable.
@@ -50,9 +52,35 @@ func TestInProcessGates_FailOnEmptyRoot(t *testing.T) {
 	}
 }
 
+// TestGateAdvancedCoverage_FailsOnBrokenSkill gives advanced-coverage a
+// deterministic failure path: a skill dir with advanced topics in SKILL.md but no
+// references/advanced/ stratification triggers a coverage error.
+func TestGateAdvancedCoverage_FailsOnBrokenSkill(t *testing.T) {
+	root := t.TempDir()
+	skillDir := filepath.Join(root, "huaweicloud-ecs-ops")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Heavy on FinOps/AIOps prose but no references/advanced/ dir -> flagged.
+	body := "# huaweicloud-ecs-ops\n\n## FinOps\ncost analysis\n\n## AIOps\nanomaly detection\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = captureStdout(t, func() {
+		if got := gateAdvancedCoverage(root); got.passed {
+			t.Error("advanced-coverage gate must fail for a skill missing advanced/ stratification")
+		}
+	})
+}
+
 // TestStateTolerantGates_PassOnEmptyRoot documents (and pins) the happy path for
 // the gates that tolerate absent state: they must NOT fail merely because
 // runtime artifacts have not been created yet.
+//
+// advanced-coverage is deliberately excluded here: its empty-root outcome is not
+// hermetic (coverage.ValidateAll reads process-global state that sibling tests in
+// this package can mutate), so its behavior is pinned only via the deterministic
+// failure path in TestGateAdvancedCoverage_FailsOnBrokenSkill.
 func TestStateTolerantGates_PassOnEmptyRoot(t *testing.T) {
 	root := t.TempDir()
 	cases := []struct {
