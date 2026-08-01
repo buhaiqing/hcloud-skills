@@ -246,6 +246,33 @@ hwcloud-skillcheck --help
 # Expected output: hwcloud-skillcheck — cross-platform hcloud-skills validator
 ```
 
+### Unified Pre-commit Gate (Phase 5)
+
+`hwcloud-skillcheck check --pre-commit` is the **single source of truth** for
+repository quality gates. The local git hook (`.githooks/pre-commit`) and CI
+(`.github/workflows/validate-skills.yml`) both invoke it — running it locally
+is equivalent to pushing. It replaces the deleted shell-based pre-commit
+checker (ADR-0014).
+
+```bash
+# Run all 13 gates locally (git-hook mode skips go test via --skip-tests)
+hwcloud-skillcheck check --pre-commit --root .
+
+# CI mode: build binary first, then run with --check-only (adds 3 CI-only soft
+# gates: drift sync --dry-run, gcl alarm-wire, critic-score) + test retry loop
+hwcloud-skillcheck check --pre-commit --check-only --test-retries 2 --root .
+```
+
+The gates in order: gofmt, go vet, validate (frontmatter + eval-queries +
+product-assessment + markdown-links + example-config + advanced-coverage),
+audit-results, aggregate trace, learning gen, l4 handle smoke, golden run
+(soft), check lanes, ab compare (soft), advanced-coverage, drift guard, go
+test, and (CI-only) drift sync --dry-run / gcl alarm-wire / critic-score.
+
+> **Note**: `--check-only` skips the binary rebuild (CI builds it separately)
+> and runs `drift sync --apply` + `drift check` to bootstrap the gitignored
+> `.agents/skills/` runtime copy on a fresh checkout.
+
 ### Quick Usage
 
 ```bash
@@ -258,6 +285,7 @@ hwcloud-skillcheck validate --root ./my-skills
 # Run specific checks
 hwcloud-skillcheck check markdown-links --root .
 hwcloud-skillcheck scan secret trace --self-check
+```
 
 ### Router Policy & Calibration (P2)
 
@@ -294,8 +322,6 @@ registry or `HC_EMBED_PROVIDER`; every provider runs `Preflight()` before initia
 ONNX remains an optional future provider blocked on vendored native runtime assets, not a
 runtime prerequisite. See `docs/deployment-guide.md` §1.6 for configuration and friendly
 preflight troubleshooting, and the P2 design §4.2.4 for provider semantics. The Router supports three provider modes: local (`local-fasttext`, the default), cloud (`huaweicloud-modelarts` for Huawei Cloud ModelArts), and off (`none` for environments that must skip Stage-2 rerank). `fallback_chain` is honoured at runtime; when the primary provider fails, the Router falls back and records `fallback_used=true` plus the active provider in trace metadata.
-
-```
 
 ### B-Class Validation Commands (GCL Contract Checks)
 
@@ -511,7 +537,7 @@ Before pushing changes:
 ```bash
 hwcloud-skillcheck validate
 hwcloud-skillcheck check audit-results --root .
-hwcloud-skillcheck check skill-generator-drift
+hwcloud-skillcheck check --pre-commit --root .   # unified gate (ADR-0014)
 ```
 
 **Note**: A-class validation scripts have been migrated to the `hwcloud-skillcheck` Go binary.
@@ -532,13 +558,13 @@ Cross-platform release workflows (via Taskfile.yml):
 
 ```bash
 # 1. Tag + push → CI builds + publishes (recommended; fully automated)
-task release VERSION=0.1.1
+task release VERSION=0.3.0
 
 # 2. Local cross-platform build → ./dist/ (5 platforms + SHA256SUMS)
-task release-build VERSION=0.1.1
+task release-build VERSION=0.3.0
 
 # 3. Local build + create GitHub Release via gh CLI (requires `gh auth login`)
-task release-local VERSION=0.1.1
+task release-local VERSION=0.3.0
 ```
 
 Manual fallback (single-platform, no Taskfile required):

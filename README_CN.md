@@ -514,13 +514,13 @@ go test ./...
 
 ```bash
 # 1. 打 tag + push → CI 自动构建并发布（推荐；全自动）
-task release VERSION=0.1.1
+task release VERSION=0.3.0
 
 # 2. 本地跨平台构建 → ./dist/（5 个平台 + SHA256SUMS）
-task release-build VERSION=0.1.1
+task release-build VERSION=0.3.0
 
 # 3. 本地构建 + 通过 gh CLI 创建 GitHub Release（需先 `gh auth login`）
-task release-local VERSION=0.1.1
+task release-local VERSION=0.3.0
 ```
 
 手动回退方案（单平台，无需 Taskfile）：
@@ -581,8 +581,8 @@ hwcloud-skillcheck validate alarm-wire-contract --root .
 # 校验 audit-results 目录保护（gitignore、权限）
 hwcloud-skillcheck check audit-results --root .
 
-# 检查 skill-generator 规范副本与运行时副本的一致性
-hwcloud-skillcheck check skill-generator-drift
+# 运行统一 pre-commit 门禁（本地 hook 与 CI 共用，ADR-0014）
+hwcloud-skillcheck check --pre-commit --root .
 ```
 
 ### GCL 运行时命令
