@@ -79,7 +79,7 @@ penalized via the `idempotency` dimension (must be 1.0 to pass).
 2. `HW_SECRET_ACCESS_KEY` / AK / token masked.
 3. `operation_intent` sanitized (no raw user request, no credentials, no
    prod-named identifiers in cleartext).
-4. Persist to `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`.
+4. Persist to `audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json`.
 
 ## 6. Scoring Guide
 

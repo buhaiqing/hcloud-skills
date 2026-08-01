@@ -101,7 +101,7 @@ You are the Orchestrator in a GCL for huaweicloud-cdn-ops.
    - all dims ≥ threshold → PASS (persist trace, return to user)
    - any dim < threshold AND iter < max_iter → RETRY (loop)
    - iter == max_iter → MAX_ITER (best-so-far with uncertain flag)
-5) Persist trace to audit-results/gcl-trace-YYYYMMDD-HHMMSS.json.
+5) Persist trace to audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json.
 
 ## Constraint
 - Safety=0 / SAFETY_FAIL MUST abort immediately.

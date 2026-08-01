@@ -586,7 +586,7 @@ func main() {
 | `max_iter` | **2** |
 | Rubric 实例 | [`references/rubric.md`](references/rubric.md) |
 | Prompt 模板 | [`references/prompt-templates.md`](references/prompt-templates.md) |
-| Trace 路径 | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Trace 路径 | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` |
 
 Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill waf --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
 | 独立性 | Generator 与 Critic 必须在 **隔离** 的子代理/会话中运行 |
@@ -626,7 +626,7 @@ Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill 
 
 ### Trace 持久化(强制)
 
-每次 GCL 运行写入 `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`(schema 见
+每次 GCL 运行写入 `./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json`(schema 见
 `references/prompt-templates.md` §3)。Trace 追加写,不入 Git;落盘前做脱敏
 (参见 `prompt-templates.md` §4)。
 

@@ -55,7 +55,7 @@ Every GCL execution persists a JSON trace file (see `AGENTS.md` §6 for schema):
 
 ### File naming convention
 
-Pattern: `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`
+Pattern: `audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json`
 
 Traces are **append-only** — never overwrite or delete. A retention policy
 is recommended (see [CES Metric Retention](#6-threshold-optimization) for guidance).

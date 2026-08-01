@@ -488,7 +488,7 @@ GCL-**exempt**.
 | `max_iter` | **2** |
 | Rubric instance | [`references/rubric.md`](references/rubric.md) |
 | Prompt templates | [`references/prompt-templates.md`](references/prompt-templates.md) |
-| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` |
+| Trace path | `./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` |
 
 Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill iam --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
 | Independence | Generator and Critic run in **isolated** sub-agent / session contexts |
@@ -527,7 +527,7 @@ Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill 
 
 ### Trace Persistence (mandatory)
 
-Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS.json` (schema in
+Every GCL run writes `./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` (schema in
 `references/prompt-templates.md` §3). Trace is **append-only**; sanitize secrets before write
 (see `prompt-templates.md` §4). The path `./audit-results/` is in root `.gitignore`.
 

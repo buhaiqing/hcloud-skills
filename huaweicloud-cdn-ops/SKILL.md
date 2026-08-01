@@ -41,7 +41,7 @@ metadata:
     required: true
     default_max_iter: 2
     rubric_version: "v1"
-    trace_path: "./audit-results/gcl-trace-{{timestamp}}.json"
+    trace_path: "./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json"
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY
@@ -443,7 +443,7 @@ This skill uses Generator-Critic-Loop runtime validation. Required artifacts:
 
 ### Trace Requirements
 
-1. Persist `audit-results/gcl-trace-{{timestamp}}.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
+1. Persist `audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
 
 Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill cdn --request "<operation intent>" --command '<op command>' --max-iter 2`. Persist/aggregate with `hwcloud-skillcheck aggregate trace --require-traces --root .`. The canonical Go runtime in `hwcloud-skillcheck/` is the only path (legacy `scripts/gcl_runner.py` was reference-only).
 2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK, tokens, and authorization headers.

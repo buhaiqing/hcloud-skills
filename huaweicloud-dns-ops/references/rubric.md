@@ -59,7 +59,7 @@
 1. Command, args, response excerpt, `request_id` captured.
 2. `HW_SECRET_ACCESS_KEY` / AK masked.
 3. `operation_intent` sanitized (no raw user request).
-4. Persist to `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`.
+4. Persist to `audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json`.
 
 ## 6. Scoring Guide
 

@@ -193,7 +193,7 @@ iter = 1
 loop:
   generator_output = invoke_subagent(Generator, isolated=True,
                                      inputs={user_request, critic_feedback, rubric})
-  persist_trace(audit_dir, "gcl-trace-YYYYMMDD-HHMMSS.json", iter, generator_output)
+  persist_trace(audit_dir, "gcl-trace-YYYYMMDD-HHMMSS-<id>.json", iter, generator_output)
 
   critic_output   = invoke_subagent(Critic, isolated=True,
                                     inputs={generator_output, trace, rubric})

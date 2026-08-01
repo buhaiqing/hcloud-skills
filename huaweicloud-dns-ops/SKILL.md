@@ -37,7 +37,7 @@ metadata:
     required: true
     default_max_iter: 2
     rubric_version: "v1"
-    trace_path: "./audit-results/gcl-trace-{{timestamp}}.json"
+    trace_path: "./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json"
   environment:
     - HW_ACCESS_KEY_ID
     - HW_SECRET_ACCESS_KEY

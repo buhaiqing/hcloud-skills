@@ -556,7 +556,7 @@ Generated skills MUST ship the following artifacts:
 
 - `references/rubric.md` — 8 numbered sections: scope, thresholds, evidence, product safety rules, scoring guide, examples, escalation, changelog.
 - `references/prompt-templates.md` — 7 numbered sections: Generator, Critic, Orchestrator, product pre-flight overrides, product-only anti-patterns, changelog, see also.
-- `SKILL.md` metadata `gcl` block — `required: true`, `default_max_iter: 2`, `rubric_version: "v1"`, `trace_path: "./audit-results/gcl-trace-{{timestamp}}.json"`.
+- `SKILL.md` metadata `gcl` block — `required: true`, `default_max_iter: 2`, `rubric_version: "v1"`, `trace_path: "./audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json"`.
 
 ### Runtime Roles
 
@@ -578,7 +578,7 @@ Generated skills MUST ship the following artifacts:
 
 ### Trace Requirements
 
-1. Persist `audit-results/gcl-trace-{{timestamp}}.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
+1. Persist `audit-results/gcl-trace-YYYYMMDD-HHMMSS-<id>.json` (format: YYYYMMDD-HHMMSS) for PASS, MAX_ITER, and SAFETY_FAIL.
 2. Mask `HW_SECRET_ACCESS_KEY`, AK/SK values, tokens, passwords, and authorization headers.
 3. Include sanitized `operation_intent` so the Critic can assess expected state without seeing raw user wording.
 4. Use the Go CLI: `hwcloud-skillcheck gcl run --root .` and `hwcloud-skillcheck aggregate trace --require-traces --root .`. (Legacy `scripts/gcl_runner.py` was the reference spec for the wire format; the canonical Go runtime in `hwcloud-skillcheck/` is now the only path.)
