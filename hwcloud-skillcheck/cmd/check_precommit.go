@@ -166,14 +166,15 @@ func rebuildSkillcheckBinary(rootDir string) error {
 
 // preCommitGates returns the ordered gate registry. Gates 8 (golden run),
 // 10 (ab compare) are soft (warn but never fail). Gate 13 (go test) is omitted
-// when skipTests is set. When checkOnly is true, drift guard runs in check-only
-// mode (skip sync --apply) and CI-only gates (critic-score, gcl alarm-wire,
-// drift sync --dry-run) are appended.
+// when skipTests is set. When checkOnly is true, CI-only gates (critic-score,
+// gcl alarm-wire, drift sync --dry-run) are appended. Drift guard always does
+// sync+check (never check-only in CI — fresh checkout needs sync to bootstrap).
 func preCommitGates(cfg preCommitConfig) []preCommitGate {
+	// In --check-only mode, the binary rebuild is skipped (CI builds separately),
+	// but drift guard still does sync+check (fresh CI checkout has no .agents/skills/).
+	// The check-only drift guard (no sync) is NOT used in CI — it's only for local
+	// testing scenarios where the agent runtime copy already exists.
 	driftGuardFn := gateDriftGuard
-	if cfg.checkOnly {
-		driftGuardFn = gateDriftGuardCheckOnly
-	}
 	gates := []preCommitGate{
 		{"gofmt", gateGofmt},
 		{"go vet", gateGoVet},

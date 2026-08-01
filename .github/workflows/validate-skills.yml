@@ -33,7 +33,8 @@ jobs:
       #   [6] learning gen (hard)   [7] l4 handle smoke (hard)
       #   [8] golden run (soft)   [9] check lanes (hard)
       #   [10] ab compare (soft)   [11] advanced-coverage (hard)
-      #   [12] drift guard (hard — check-only in CI, no sync --apply)
+      #   [12] drift guard (hard — sync+check; sync bootstraps .agents/skills/
+      #       on fresh CI checkout)
       #   [13] go test (hard, 3 attempts with --test-retries 2)
       #   [14] drift sync --dry-run (soft)   [15] gcl alarm-wire (soft)
       #   [16] critic score (soft — fixture smoke)
