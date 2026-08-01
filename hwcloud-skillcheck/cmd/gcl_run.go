@@ -148,9 +148,9 @@ func runGCLRun(args []string) error {
 			fmt.Println(result.TracePath)
 		}
 	} else if *jsonOut {
-		printGCLRunJSON(skillName, result)
+		printGCLRunJSON(os.Stdout, skillName, result)
 	} else {
-		printGCLRunHuman(skillName, result)
+		printGCLRunHuman(os.Stdout, skillName, result)
 	}
 
 	// Map GCL exit codes to CLI exit codes:
@@ -194,28 +194,39 @@ func buildRouterDecision(skillDir, request string) (map[string]any, error) {
 	return result, nil
 }
 
-func printGCLRunHuman(skillName string, result gcl.RunResult) {
+func printGCLRunHuman(w io.Writer, skillName string, result gcl.RunResult) {
 	switch result.ExitCode {
 	case gcl.ExitOK:
-		fmt.Printf("PASS  %s — trace: %s\n", skillName, result.TracePath)
+		fmt.Fprintf(w, "PASS  %s — trace: %s\n", skillName, result.TracePath)
 	case gcl.ExitSafety:
-		fmt.Printf("SAFETY_VIOLATION  %s — trace: %s\n", skillName, result.TracePath)
+		// 区分"真安全违规"与"预算超时"（预算超时是资源耗尽，非安全违规，可重试）。
+		if result.BudgetExceeded != "" {
+			fmt.Fprintf(w, "BUDGET_EXCEEDED (budget_exceeded=%s)  %s — trace: %s\n",
+				result.BudgetExceeded, skillName, result.TracePath)
+			return
+		}
+		fmt.Fprintf(w, "SAFETY_VIOLATION  %s — trace: %s\n", skillName, result.TracePath)
 	case gcl.ExitTimeout:
-		fmt.Printf("TIMEOUT  %s — trace: %s\n", skillName, result.TracePath)
+		fmt.Fprintf(w, "TIMEOUT  %s — trace: %s\n", skillName, result.TracePath)
 	case gcl.ExitMaxIter:
-		fmt.Printf("MAX_ITER  %s — trace: %s\n", skillName, result.TracePath)
+		fmt.Fprintf(w, "MAX_ITER  %s — trace: %s\n", skillName, result.TracePath)
 	default:
-		fmt.Printf("ERROR  %s (exit %d) — trace: %s\n", skillName, result.ExitCode, result.TracePath)
+		fmt.Fprintf(w, "ERROR  %s (exit %d) — trace: %s\n", skillName, result.ExitCode, result.TracePath)
 	}
 }
 
-func printGCLRunJSON(skillName string, result gcl.RunResult) {
+func printGCLRunJSON(w io.Writer, skillName string, result gcl.RunResult) {
 	var status string
 	switch result.ExitCode {
 	case gcl.ExitOK:
 		status = "PASS"
 	case gcl.ExitSafety:
-		status = "SAFETY_VIOLATION"
+		// 预算超时是资源耗尽（可重试），不是安全违规，单独标状态便于运维区分。
+		if result.BudgetExceeded != "" {
+			status = "BUDGET_EXCEEDED"
+		} else {
+			status = "SAFETY_VIOLATION"
+		}
 	case gcl.ExitTimeout:
 		status = "TIMEOUT"
 	case gcl.ExitMaxIter:
@@ -223,14 +234,18 @@ func printGCLRunJSON(skillName string, result gcl.RunResult) {
 	default:
 		status = "ERROR"
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	enc.Encode(map[string]any{
+	out := map[string]any{
 		"skill":     skillName,
 		"status":    status,
 		"exit_code": result.ExitCode,
 		"trace":     result.TracePath,
-	})
+	}
+	if result.BudgetExceeded != "" {
+		out["budget_exceeded"] = result.BudgetExceeded
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(out)
 }
 
 // runGCLCriticEval implements `hwcloud-skillcheck gcl criticeval`.
