@@ -199,9 +199,10 @@ func printGCLRunHuman(w io.Writer, skillName string, result gcl.RunResult) {
 	case gcl.ExitOK:
 		fmt.Fprintf(w, "PASS  %s — trace: %s\n", skillName, result.TracePath)
 	case gcl.ExitSafety:
-		// 区分"真安全违规"与"预算超时"（预算超时是资源耗尽，非安全违规，可重试）。
+		// 状态保持 SAFETY_VIOLATION（fail-closed：预算超时按安全级处理，alarm/aggregate
+		// 依赖 SAFETY_FAIL 计数）。budget_exceeded 仅作解释性细节，便于运维判断可重试。
 		if result.BudgetExceeded != "" {
-			fmt.Fprintf(w, "BUDGET_EXCEEDED (budget_exceeded=%s)  %s — trace: %s\n",
+			fmt.Fprintf(w, "SAFETY_VIOLATION (budget_exceeded=%s)  %s — trace: %s\n",
 				result.BudgetExceeded, skillName, result.TracePath)
 			return
 		}
@@ -216,17 +217,14 @@ func printGCLRunHuman(w io.Writer, skillName string, result gcl.RunResult) {
 }
 
 func printGCLRunJSON(w io.Writer, skillName string, result gcl.RunResult) {
+	// 状态枚举保持与 runner 层一致：预算超时仍是 SAFETY_VIOLATION（fail-closed，
+	// alarm/aggregate 按 SAFETY_FAIL 计数），budget_exceeded 作为附加解释字段。
 	var status string
 	switch result.ExitCode {
 	case gcl.ExitOK:
 		status = "PASS"
 	case gcl.ExitSafety:
-		// 预算超时是资源耗尽（可重试），不是安全违规，单独标状态便于运维区分。
-		if result.BudgetExceeded != "" {
-			status = "BUDGET_EXCEEDED"
-		} else {
-			status = "SAFETY_VIOLATION"
-		}
+		status = "SAFETY_VIOLATION"
 	case gcl.ExitTimeout:
 		status = "TIMEOUT"
 	case gcl.ExitMaxIter:
