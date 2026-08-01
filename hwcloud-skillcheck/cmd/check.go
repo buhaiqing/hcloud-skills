@@ -469,6 +469,9 @@ func looksLikeRepoPath(text string) bool {
 	if strings.HasPrefix(text, "huaweicloud-") && !strings.Contains(text, "/") {
 		return false
 	}
+	if strings.HasPrefix(text, "huaweicloud-sdk-go-v3/") {
+		return false
+	}
 	for _, p := range mdPathPrefixes {
 		if strings.HasPrefix(text, p) {
 			return true

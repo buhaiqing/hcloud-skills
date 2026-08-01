@@ -226,3 +226,39 @@ func TestCheckAdvancedCoverageJSONFail(t *testing.T) {
 		t.Errorf("skills_checked should be 1; got:\n%s", output)
 	}
 }
+
+// --- looksLikeRepoPath (Go SDK module path false-positive fix) ---
+
+func TestLooksLikeRepoPath(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"sdk module path", "huaweicloud-sdk-go-v3/services/ecs/v2", false},
+		{"real repo path", "huaweicloud-ecs-ops/SKILL.md", true},
+		{"full module path", "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/cbr/v3", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := looksLikeRepoPath(tc.text); got != tc.want {
+				t.Errorf("looksLikeRepoPath(%q) = %v, want %v", tc.text, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckMarkdownFileSkipsSDKPath(t *testing.T) {
+	root := t.TempDir()
+	md := filepath.Join(root, "SKILL.md")
+	content := "import `huaweicloud-sdk-go-v3/services/ecs/v2` in code\n"
+	if err := os.WriteFile(md, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	findings := checkMarkdownFile(root, md)
+	for _, f := range findings {
+		if strings.Contains(f, "missing backtick path target") {
+			t.Errorf("SDK path flagged as missing backtick path target: %s", f)
+		}
+	}
+}
