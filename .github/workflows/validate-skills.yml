@@ -24,17 +24,14 @@ jobs:
         working-directory: hwcloud-skillcheck
         run: go build -trimpath -o ../bin/hwcloud-skillcheck .
 
-      # --- Unified pre-commit gate ---
+      # --- Unified pre-commit gate (ADR-0014) ---
       # `check --pre-commit --check-only` runs 14 gates in a single pass:
-      #   1. gofmt clean        2. go vet
-      #   3. go test            4. validate (markdown-links, references-links,
-      #                             example-config, advanced-coverage)
-      #   5. check audit-results 6. aggregate trace (--require-traces)
-      #   7. gcl alarm-wire     8. learning gen (idempotent)
-      #   9. l4 handle smoke   10. drift sync --dry-run (smoke path)
-      #  11. drift check       12. golden run
-      #  13. check lanes       14. ab compare
-      #  15. check advanced-coverage
-      #  16. critic score (smoke fixture)
+      #   [1] gofmt    [2] go vet    [3] validate (frontmatter+eval-queries+
+      #       product-assessment+markdown-links+example-config+advanced-coverage)
+      #   [4] audit-results    [5] aggregate trace (--require-traces)
+      #   [6] learning gen    [7] l4 handle smoke    [8] golden run (soft)
+      #   [9] check lanes    [10] ab compare (soft)    [11] advanced-coverage
+      #   [12] drift guard (check-only in CI)    [13] go test
+      #   [14] critic score (fixture smoke)
       - name: hwcloud-skillcheck check --pre-commit (unified gate)
         run: ./bin/hwcloud-skillcheck check --pre-commit --check-only --root .
