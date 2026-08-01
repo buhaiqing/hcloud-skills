@@ -1,6 +1,8 @@
-# Plan: L4 Phase 5 — Pre-commit Gate Go Migration
+# Plan: L4 Phase 5 — Pre-commit Gate Go Migration ✅ COMPLETE
 
 **Date**: 2026-08-01
+**Completed**: 2026-08-01
+**Branch**: `feature/phase5-precommit-go` (commits `5832c04`..`0d8b8c1`)
 **Supersedes**: the Phase 5 sketch in `docs/superpowers/plans/2026-07-31-l4-maturity-upgrade.md` (lines 141–156), which under-scoped the gate inventory.
 **ADR**: `docs/architecture/0014-precommit-go-migration.md` (wrapper-vs-replace → replace + delete)
 
@@ -111,14 +113,15 @@ hwcloud-skillcheck check --pre-commit [--skip-tests]   (Go, cmd/check.go)
 
 ## Acceptance Criteria
 
-- [ ] `hwcloud-skillcheck check --pre-commit` covers all 13 gates; exit code 1 on
+- [x] `hwcloud-skillcheck check --pre-commit` covers all 13 gates (16 with --check-only); exit code 1 on
       any hard failure, 0 on success.
-- [ ] `check --pre-commit --skip-tests` skips `go test` (#13) but runs the rest.
-- [ ] Local hook fires on Go changes (bug fixed) and is a no-op on markdown-only.
-- [ ] CI invokes the same command; local and CI gate definitions are identical.
-- [ ] `scripts/pre_commit_check.sh` deleted; zero remaining references in active
-      code/docs (historical plan mentions allowed).
-- [ ] Go unit tests for the subcommand pass; each gate function has at least one
+- [x] `check --pre-commit --skip-tests` skips `go test` (#13) but runs the rest.
+- [x] `check --pre-commit --check-only --test-retries 2` for CI: adds 3 soft CI-only gates.
+- [x] Local hook fires on Go changes (bug fixed) and is a no-op on markdown-only.
+- [x] CI invokes the same command; local and CI gate definitions are identical (--check-only adds CI-only soft gates).
+- [x] `scripts/pre_commit_check.sh` deleted; zero remaining references in active
+      code/docs (historical plan mentions preserved).
+- [x] Go unit tests for the subcommand pass; each gate function has at least one
       test (happy path + one failure path).
 
 ## Out of Scope (explicitly)

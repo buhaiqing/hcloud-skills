@@ -20,7 +20,7 @@ cd hwcloud-skillcheck && go test ./...
 
 - exit code ≠ 0 → **禁止 commit**，先修测试
 - 2 个预存已知失败（`TestConfirmationRegistry_ConcurrentSafety`、`TestHandleFault_DecisionAutoProceed`）已在 commit 中标注，后续应修复或标注 `// KNOWN-FLAKY: <reason>`
-- `git commit` 本身可正常执行（不自动触发 pre-commit hook 的 go test，因为 go test gate 在 pre_commit_check.sh 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit
+- `git commit` 本身可正常执行（不自动触发 pre-commit hook 的 go test，因为 go test gate 在 `hwcloud-skillcheck check --pre-commit` 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit
 
 ## What This Repo Is
 
@@ -60,7 +60,7 @@ hwcloud-skillcheck drift sync --apply --root .
 ```
 
 The drift guard (`hwcloud-skillcheck drift check --root .`) is wired into
-`scripts/pre_commit_check.sh` and the CI workflow (`validate-skills.yml`), so a drifted runtime copy is
+`hwcloud-skillcheck check --pre-commit` and the CI workflow (`validate-skills.yml`), so a drifted runtime copy is
 a release-blocker. See also `docs/gcl-spec.md` §Dual-Copy Drift.
 
 ## Placeholder Conventions
@@ -215,8 +215,8 @@ AGENTS.md 是 **agent 上下文税**，不是 wiki。硬上限意识：
 
 **For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
 
-- A single shot gun covers everything: `bash scripts/pre_commit_check.sh`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
-- The git pre-commit hook is fully covered by `scripts/pre_commit_check.sh`; CI runs the same script. Markdown-only commits stay fast because Go build/test gates skip when `.go` and the `hwcloud-skillcheck/` tree are unchanged.
+- A single shot gun covers everything: `hwcloud-skillcheck check --pre-commit`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
+- The git pre-commit hook is fully covered by `hwcloud-skillcheck check --pre-commit`; CI runs the same command. Markdown-only commits stay fast because Go build/test gates skip when `.go` and the `hwcloud-skillcheck/` tree are unchanged.
 - New scripts MUST:
   - Start with a module docstring describing purpose.
   - Avoid unused imports / unreachable code / bare `except:`.

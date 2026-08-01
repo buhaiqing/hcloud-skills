@@ -1,8 +1,9 @@
 ---
 title: ADR-0014 — Pre-commit gate migrated into the Go binary
-status: Proposed
+status: Accepted (implemented 2026-08-01)
 date: 2026-08-01
 decision: Replace `scripts/pre_commit_check.sh` with a `hwcloud-skillcheck check --pre-commit` Go subcommand; the git hook execs the binary directly. Delete the shell script.
+commits: `5832c04`..`0d8b8c1` on `feature/phase5-precommit-go`
 ---
 
 ## Context

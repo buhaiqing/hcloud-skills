@@ -50,9 +50,9 @@ func TestP1Acceptance_AuditsAllCriteria(t *testing.T) {
 }
 
 func TestP1GatesWired(t *testing.T) {
-	// Script is at $REPO_ROOT/scripts/pre_commit_check.sh.
-	scriptPath := filepath.Join(repoRoot(), "scripts", "pre_commit_check.sh")
-	cmd := exec.Command("/bin/bash", scriptPath, "--skip-tests")
+	// Uses `hwcloud-skillcheck check --pre-commit` (ADR-0014, Phase 5 Go migration).
+	scriptPath := filepath.Join(repoRoot(), "bin", "hwcloud-skillcheck")
+	cmd := exec.Command(scriptPath, "check", "--pre-commit", "--skip-tests")
 	cmd.Dir = repoRoot()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

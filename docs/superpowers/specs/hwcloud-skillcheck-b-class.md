@@ -21,7 +21,7 @@
 - [ ] 所有子命令通过 `--help` 可发现，行为与 Python 原版**结构化等价**
 - [ ] CI 管线不再依赖 Python 解释器（保留 pre-commit hook 作为可选）
 - [ ] `Makefile` 提供 `install-hook` target（Go 版 git hook 安装器）
-- [ ] `check_py310_compat.py` 删除，`ruff.toml` / `run_ruff.sh` / `pre_commit_check.sh` 标记为可清理
+- [x] `check_py310_compat.py` 删除，`ruff.toml` / `run_ruff.sh` 标记为可清理，`pre_commit_check.sh` **已删除**（Phase 5 Go 迁移完成，ADR-0014）
 - [ ] 用户手册（`docs/manual/`）更新为新命令体系
 - [ ] 等价性测试覆盖所有迁移的子命令
 

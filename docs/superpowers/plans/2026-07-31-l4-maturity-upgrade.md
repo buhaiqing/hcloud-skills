@@ -140,11 +140,18 @@ L4 两大引擎(L4 orchestrator + GCL)已是**纯 Go 实现**,语言层面无障
 
 ## Phase 5: 工具链 Go 化收尾(配套,非 L4 能力增量)
 
-### Batch L4-E: shell 脚本并入 Go
+### Batch L4-E: shell 脚本并入 Go ✅ (Phase 5 complete, 2026-08-01)
 
 **文件**:
-- `hwcloud-skillcheck/cmd/check.go` 或新 `cmd/precommit.go` (承载 `pre_commit_check.sh` 逻辑)
-- `scripts/pre_commit_check.sh` (保留为 thin wrapper 或直接弃用)
+- `hwcloud-skillcheck/cmd/check_precommit.go` — `check --pre-commit` Go subcommand (13 gates local, 16 CI)
+- `scripts/pre_commit_check.sh` — **deleted** (ADR-0014); all logic moved into Go
+- `hwcloud-skillcheck/cmd/check_precommit_test.go` — hermetic tests for all gates
+- `.githooks/pre-commit` — git hook template (replaced, now triggers on Go/Python changes)
+- `.github/workflows/validate-skills.yml` — CI unified to single `check --pre-commit --check-only --test-retries 2` call
+- `docs/architecture/0014-precommit-go-migration.md` — ADR (implemented)
+- `AGENTS.md` — updated references from `pre_commit_check.sh` → `check --pre-commit`
+
+**Commits**: `5832c04`..`0d8b8c1` on `feature/phase5-precommit-go`
 
 **内容**:
 - 将 pre-commit 校验(go build/test/lint/drift check)封装为 `hwcloud-skillcheck check --pre-commit`
