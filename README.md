@@ -285,6 +285,10 @@ hwcloud-skillcheck validate --root ./my-skills
 # Run specific checks
 hwcloud-skillcheck check markdown-links --root .
 hwcloud-skillcheck scan secret trace --self-check
+
+# Parallel-execution collection gate: validate cross-file consistency across
+# every file changed by parallel subagents + emit a per-agent log
+hwcloud-skillcheck check merge-verify --log <parallel-log.json> --root .
 ```
 
 ### Router Policy & Calibration (P2)
@@ -401,6 +405,7 @@ Complete reference for all `hwcloud-skillcheck` subcommands added in Phase 2 and
 | Subcommand | Description |
 |------------|-------------|
 | `check audit-results --root <dir>` | Validates `audit-results/` directory protection contract: `.gitignore` must contain 8 required patterns (audit-results/, */audit-results/, gcl-trace-*.json, */gcl-trace-*.json, gcl-quality-summary-*.json, */gcl-quality-summary-*.json, gcl-alarm-plan-*.json, */gcl-alarm-plan-*.json), directory mode must be 0700 when present, no tracked files in git. Supports `--json` for JSON report. Exit 0 = clean, 1 = contract violations. |
+| `check merge-verify --log <path> [--root <dir>]` | Parallel-execution collection gate. Parses a log of `[{agent, files[], status, result}]`, validates cross-file markdown-link / backtick-path targets across every changed file, and emits a per-agent report. Fails (exit 1) when any subagent reports `status: failed` or a broken reference is found. |
 
 ### drift
 

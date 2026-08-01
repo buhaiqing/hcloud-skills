@@ -556,6 +556,9 @@ hwcloud-skillcheck validate --root ./my-skills
 # 执行特定检查
 hwcloud-skillcheck check markdown-links --root .
 hwcloud-skillcheck scan secret trace --self-check
+
+# 并行执行收口门禁：校验并行 subagent 修改的所有文件的跨文件一致性，并输出每 agent 日志
+hwcloud-skillcheck check merge-verify --log <parallel-log.json> --root .
 ```
 
 ### B 类校验命令（GCL 契约检查）
