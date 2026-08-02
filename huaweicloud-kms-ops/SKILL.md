@@ -103,7 +103,7 @@ agent execution path.**
 
 | Pillar | Integration | Reference |
 |---|---|---|
-| **FinOps** | CMK quota (default = `hcloud kms show-quota` → `.body.quota.cmk_limit`), rotation cost, idle key detection | `references/well-architected-assessment.md` §3 |
+| **FinOps** | CMK quota (query at run time via `ShowKeyQuotas` SDK → `.quota.cmk_limit`; never hardcode), rotation cost, idle key detection | `references/well-architected-assessment.md` §3 |
 | **SecOps** | IAM least privilege (kms:viewer/operator/admin), grant attack surface, deletion cascade | `references/well-architected-assessment.md` §4 |
 | **AIOps** | 4 anomaly patterns (state anomaly, grant proliferation, deletion storm, throttling) | `references/advanced/aiops-patterns.md` |
 
@@ -230,7 +230,7 @@ resp, err := client.ListKeys(req)
 |---|---|---|---|
 | CLI / deps | `hcloud --version` | Exit code 0 | Document CLI install |
 | Credentials | Construct from env | Non-empty AK/SK | HALT; configure env |
-| Quota | `ShowKeyQuotas` SDK | `used < quota` (default = `hcloud kms show-quota` → `.body.quota.cmk_limit`) | HALT; raise quota |
+| Quota | `ShowKeyQuotas` SDK | `used < quota` (query `.quota.cmk_limit` at run time; never hardcode) | HALT; raise quota |
 | Alias uniqueness | `list-keys` → alias check | Alias not in use | Use unique alias |
 
 #### Execution — CLI
@@ -264,7 +264,7 @@ Poll `describe-key` until `key_state` = `ENABLED`.
 
 | Error | Max retries | Agent Action | UX Feedback |
 |---|---|---|---|
-| `QuotaExceeded` | 0 | HALT | `[ERROR] CMK quota (hcloud kms show-quota → .body.quota.cmk_limit) reached. Request increase via Console → KMS → Quota.` |
+| `QuotaExceeded` | 0 | HALT | `[ERROR] CMK quota (query via ShowKeyQuotas SDK → .quota.cmk_limit) reached. Request increase via Console → KMS → Quota.` |
 | `InvalidAliasName` | 0 | Fix alias format | `[ERROR] InvalidAliasName: alias must start with `alias/` prefix.` |
 | `DuplicateAlias` | 0 | Return existing key_id | `[WARN] Alias already exists. Returning existing CMK id.` |
 | Throttling / 429 | 3 | exponential backoff | `[WARN] Rate limited. Retrying...` |
@@ -406,7 +406,7 @@ hcloud kms decrypt-datakey \
 
 | Item | Value |
 |---|---|
-| Default CMK quota | `hcloud kms show-quota` → `.body.quota.cmk_limit` per account per region |
+| Default CMK quota | `ShowKeyQuotas` SDK → `.quota.cmk_limit` per account per region (query at run time) |
 | Key rotation interval | 365 days (free for symmetric keys) |
 | HSM key creation | Free |
 | HSM key usage | Billed per 10,000 API calls |

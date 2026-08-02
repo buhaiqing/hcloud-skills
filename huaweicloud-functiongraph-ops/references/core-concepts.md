@@ -61,7 +61,7 @@ Guaranteed concurrency for a function. Avoids cold starts but incurs cost regard
 | Code size (OBS) | 10 GB | — |
 | Timeout | 300s | 300s |
 | Memory | 4096 MB | 4096 MB |
-| Concurrent executions | 300 per account (live: `hcloud functiongraph show-quota` → `.body.concurrency_limit` [HUMAN_DECISION: verify JSON path]) | 1000 (request) |
+| Concurrent executions | 300 per account (query at run time via `ListQuotas` SDK → `.concurrency_limit`; never hardcode) | 1000 (request) |
 | Trigger types per function | 10 | 10 |
 | Version count per function | — | 50 |
 | Alias count per function | — | 5 |
@@ -97,5 +97,5 @@ FunctionGraph
 | Single function | Function bug breaks all invocations | Version/alias with traffic shifting, canary deployments |
 | No VPC access | Cannot access RDS/DCS in VPC | Enable VPC access for private resources |
 | Cold start latency | >1s P99 latency for infrequent functions | Reserved instances for latency-sensitive functions |
-| Quota exhaustion | concurrency limit reached (`hcloud functiongraph show-quota` → `.body.concurrency_limit`) | Request quota increase, use async invocations |
+| Quota exhaustion | concurrency limit reached (query via `ListQuotas` SDK → `.concurrency_limit` at run time) | Request quota increase, use async invocations |
 | Code package corruption | OBS URL wrong or deleted | Use versioned OBS buckets, verify checksums |

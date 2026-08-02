@@ -36,7 +36,7 @@
 | HTTP | Service Code | Message Pattern | Root Cause | Fix |
 |------|-------------|----------------|------------|-----|
 | 400 | DBS.200601 | Backup name already exists | Duplicate backup name | Use unique naming with timestamp |
-| 400 | DBS.200602 | Backup quota reached | Max `hcloud gaussdb show-quota` → `.body.backup_limit` manual backups | Delete old backups via `DeleteManualBackup()` |
+| 400 | DBS.200602 | Backup quota reached | Max manual backups governed by quota (query via `ShowQuotas` SDK → `.backup_limit` at run time; never hardcode) | Delete old backups via `DeleteManualBackup()` |
 | 400 | DBS.200603 | Backup in progress | Concurrent backup running | Wait for completion before retry |
 | 400 | DBS.200604 | Insufficient disk space for backup | Storage near full | Scale storage or delete old backups |
 | 404 | DBS.200605 | Backup not found | Wrong backup_id | Verify backup_id with `ListBackups()` |

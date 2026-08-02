@@ -7,7 +7,7 @@
 | DCS.0001 | InvalidParameter — malformed request params | 1 | Fix args per OpenAPI spec | `[ERROR] DCS.0001: Invalid parameters. Check engine version, capacity, VPC ID against API docs.` |
 | DCS.0002 | InstanceNotFound — instance ID does not exist | 0 | Verify instance_id | `[ERROR] DCS.0002: Instance not found. Verify the instance_id: {{user.instance_id}}` |
 | DCS.0003 | InvalidInstanceStatus — instance not in expected state | 3 | Wait then poll status | `[ERROR] DCS.0003: Instance status invalid. Current state: {{output.status}}. Wait for RUNNING and retry.` |
-| DCS.0007 | QuotaExceeded — DCS instance limit reached | 0 | HALT, suggest quota increase | `[ERROR] DCS.0007: Quota exceeded. Current instances: N (hcloud dcs show-quota → .body.instance_limit). Request quota increase or delete unused instances.` |
+| DCS.0007 | QuotaExceeded — DCS instance limit reached | 0 | HALT, suggest quota increase | `[ERROR] DCS.0007: Quota exceeded. Current instances: N (query DCS instance quota via API/SDK at run time). Request quota increase or delete unused instances.` |
 | DCS.0011 | InsufficientBalance — account balance insufficient | 0 | HALT | `[ERROR] DCS.0011: Insufficient balance. Please recharge your Huawei Cloud account.` |
 | DCS.0014 | InstanceAlreadyExists — name conflict | 0 | Suggest new name | `[ERROR] DCS.0014: Instance name already exists. Use unique name or reuse existing instance.` |
 | DCS.0019 | SecurityGroupNotFound — SG does not exist | 0 | HALT, ask to create SG | `[ERROR] DCS.0019: Security group not found. Create SG with port 6379 allowed.` |
