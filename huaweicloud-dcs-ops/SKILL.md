@@ -249,20 +249,20 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `InvalidParameter` | 0–1 | — | Fix args per OpenAPI | `[ERROR] InvalidParameter: Check parameters (engine, capacity, VPC) against DCS docs.` |
-| `QuotaExceeded` | 0 | — | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused instances.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
-| `InstanceAlreadyExists` | 0 | — | Ask reuse vs new name | `[ERROR] Instance name already exists. Use different name or reuse existing.` |
-| `SecurityGroupNotFound` | 0 | — | HALT | `[ERROR] Security group not found. Create SG with Redis port 6379 allowed.` |
-| `VPCNotExists` | 0 | — | HALT | `[ERROR] VPC not found. Verify VPC ID exists in region.` |
-| `PasswordInvalid` | 0 | — | Fix password | `[ERROR] Password must be 8–64 chars, include letters, digits, special chars.` |
-| `EngineNotSupported` | 0 | — | Use supported version | `[ERROR] Unsupported engine version. Use Redis 4.0/5.0/6.0 or Memcached.` |
-| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
-| `InvalidInstanceStatus` | 0 | — | Wait for running state | `[ERROR] Instance not in RUNNING state for this operation.` |
-| `InstanceNotFound` | 0 | — | Verify instance_id | `[ERROR] Instance not found. Verify the instance_id is correct.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `InvalidParameter` | 0–1 | Fix args per OpenAPI | `[ERROR] InvalidParameter: Check parameters (engine, capacity, VPC) against DCS docs.` |
+| `QuotaExceeded` | 0 | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused instances.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
+| `InstanceAlreadyExists` | 0 | Ask reuse vs new name | `[ERROR] Instance name already exists. Use different name or reuse existing.` |
+| `SecurityGroupNotFound` | 0 | HALT | `[ERROR] Security group not found. Create SG with Redis port 6379 allowed.` |
+| `VPCNotExists` | 0 | HALT | `[ERROR] VPC not found. Verify VPC ID exists in region.` |
+| `PasswordInvalid` | 0 | Fix password | `[ERROR] Password must be 8–64 chars, include letters, digits, special chars.` |
+| `EngineNotSupported` | 0 | Use supported version | `[ERROR] Unsupported engine version. Use Redis 4.0/5.0/6.0 or Memcached.` |
+| Throttling / 429 | 3 · exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
+| `InvalidInstanceStatus` | 0 | Wait for running state | `[ERROR] Instance not in RUNNING state for this operation.` |
+| `InstanceNotFound` | 0 | Verify instance_id | `[ERROR] Instance not found. Verify the instance_id is correct.` |
 
 ---
 

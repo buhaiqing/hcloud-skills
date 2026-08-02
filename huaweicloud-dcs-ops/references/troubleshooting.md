@@ -2,20 +2,20 @@
 
 ## Error Code Taxonomy
 
-| Error Code | HTTP Status | Description | Retryable | Max Retries | Agent Action | User Guidance |
-|-----------|------------|-------------|-----------|------------|--------------|---------------|
-| DCS.0001 | 400 | InvalidParameter — malformed request params | Yes (1) | 1 | Fix args per OpenAPI spec | `[ERROR] DCS.0001: Invalid parameters. Check engine version, capacity, VPC ID against API docs.` |
-| DCS.0002 | 404 | InstanceNotFound — instance ID does not exist | No | 0 | Verify instance_id | `[ERROR] DCS.0002: Instance not found. Verify the instance_id: {{user.instance_id}}` |
-| DCS.0003 | 400 | InvalidInstanceStatus — instance not in expected state | Yes | 3 | Wait then poll status | `[ERROR] DCS.0003: Instance status invalid. Current state: {{output.status}}. Wait for RUNNING and retry.` |
-| DCS.0007 | 403 | QuotaExceeded — DCS instance limit reached | No | 0 | HALT, suggest quota increase | `[ERROR] DCS.0007: Quota exceeded. Current instances: N/30. Request quota increase or delete unused instances.` |
-| DCS.0011 | 403 | InsufficientBalance — account balance insufficient | No | 0 | HALT | `[ERROR] DCS.0011: Insufficient balance. Please recharge your Huawei Cloud account.` |
-| DCS.0014 | 409 | InstanceAlreadyExists — name conflict | No | 0 | Suggest new name | `[ERROR] DCS.0014: Instance name already exists. Use unique name or reuse existing instance.` |
-| DCS.0019 | 400 | SecurityGroupNotFound — SG does not exist | No | 0 | HALT, ask to create SG | `[ERROR] DCS.0019: Security group not found. Create SG with port 6379 allowed.` |
-| DCS.0021 | 400 | VPCNotExists — VPC does not exist in region | No | 0 | HALT, verify VPC | `[ERROR] DCS.0021: VPC not found. Check VPC ID exists in region {{env.HW_REGION_ID}}.` |
-| DCS.0025 | 400 | PasswordInvalid — password does not meet requirements | No | 0 | Fix password | `[ERROR] DCS.0025: Password must be 8-64 chars with letters, digits, and special characters.` |
-| DCS.0038 | 400 | EngineNotSupported — invalid engine or version | No | 0 | Use valid engine | `[ERROR] DCS.0038: Unsupported engine. Use Redis 4.0/5.0/6.0 or Memcached.` |
-| Throttling/429 | 429 | TooManyRequests — API rate limit exceeded | Yes | 3 | Exponential backoff | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| InternalError/5xx | 500/502/503 | Server-side error | Yes | 3 | Retry; then HALT with RequestId | `[ERROR] Internal error. Retrying... If persistent, escalate with RequestId: {{output.request_id}}` |
+| Error Code | Description | Max Retries | Agent Action | User Guidance |
+|-----------|-------------|------------|--------------|---------------|
+| DCS.0001 | InvalidParameter — malformed request params | 1 | Fix args per OpenAPI spec | `[ERROR] DCS.0001: Invalid parameters. Check engine version, capacity, VPC ID against API docs.` |
+| DCS.0002 | InstanceNotFound — instance ID does not exist | 0 | Verify instance_id | `[ERROR] DCS.0002: Instance not found. Verify the instance_id: {{user.instance_id}}` |
+| DCS.0003 | InvalidInstanceStatus — instance not in expected state | 3 | Wait then poll status | `[ERROR] DCS.0003: Instance status invalid. Current state: {{output.status}}. Wait for RUNNING and retry.` |
+| DCS.0007 | QuotaExceeded — DCS instance limit reached | 0 | HALT, suggest quota increase | `[ERROR] DCS.0007: Quota exceeded. Current instances: N (hcloud dcs show-quota → .body.instance_limit). Request quota increase or delete unused instances.` |
+| DCS.0011 | InsufficientBalance — account balance insufficient | 0 | HALT | `[ERROR] DCS.0011: Insufficient balance. Please recharge your Huawei Cloud account.` |
+| DCS.0014 | InstanceAlreadyExists — name conflict | 0 | Suggest new name | `[ERROR] DCS.0014: Instance name already exists. Use unique name or reuse existing instance.` |
+| DCS.0019 | SecurityGroupNotFound — SG does not exist | 0 | HALT, ask to create SG | `[ERROR] DCS.0019: Security group not found. Create SG with port 6379 allowed.` |
+| DCS.0021 | VPCNotExists — VPC does not exist in region | 0 | HALT, verify VPC | `[ERROR] DCS.0021: VPC not found. Check VPC ID exists in region {{env.HW_REGION_ID}}.` |
+| DCS.0025 | PasswordInvalid — password does not meet requirements | 0 | Fix password | `[ERROR] DCS.0025: Password must be 8-64 chars with letters, digits, and special characters.` |
+| DCS.0038 | EngineNotSupported — invalid engine or version | 0 | Use valid engine | `[ERROR] DCS.0038: Unsupported engine. Use Redis 4.0/5.0/6.0 or Memcached.` |
+| Throttling/429 | TooManyRequests — API rate limit exceeded | 3 | Exponential backoff | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| InternalError/5xx | Server-side error | 3 | Retry; then HALT with RequestId | `[ERROR] Internal error. Retrying... If persistent, escalate with RequestId: {{output.request_id}}` |
 
 ## Ordered Diagnostic Steps
 

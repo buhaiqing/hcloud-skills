@@ -1,5 +1,14 @@
 # CES Monitoring & Self-Monitoring — Huawei Cloud Cloud Eye Service
 
+## JSON Paths
+
+JMESPath/jq extractors used inline below — declared once, referenced by variable:
+
+| Name | Path |
+|------|------|
+| `JP_VALUE` | `.datapoints[0].value` (latest datapoint) |
+| `JP_VALUE_PREV` | `.datapoints[5].value` (5-min-ago datapoint) |
+
 ## CES Metrics for the Service Itself
 
 CES is the monitoring tool, but it also has operational metrics to track:
@@ -52,19 +61,21 @@ Each pattern follows: **query metric → extract values → compare threshold �
 ```bash
 REGION="{{env.HW_REGION_ID}}"
 INSTANCE_ID="{{user.instance_id}}"
+JP_VALUE='.datapoints[0].value'        # latest datapoint
+JP_VALUE_PREV='.datapoints[5].value'   # 5-min-ago datapoint
 from_ts=$(($(date +%s) - 600))000; to_ts=$(date +%s)000
 
 # Pattern 1: cpu_mem_dual_high — Critical
 cpu=$(hcloud ces query-metric-data --region "$REGION" --namespace SYS.ECS --metric-name cpu_util \
-  --dimension "instance_id:$INSTANCE_ID" --from "$from_ts" --to "$to_ts" --period 60 --output json | jq -r '.datapoints[0].value')
+  --dimension "instance_id:$INSTANCE_ID" --from "$from_ts" --to "$to_ts" --period 60 --output json | jq -r "$JP_VALUE")
 mem=$(hcloud ces query-metric-data --region "$REGION" --namespace AGT.ECS --metric-name memory_util \
-  --dimension "instance_id:$INSTANCE_ID" --from "$from_ts" --to "$to_ts" --period 60 --output json | jq -r '.datapoints[0].value')
+  --dimension "instance_id:$INSTANCE_ID" --from "$from_ts" --to "$to_ts" --period 60 --output json | jq -r "$JP_VALUE")
 detected=$(echo "$cpu $mem" | awk '{print ($1>90 && $2>85) ? "true" : "false"}')
 
 # Pattern 2: disk_io_bottleneck — Warning
-read_rate=$(hcloud ces query-metric-data ... --metric-name disk_read_bytes_rate ... | jq -r '.datapoints[0].value')
-write_rate=$(hcloud ces query-metric-data ... --metric-name disk_write_bytes_rate ... | jq -r '.datapoints[0].value')
-disk_util=$(hcloud ces query-metric-data ... --namespace AGT.ECS --metric-name disk_util ... | jq -r '.datapoints[0].value')
+read_rate=$(hcloud ces query-metric-data ... --metric-name disk_read_bytes_rate ... | jq -r "$JP_VALUE")
+write_rate=$(hcloud ces query-metric-data ... --metric-name disk_write_bytes_rate ... | jq -r "$JP_VALUE")
+disk_util=$(hcloud ces query-metric-data ... --namespace AGT.ECS --metric-name disk_util ... | jq -r "$JP_VALUE")
 # I/O spike: total bytes/s > {{user.io_threshold_bytes}} AND disk_util > 90
 
 # Pattern 3: mem_leak_trend — Critical
@@ -76,14 +87,14 @@ disk_util=$(hcloud ces query-metric-data ... --namespace AGT.ECS --metric-name d
 # detected if |current - prev| > 50
 
 # Pattern 5: network_saturation — Critical
-in_rate=$(hcloud ces query-metric-data ... --metric-name network_in_bytes_rate ... | jq -r '.datapoints[0].value')
-out_rate=$(hcloud ces query-metric-data ... --metric-name network_out_bytes_rate ... | jq -r '.datapoints[0].value')
+in_rate=$(hcloud ces query-metric-data ... --metric-name network_in_bytes_rate ... | jq -r "$JP_VALUE")
+out_rate=$(hcloud ces query-metric-data ... --metric-name network_out_bytes_rate ... | jq -r "$JP_VALUE")
 # detected if in_rate > {{user.bandwidth_limit}} * 0.9 OR out_rate > {{user.bandwidth_limit}} * 0.9
 
 # Pattern 6: rds_connection_exhaustion — Critical
-conn=$(hcloud ces query-metric-data --namespace SYS.RDS --metric-name rds003_conn_usage ... | jq -r '.datapoints[0].value')
-qps=$(hcloud ces query-metric-data --namespace SYS.RDS --metric-name rds007_qps ... | jq -r '.datapoints[0].value')
-prev_qps=$(... | jq -r '.datapoints[5].value')
+conn=$(hcloud ces query-metric-data --namespace SYS.RDS --metric-name rds003_conn_usage ... | jq -r "$JP_VALUE")
+qps=$(hcloud ces query-metric-data --namespace SYS.RDS --metric-name rds007_qps ... | jq -r "$JP_VALUE")
+prev_qps=$(... | jq -r "$JP_VALUE_PREV")
 # detected if conn > 90 AND current_qps < prev_qps * 0.8
 ```
 

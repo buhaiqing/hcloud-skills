@@ -289,16 +289,16 @@ Cluster creation is **asynchronous**. Poll until terminal state:
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `CCE.0002` ClusterAlreadyExists | 0 | — | Ask reuse vs new name | `[ERROR] Cluster already exists. Use different name.` |
-| `CCE.0003` InvalidParameter | 0–1 | — | Fix args from OpenAPI | `[ERROR] Invalid parameter: Check VPC/subnet IDs.` |
-| `CCE.0016` ProjectNotAuthorized | 0 | — | Verify IAM perms | `[ERROR] Unauthorized. Check IAM permissions.` |
-| `CCE.0020` QuotaExceeded | 0 | — | HALT | `[ERROR] CCE cluster quota exceeded.` |
-| `CCE.0030` ResourceNotFound | 0 | — | Fix VPC/subnet ID | `[ERROR] VPC/subnet not found. Verify IDs.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge account.` |
-| `429` / Throttling | 3 | exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| `5xx` InternalError | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `CCE.0002` ClusterAlreadyExists | 0 | Ask reuse vs new name | `[ERROR] Cluster already exists. Use different name.` |
+| `CCE.0003` InvalidParameter | 0–1 | Fix args from OpenAPI | `[ERROR] Invalid parameter: Check VPC/subnet IDs.` |
+| `CCE.0016` ProjectNotAuthorized | 0 | Verify IAM perms | `[ERROR] Unauthorized. Check IAM permissions.` |
+| `CCE.0020` QuotaExceeded | 0 | HALT | `[ERROR] CCE cluster quota exceeded.` |
+| `CCE.0030` ResourceNotFound | 0 | Fix VPC/subnet ID | `[ERROR] VPC/subnet not found. Verify IDs.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge account.` |
+| `429` / Throttling | 3 · exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| `5xx` InternalError | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server error. Retry or escalate with RequestId.` |
 
 ### Operation: List / Describe Cluster
 

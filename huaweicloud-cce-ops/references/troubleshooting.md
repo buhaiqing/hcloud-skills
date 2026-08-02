@@ -2,30 +2,30 @@
 
 ## Error Code Taxonomy
 
-| Error Code | HTTP Status | Name | Description | Recovery Action |
-|------------|-------------|------|-------------|-----------------|
-| CCE.0001 | 400 | BadRequest | Generic request validation failed | Check request format and required fields |
-| CCE.0002 | 409 | ClusterAlreadyExists | Cluster name already exists in project | Use different cluster name or reuse existing |
-| CCE.0003 | 400 | InvalidParameter | Parameter format or value is invalid | Fix parameter; cross-reference API docs |
-| CCE.0004 | 404 | ClusterNotFound | Cluster ID does not exist | Verify cluster_id in target region |
-| CCE.0005 | 400 | ClusterStatusInvalid | Cluster not in valid state for operation | Wait for cluster to reach Available state |
-| CCE.0006 | 429 | RequestThrottled | API rate limit exceeded | Implement exponential backoff; retry |
-| CCE.0007 | 400 | VPCNotFound | Referenced VPC ID does not exist | Verify VPC ID or create VPC first |
-| CCE.0008 | 400 | SubnetNotFound | Referenced subnet ID does not exist | Verify subnet ID or create subnet first |
-| CCE.0009 | 400 | InsufficientResources | No available resources in AZ | Try different AZ or flavor family |
-| CCE.0010 | 400 | InvalidFlavor | ECS flavor not valid or unavailable | Check available flavors for target AZ |
-| CCE.0011 | 400 | NodeAlreadyExists | Node with same name already in cluster | Use different node name |
-| CCE.0012 | 404 | NodeNotFound | Node ID does not exist in cluster | Verify node_id and cluster_id |
-| CCE.0013 | 400 | NodePoolLimitExceeded | Maximum node pools per cluster reached | Delete unused node pools or request increase |
-| CCE.0014 | 400 | AddonVersionMismatch | Addon version incompatible with cluster K8s version | Use compatible addon version |
-| CCE.0015 | 404 | AddonNotFound | Addon instance does not exist | Verify addon_id or install addon |
-| CCE.0016 | 403 | ProjectNotAuthorized | IAM permission insufficient | Grant CCE Administrator or CCE Viewer role |
-| CCE.0017 | 400 | NodePoolNotFound | Node pool ID does not exist | Verify nodepool_id and cluster_id |
-| CCE.0020 | 403 | QuotaExceeded | CCE resource quota exceeded | Delete unused resources or request quota increase |
-| CCE.0029 | 500 | InternalError | CCE service internal error | Retry with exponential backoff; HALT after 3 attempts |
-| CCE.0030 | 500 | AsyncOperationFailed | Async cluster/node operation failed | Check statusReason; resolve root cause and retry |
-| Auth.0001 | 401 | AuthenticationFailed | AK/SK authentication failed | Verify credentials; NEVER log secret key |
-| Auth.0003 | 403 | AccessDenied | IAM permission denied | Assign required CCE IAM permissions |
+| Error Code | Name | Description | Recovery Action |
+|------------|------|-------------|-----------------|
+| CCE.0001 | BadRequest | Generic request validation failed | Check request format and required fields |
+| CCE.0002 | ClusterAlreadyExists | Cluster name already exists in project | Use different cluster name or reuse existing |
+| CCE.0003 | InvalidParameter | Parameter format or value is invalid | Fix parameter; cross-reference API docs |
+| CCE.0004 | ClusterNotFound | Cluster ID does not exist | Verify cluster_id in target region |
+| CCE.0005 | ClusterStatusInvalid | Cluster not in valid state for operation | Wait for cluster to reach Available state |
+| CCE.0006 | RequestThrottled | API rate limit exceeded | Implement exponential backoff; retry |
+| CCE.0007 | VPCNotFound | Referenced VPC ID does not exist | Verify VPC ID or create VPC first |
+| CCE.0008 | SubnetNotFound | Referenced subnet ID does not exist | Verify subnet ID or create subnet first |
+| CCE.0009 | InsufficientResources | No available resources in AZ | Try different AZ or flavor family |
+| CCE.0010 | InvalidFlavor | ECS flavor not valid or unavailable | Check available flavors for target AZ |
+| CCE.0011 | NodeAlreadyExists | Node with same name already in cluster | Use different node name |
+| CCE.0012 | NodeNotFound | Node ID does not exist in cluster | Verify node_id and cluster_id |
+| CCE.0013 | NodePoolLimitExceeded | Maximum node pools per cluster reached | Delete unused node pools or request increase |
+| CCE.0014 | AddonVersionMismatch | Addon version incompatible with cluster K8s version | Use compatible addon version |
+| CCE.0015 | AddonNotFound | Addon instance does not exist | Verify addon_id or install addon |
+| CCE.0016 | ProjectNotAuthorized | IAM permission insufficient | Grant CCE Administrator or CCE Viewer role |
+| CCE.0017 | NodePoolNotFound | Node pool ID does not exist | Verify nodepool_id and cluster_id |
+| CCE.0020 | QuotaExceeded | CCE resource quota exceeded | Delete unused resources or request quota increase |
+| CCE.0029 | InternalError | CCE service internal error | Retry with exponential backoff; HALT after 3 attempts |
+| CCE.0030 | AsyncOperationFailed | Async cluster/node operation failed | Check statusReason; resolve root cause and retry |
+| Auth.0001 | AuthenticationFailed | AK/SK authentication failed | Verify credentials; NEVER log secret key |
+| Auth.0003 | AccessDenied | IAM permission denied | Assign required CCE IAM permissions |
 
 ## Ordered Diagnostic Steps
 

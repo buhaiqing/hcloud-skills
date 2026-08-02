@@ -279,14 +279,14 @@ func ptrString(s string) *string { return &s }
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `IAM.0001` | 0 | — | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against OpenAPI docs.` |
-| `IAM.0002` | 0 | — | HALT | `[ERROR] User already exists. Use different name or manage existing user.` |
-| `IAM.0003` | 0 | — | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused users.` |
-| `IAM.0006` | 0 | — | HALT | `[ERROR] Permission denied. Check IAM permissions for current credentials.` |
-| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `IAM.0001` | 0 | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against OpenAPI docs.` |
+| `IAM.0002` | 0 | HALT | `[ERROR] User already exists. Use different name or manage existing user.` |
+| `IAM.0003` | 0 | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused users.` |
+| `IAM.0006` | 0 | HALT | `[ERROR] Permission denied. Check IAM permissions for current credentials.` |
+| Throttling / 429 | 3 · exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
 
 ### Operation: Create IAM Group
 

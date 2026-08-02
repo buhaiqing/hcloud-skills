@@ -1,5 +1,21 @@
 # GaussDB Safety Gates
 
+## JSON Paths
+
+JMESPath queries used inline in the pre-flight scripts below — declared once, referenced by variable:
+
+| Name | JMESPath |
+|------|----------|
+| `QP_STATUS` | `status` |
+| `QP_BACKUP_STATUS` | `backups[0].status` |
+| `QP_FLAVOR_REF` | `flavor_ref` |
+| `QP_TARGET_FLAVOR` | `flavors[?spec_code=='$target_flavor'].spec_code \| [0]` |
+| `QP_RUNNING_TASKS` | `tasks[?status=='Running'].{name:name,created:created}` |
+| `QP_BACKUP_META` | `backups[0].{name:name,type:type}` |
+| `QP_BACKUP_COUNT` | `length(backups)` |
+| `QP_DIFFS` | `differences[].{name:parameter_name,old:old_value,new:new_value}` |
+| `QP_PUBLIC_IPS` | `public_ips[0]` |
+
 ## Gate Protocol
 
 Every high-risk GaussDB operation follows this pre-flight procedure:
@@ -21,19 +37,21 @@ Every high-risk GaussDB operation follows this pre-flight procedure:
 **Pre-flight**:
 ```bash
 #!/bin/bash
+QP_STATUS='status'
+QP_BACKUP_STATUS='backups[0].status'
 INSTANCE_ID="{{env.GAUSSDB_INSTANCE_ID}}"
 
 # 1. Check instance exists and is ACTIVE
 status=$(hcloud GaussDB ShowInstanceDetail \
   --instance_id="$INSTANCE_ID" \
   --cli-region="{{env.REGION}}" \
-  --cli-query="status" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_STATUS" --cli-output-format=json | jq -r '.')
 [ "$status" != "ACTIVE" ] && { echo "[ERROR] Instance not ACTIVE (status=$status)"; exit 1; }
 
 # 2. Verify latest backup is valid
 latest_backup=$(hcloud GaussDB ListBackups \
   --instance_id="$INSTANCE_ID" \
-  --limit=1 --cli-query="backups[0].status" --cli-output-format=json | jq -r '.')
+  --limit=1 --cli-query="$QP_BACKUP_STATUS" --cli-output-format=json | jq -r '.')
 [ "$latest_backup" != "COMPLETED" ] && { echo "[ERROR] No valid backup found"; exit 1; }
 
 # 3. Check for dependent applications
@@ -57,11 +75,12 @@ hcloud GaussDB DeleteInstance --instance_id="$INSTANCE_ID" --cli-region="{{env.R
 
 **Pre-flight**:
 ```bash
+QP_STATUS='status'
 INSTANCE_ID="{{env.GAUSSDB_INSTANCE_ID}}"
 
 # 1. Verify instance status
 status=$(hcloud GaussDB ShowInstanceDetail --instance_id="$INSTANCE_ID" \
-  --cli-query="status" --cli-query="status" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_STATUS" --cli-query="$QP_STATUS" --cli-output-format=json | jq -r '.')
 [ "$status" != "ACTIVE" ] && { echo "[ERROR] Instance not ACTIVE"; exit 1; }
 
 # 2. Notify team
@@ -86,17 +105,20 @@ hcloud GaussDB ResetPwd \
 
 **Pre-flight**:
 ```bash
+QP_FLAVOR_REF='flavor_ref'
+QP_TARGET_FLAVOR="flavors[?spec_code=='$target_flavor'].spec_code | [0]"
+QP_RUNNING_TASKS="tasks[?status=='Running'].{name:name,created:created}"
 INSTANCE_ID="{{env.GAUSSDB_INSTANCE_ID}}"
 
 # 1. Check current flavor
 current=$(hcloud GaussDB ShowInstanceDetail --instance_id="$INSTANCE_ID" \
-  --cli-query="flavor_ref" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_FLAVOR_REF" --cli-output-format=json | jq -r '.')
 echo "[INFO] Current flavor: $current"
 
 # 2. Validate target flavor exists
 target_flavor="gaussdb.opengauss.8xlarge.x864.16"
 matches=$(hcloud GaussDB ListFlavors --cli-region="{{env.REGION}}" \
-  --cli-query="flavors[?spec_code=='$target_flavor'].spec_code | [0]" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_TARGET_FLAVOR" --cli-output-format=json | jq -r '.')
 [ "$matches" = "null" ] && { echo "[ERROR] Target flavor not available in region"; exit 1; }
 
 # 3. Schedule maintenance window
@@ -111,7 +133,7 @@ hcloud GaussDB ResizeInstanceFlavor \
 
 # 5. Monitor task
 hcloud GaussDB ListTasks --cli-region="{{env.REGION}}" \
-  --cli-query="tasks[?status=='Running'].{name:name,created:created}"
+  --cli-query="$QP_RUNNING_TASKS"
 ```
 
 ---
@@ -122,18 +144,20 @@ hcloud GaussDB ListTasks --cli-region="{{env.REGION}}" \
 
 **Pre-flight**:
 ```bash
+QP_BACKUP_META='backups[0].{name:name,type:type}'
+QP_BACKUP_COUNT='length(backups)'
 BACKUP_ID="{{env.GAUSSDB_BACKUP_ID}}"
 
 # 1. Verify backup exists and is manual
 backup=$(hcloud GaussDB ListBackups --backup_id="$BACKUP_ID" \
-  --cli-region="{{env.REGION}}" --cli-query="backups[0].{name:name,type:type}" \
+  --cli-region="{{env.REGION}}" --cli-query="$QP_BACKUP_META" \
   --cli-output-format=json | jq -r '.')
 backup_type=$(echo "$backup" | jq -r '.type')
 [ "$backup_type" != "manual" ] && { echo "[ERROR] Only manual backups can be deleted"; exit 1; }
 
 # 2. Ensure other valid backups remain
 count=$(hcloud GaussDB ListBackups --cli-region="{{env.REGION}}" \
-  --cli-query="length(backups)" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_BACKUP_COUNT" --cli-output-format=json | jq -r '.')
 [ "$count" -le 1 ] && { echo "[ERROR] Cannot delete last backup"; exit 1; }
 
 # 3. Confirm
@@ -152,6 +176,7 @@ hcloud GaussDB DeleteManualBackup --backup_id="$BACKUP_ID" --cli-region="{{env.R
 
 **Pre-flight**:
 ```bash
+QP_DIFFS='differences[].{name:parameter_name,old:old_value,new:new_value}'
 CONFIG_ID="{{env.GAUSSDB_CONFIG_ID}}"
 INSTANCE_ID="{{env.GAUSSDB_INSTANCE_ID}}"
 
@@ -160,7 +185,7 @@ hcloud GaussDB ListDiffDetails \
   --config_id="$CONFIG_ID" \
   --instance_id="$INSTANCE_ID" \
   --cli-region="{{env.REGION}}" \
-  --cli-query="differences[].{name:parameter_name,old:old_value,new:new_value}"
+  --cli-query="$QP_DIFFS"
 
 # 2. Check if restart required (parameters like shared_buffers, max_connections)
 echo "[CHECK] Does this template require a restart? Some parameters apply dynamically."
@@ -182,9 +207,10 @@ hcloud GaussDB ApplyConfiguration \
 
 **Pre-flight for Bind**:
 ```bash
+QP_PUBLIC_IPS='public_ips[0]'
 # Verify EIP is not already bound
 public_ip=$(hcloud GaussDB ShowInstanceDetail --instance_id="{{env.GAUSSDB_INSTANCE_ID}}" \
-  --cli-query="public_ips[0]" --cli-output-format=json | jq -r '.')
+  --cli-query="$QP_PUBLIC_IPS" --cli-output-format=json | jq -r '.')
 [ "$public_ip" != "null" ] && { echo "[WARN] EIP already bound: $public_ip"; exit 1; }
 ```
 

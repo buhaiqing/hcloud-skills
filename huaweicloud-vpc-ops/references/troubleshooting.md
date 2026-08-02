@@ -2,20 +2,20 @@
 
 ## Error Code Taxonomy
 
-| Error Code | HTTP Status | Name | Description | Recovery Action |
-|------------|-------------|------|-------------|-----------------|
-| VPC.0003 | 400 | InvalidParameter | Invalid parameter format or value | Fix parameter; verify CIDR format |
-| VPC.0010 | 409 | CidrConflict | CIDR overlaps with existing VPC | Choose non-overlapping CIDR |
-| VPC.0013 | 404 | ResourceNotFound | VPC/subnet/SG not found | Verify ID in correct region |
-| VPC.0016 | 403 | Forbidden | Unauthorized project/resource | Check IAM permissions |
-| VPC.0020 | 403 | QuotaExceeded | Resource quota limit reached | Delete unused or request increase |
-| VPC.0029 | 500 | InternalError | Internal server error | Retry with backoff; HALT after 3 |
-| EIP.0003 | 400 | InvalidParameter | Invalid EIP parameters | Verify type, bandwidth size, share type |
-| EIP.0012 | 409 | ResourceInUse | EIP is already bound to resource | Unbind EIP first |
-| EIP.0020 | 403 | QuotaExceeded | EIP quota exceeded | Release unused EIPs |
-| NAT.0013 | 404 | ResourceNotFound | NAT gateway or rule not found | Verify ID exists |
-| Auth.0001 | 401 | AuthenticationFailed | AK/SK authentication failed | Verify credentials |
-| Auth.0003 | 403 | AccessDenied | Insufficient permissions | Assign VPC Administrator role |
+| Error Code | Name | Description | Recovery Action |
+|------------|------|-------------|-----------------|
+| VPC.0003 | InvalidParameter | Invalid parameter format or value | Fix parameter; verify CIDR format |
+| VPC.0010 | CidrConflict | CIDR overlaps with existing VPC | Choose non-overlapping CIDR |
+| VPC.0013 | ResourceNotFound | VPC/subnet/SG not found | Verify ID in correct region |
+| VPC.0016 | Forbidden | Unauthorized project/resource | Check IAM permissions |
+| VPC.0020 | QuotaExceeded | Resource quota limit reached | Delete unused or request increase |
+| VPC.0029 | InternalError | Internal server error | Retry with backoff; HALT after 3 |
+| EIP.0003 | InvalidParameter | Invalid EIP parameters | Verify type, bandwidth size, share type |
+| EIP.0012 | ResourceInUse | EIP is already bound to resource | Unbind EIP first |
+| EIP.0020 | QuotaExceeded | EIP quota exceeded | Release unused EIPs |
+| NAT.0013 | ResourceNotFound | NAT gateway or rule not found | Verify ID exists |
+| Auth.0001 | AuthenticationFailed | AK/SK authentication failed | Verify credentials |
+| Auth.0003 | AccessDenied | Insufficient permissions | Assign VPC Administrator role |
 
 ## Ordered Diagnostic Steps
 

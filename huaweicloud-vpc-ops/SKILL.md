@@ -259,16 +259,16 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `VPC.0003` InvalidParameter | 0–1 | — | Fix args | `[ERROR] InvalidParameter: Invalid CIDR or name.` |
-| `VPC.0010` CidrConflict | 0 | — | HALT | `[ERROR] CIDR conflicts with existing VPC. Use different range.` |
-| `VPC.0020` QuotaExceeded | 0 | — | HALT | `[ERROR] VPC quota exceeded. Delete unused VPCs or request increase.` |
-| `InvalidParameter` | 0–1 | — | Fix args | `[ERROR] Invalid parameter. Review input.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge account.` |
-| Throttling / 429 | 3 | exponential | Back off | `⚠️ Rate limited. Retrying...` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server error. Retry or escalate with RequestId.` |
-| `VPC.0016` ProjectNotAuthorized | 0 | — | Verify IAM | `[ERROR] Unauthorized. Check IAM permissions.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `VPC.0003` InvalidParameter | 0–1 | Fix args | `[ERROR] InvalidParameter: Invalid CIDR or name.` |
+| `VPC.0010` CidrConflict | 0 | HALT | `[ERROR] CIDR conflicts with existing VPC. Use different range.` |
+| `VPC.0020` QuotaExceeded | 0 | HALT | `[ERROR] VPC quota exceeded. Delete unused VPCs or request increase.` |
+| `InvalidParameter` | 0–1 | Fix args | `[ERROR] Invalid parameter. Review input.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge account.` |
+| Throttling / 429 | 3 · exponential | Back off | `⚠️ Rate limited. Retrying...` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server error. Retry or escalate with RequestId.` |
+| `VPC.0016` ProjectNotAuthorized | 0 | Verify IAM | `[ERROR] Unauthorized. Check IAM permissions.` |
 
 ### Operation: Create Subnet
 

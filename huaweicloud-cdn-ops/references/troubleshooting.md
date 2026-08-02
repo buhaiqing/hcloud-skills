@@ -55,7 +55,7 @@
 | `DomainNotFound` | Domain ID / name invalid | Verify with `list-domain` |
 | `DomainConfiguring` | Domain not yet provisioned | Wait 5–10 min; poll status |
 | `DomainOffline` | Domain is stopped | `start-domain` |
-| `RefreshQuotaExceeded` | >1000 URLs/day refresh limit | Split across days or use preheat |
+| `RefreshQuotaExceeded` | >`hcloud cdn show-quota` → `.body.refresh_url_limit` URLs/day refresh limit | Split across days or use preheat |
 | `InvalidOrigin` | Origin IP / hostname unreachable | Verify origin; check security group |
 | `CNAMENotConfigured` | CNAME not pointing to CDN | Configure CNAME at DNS registrar |
 | `Unauthorized` | IAM `CDN FullAccess` missing | Add IAM policy |

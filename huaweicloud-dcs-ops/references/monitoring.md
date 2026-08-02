@@ -1,5 +1,16 @@
 # Monitoring & Alerts — Huawei Cloud DCS (Redis)
 
+## JSON Paths
+
+jq extractors used inline below — declared once, referenced by variable:
+
+| Name | Path |
+|------|------|
+| `JP_STATUS` | `.status` (instance state) |
+| `JP_MEM_AVG` | `.datapoints[-1].average` (latest CES datapoint) |
+| `JP_IP` | `.ip` (instance IP) |
+| `JP_PORT` | `.port` (instance port) |
+
 ## Core Metrics Table
 
 CES Namespace: **SYS.DCS**
@@ -102,9 +113,13 @@ Create CES dashboard with these panels:
 # Periodic DCS health check
 INSTANCE_ID="dcs-xxx"
 REGION="{{env.HW_REGION_ID}}"
+JP_STATUS='.status'
+JP_MEM_AVG='.datapoints[-1].average'
+JP_IP='.ip'
+JP_PORT='.port'
 
 # Step 1: Check instance status
-STATUS=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r '.status')
+STATUS=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r "$JP_STATUS")
 if [ "$STATUS" != "RUNNING" ]; then
   echo "❌ Instance $INSTANCE_ID is not RUNNING: $STATUS"
   exit 1
@@ -115,15 +130,15 @@ MEM_USAGE=$(hcloud ces describe-metric-data \
   --namespace "SYS.DCS" \
   --metric-name "memory_usage" \
   --dimensions "name=instance_id,value=$INSTANCE_ID" \
-  --period 300 | jq -r '.datapoints[-1].average // 0')
+  --period 300 | jq -r "$JP_MEM_AVG // 0")
 
 if [ "$(echo "$MEM_USAGE > 90" | bc)" -eq 1 ]; then
   echo "⚠️ Memory usage critical: ${MEM_USAGE}%"
 fi
 
 # Step 3: Quick Redis check
-IP=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r '.ip')
-PORT=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r '.port')
+IP=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r "$JP_IP")
+PORT=$(hcloud dcs show-instance --instance-id "$INSTANCE_ID" | jq -r "$JP_PORT")
 redis-cli -h "$IP" -p "$PORT" -a "{{user.password}}" PING > /dev/null 2>&1
 if [ $? -eq 0 ]; then
   echo "✅ Redis PING successful"

@@ -21,26 +21,26 @@
 
 ### 1.1 RDS Error Codes (≥10 Required)
 
-| Error Code | HTTP Status | Description | Severity | Recovery Action |
-|------------|-------------|-------------|----------|-----------------|
-| DBS.0001 | 400 | Quota exceeded for instances | Critical | HALT; request quota increase via console |
-| DBS.0002 | 400 | Invalid parameter value | High | Fix parameter based on error message; retry |
-| DBS.0003 | 400 | Insufficient account balance | Critical | HALT; recharge account |
-| DBS.0004 | 409 | Resource already exists | Medium | Use different name or reuse existing |
-| DBS.0005 | 404 | Resource not found | Medium | Verify instance ID; check if deleted |
-| DBS.0006 | 403 | IAM permission denied | Critical | HALT; check IAM policy |
-| DBS.0007 | 409 | Resource in use (can't delete) | High | Wait for operation; check dependent resources |
-| DBS.0008 | 500 | Internal server error | Medium | Retry with exponential backoff (2s, 4s, 8s) |
-| DBS.0009 | 503 | Service unavailable | Medium | Retry after 60s; escalate if persistent |
-| DBS.0010 | 429 | Rate limit exceeded | High | Back off 60s; retry |
-| DBS.0011 | 400 | VPC not found | Critical | HALT; create VPC first |
-| DBS.0012 | 400 | Subnet not found | Critical | HALT; create subnet in VPC |
-| DBS.0013 | 400 | Security group not found | Critical | HALT; create security group |
-| DBS.0014 | 400 | Flavor not found | High | List available flavors; choose valid one |
-| DBS.0015 | 400 | AZ not available | High | Choose different AZ |
-| DBS.0016 | 500 | Backup creation failed | Medium | Check storage quota; retry |
-| DBS.0017 | 500 | Restore operation failed | High | Verify backup integrity; retry |
-| DBS.0018 | 400 | Parameter modification failed | Medium | Check parameter constraints; retry |
+| Error Code | Description | Severity | Recovery Action |
+|------------|-------------|----------|-----------------|
+| DBS.0001 | Quota exceeded for instances | Critical | HALT; request quota increase via console |
+| DBS.0002 | Invalid parameter value | High | Fix parameter based on error message; retry |
+| DBS.0003 | Insufficient account balance | Critical | HALT; recharge account |
+| DBS.0004 | Resource already exists | Medium | Use different name or reuse existing |
+| DBS.0005 | Resource not found | Medium | Verify instance ID; check if deleted |
+| DBS.0006 | IAM permission denied | Critical | HALT; check IAM policy |
+| DBS.0007 | Resource in use (can't delete) | High | Wait for operation; check dependent resources |
+| DBS.0008 | Internal server error | Medium | Retry with exponential backoff (2s, 4s, 8s) |
+| DBS.0009 | Service unavailable | Medium | Retry after 60s; escalate if persistent |
+| DBS.0010 | Rate limit exceeded | High | Back off 60s; retry |
+| DBS.0011 | VPC not found | Critical | HALT; create VPC first |
+| DBS.0012 | Subnet not found | Critical | HALT; create subnet in VPC |
+| DBS.0013 | Security group not found | Critical | HALT; create security group |
+| DBS.0014 | Flavor not found | High | List available flavors; choose valid one |
+| DBS.0015 | AZ not available | High | Choose different AZ |
+| DBS.0016 | Backup creation failed | Medium | Check storage quota; retry |
+| DBS.0017 | Restore operation failed | High | Verify backup integrity; retry |
+| DBS.0018 | Parameter modification failed | Medium | Check parameter constraints; retry |
 
 ### 1.2 CES Monitoring Error Codes
 
