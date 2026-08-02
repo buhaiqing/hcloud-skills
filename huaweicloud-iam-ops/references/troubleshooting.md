@@ -20,23 +20,23 @@
 
 ### 1.1 IAM Error Codes (≥15 Required)
 
-| Error Code | HTTP Status | Description | Severity | Recovery Action |
-|------------|-------------|-------------|----------|-----------------|
-| IAM.0001 | 400 | Invalid parameter value | High | Fix parameter based on error message; retry |
-| IAM.0002 | 409 | Resource already exists | Medium | Use different name or manage existing |
-| IAM.0003 | 400 | Quota exceeded | Critical | HALT; request quota increase via console |
-| IAM.0004 | 404 | Resource not found | Medium | Verify resource ID; check if deleted |
-| IAM.0005 | 403 | Permission denied | Critical | HALT; check IAM policy for caller |
-| IAM.0006 | 401 | Authentication failed | Critical | Verify credentials; check AK/SK validity |
-| IAM.0007 | 400 | Invalid policy document | High | Fix policy JSON syntax; validate against schema |
-| IAM.0008 | 409 | Resource in use | High | Wait for operation; check dependent resources |
-| IAM.0009 | 400 | MFA required | High | Provide MFA code; re-authenticate |
-| IAM.0010 | 429 | Rate limit exceeded | High | Back off 60s; retry with exponential backoff |
-| IAM.0011 | 500 | Internal server error | Medium | Retry with exponential backoff (2s, 4s, 8s) |
-| IAM.0012 | 403 | Domain mismatch | Critical | Verify domain ID matches the target domain |
-| IAM.0013 | 400 | Invalid credential type | High | Use correct credential type for the operation |
-| IAM.0014 | 400 | Password policy violation | High | Fix password to meet policy requirements |
-| IAM.0015 | 403 | Account locked | Critical | Wait lockout duration or admin unlock |
+| Error Code | Description | Severity | Recovery Action |
+|------------|-------------|----------|-----------------|
+| IAM.0001 | Invalid parameter value | High | Fix parameter based on error message; retry |
+| IAM.0002 | Resource already exists | Medium | Use different name or manage existing |
+| IAM.0003 | Quota exceeded | Critical | HALT; request quota increase via console |
+| IAM.0004 | Resource not found | Medium | Verify resource ID; check if deleted |
+| IAM.0005 | Permission denied | Critical | HALT; check IAM policy for caller |
+| IAM.0006 | Authentication failed | Critical | Verify credentials; check AK/SK validity |
+| IAM.0007 | Invalid policy document | High | Fix policy JSON syntax; validate against schema |
+| IAM.0008 | Resource in use | High | Wait for operation; check dependent resources |
+| IAM.0009 | MFA required | High | Provide MFA code; re-authenticate |
+| IAM.0010 | Rate limit exceeded | High | Back off 60s; retry with exponential backoff |
+| IAM.0011 | Internal server error | Medium | Retry with exponential backoff (2s, 4s, 8s) |
+| IAM.0012 | Domain mismatch | Critical | Verify domain ID matches the target domain |
+| IAM.0013 | Invalid credential type | High | Use correct credential type for the operation |
+| IAM.0014 | Password policy violation | High | Fix password to meet policy requirements |
+| IAM.0015 | Account locked | Critical | Wait lockout duration or admin unlock |
 
 ### 1.2 Permission Error Patterns
 

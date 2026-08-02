@@ -229,16 +229,16 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `BucketAlreadyExists` | 0 | — | Use different name | `[ERROR] Bucket name already taken globally. Choose unique name.` |
-| `InvalidBucketName` | 0 | — | Fix name | `[ERROR] Bucket name must be 3-63 chars, lowercase letters/digits/hyphens only.` |
-| `InvalidAccessKeyId` | 0 | — | HALT | `[ERROR] Invalid AK. Check HW_ACCESS_KEY_ID.` |
-| `SignatureDoesNotMatch` | 0 | — | HALT | `[ERROR] SK mismatch. Check HW_SECRET_ACCESS_KEY.` |
-| `AccessDenied` | 0 | — | HALT | `[ERROR] Permission denied. Check IAM bucket creation permission.` |
-| `QuotaExceeded` | 0 | — | HALT | `[ERROR] Bucket quota exceeded. Delete unused buckets.` |
-| Throttling / 429 | 3 | exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| InternalError / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] OBS server error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `BucketAlreadyExists` | 0 | Use different name | `[ERROR] Bucket name already taken globally. Choose unique name.` |
+| `InvalidBucketName` | 0 | Fix name | `[ERROR] Bucket name must be 3-63 chars, lowercase letters/digits/hyphens only.` |
+| `InvalidAccessKeyId` | 0 | HALT | `[ERROR] Invalid AK. Check HW_ACCESS_KEY_ID.` |
+| `SignatureDoesNotMatch` | 0 | HALT | `[ERROR] SK mismatch. Check HW_SECRET_ACCESS_KEY.` |
+| `AccessDenied` | 0 | HALT | `[ERROR] Permission denied. Check IAM bucket creation permission.` |
+| `QuotaExceeded` | 0 | HALT | `[ERROR] Bucket quota exceeded. Delete unused buckets.` |
+| Throttling / 429 | 3 · exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| InternalError / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] OBS server error. Retry or escalate with RequestId.` |
 
 ---
 

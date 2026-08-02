@@ -269,18 +269,18 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `CES.0003` InvalidParameter | 0–1 | — | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against CES API docs.` |
-| `CES.0010` InvalidRequestData | 0–1 | — | Fix request body | `[ERROR] InvalidRequestData: Verify request format and field types.` |
-| `CES.0012` AlarmAlreadyExists | 0 | — | Ask reuse vs new name | `[ERROR] Alarm rule already exists. Use different name or reuse.` |
-| `CES.0013` MetricNotFound | 0 | — | Verify namespace/metric | `[ERROR] Metric not found. Check namespace and metric_name.` |
-| `QuotaExceeded` / `CES.0020` | 0 | — | HALT | `[ERROR] Alarm quota exceeded. Delete unused alarms.` |
-| `InvalidParameter` | 0–1 | — | Fix args | `[ERROR] Invalid parameter. Review field values.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
-| Throttling / 429 / `CES.0006` | 3 | exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| `CES.0016` ProjectNotAuthorized | 0 | — | Verify project | `[ERROR] Unauthorized project. Check IAM permissions.` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `CES.0003` InvalidParameter | 0–1 | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against CES API docs.` |
+| `CES.0010` InvalidRequestData | 0–1 | Fix request body | `[ERROR] InvalidRequestData: Verify request format and field types.` |
+| `CES.0012` AlarmAlreadyExists | 0 | Ask reuse vs new name | `[ERROR] Alarm rule already exists. Use different name or reuse.` |
+| `CES.0013` MetricNotFound | 0 | Verify namespace/metric | `[ERROR] Metric not found. Check namespace and metric_name.` |
+| `QuotaExceeded` / `CES.0020` | 0 | HALT | `[ERROR] Alarm quota exceeded. Delete unused alarms.` |
+| `InvalidParameter` | 0–1 | Fix args | `[ERROR] Invalid parameter. Review field values.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
+| Throttling / 429 / `CES.0006` | 3 · exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| `CES.0016` ProjectNotAuthorized | 0 | Verify project | `[ERROR] Unauthorized project. Check IAM permissions.` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
 
 ### Operation: List / Describe Alarm Rules
 
@@ -397,11 +397,11 @@ POST /V1.0/{project_id}/metric-data/batch-query  — Batch query
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `CES.0013` MetricNotFound | 0 | — | Verify namespace/metric | `[ERROR] Metric not found. Check namespace and metric_name.` |
-| `CES.0003` InvalidParameter | 0–1 | — | Fix time range/format | `[ERROR] Invalid parameter. Check from/to timestamps.` |
-| Throttling / 429 | 3 | exponential | Back off | `⚠️ Rate limited. Retrying...` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `CES.0013` MetricNotFound | 0 | Verify namespace/metric | `[ERROR] Metric not found. Check namespace and metric_name.` |
+| `CES.0003` InvalidParameter | 0–1 | Fix time range/format | `[ERROR] Invalid parameter. Check from/to timestamps.` |
+| Throttling / 429 | 3 · exponential | Back off | `⚠️ Rate limited. Retrying...` |
 
 ### Operation: Create Dashboard
 

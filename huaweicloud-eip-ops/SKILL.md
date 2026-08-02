@@ -320,14 +320,14 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|---|---|---|---|---|
-| `InvalidParameter` | 0–1 | — | Fix args from OpenAPI | `[ERROR] InvalidParameter: <msg> — Check parameters against EIP API docs.` |
-| `QuotaExceeded` | 0 | — | HALT | `[ERROR] Quota exceeded. Apply for EIP quota raise in Console → Service Quota.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
-| `EipAllocateFailed` | 0 | — | HALT | `[ERROR] EipAllocateFailed: <msg> — Region may be sold-out; try adjacent region.` |
-| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `[WARN] Rate limited. Retrying after computed backoff seconds...` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|---|---|---|---|
+| `InvalidParameter` | 0–1 | Fix args from OpenAPI | `[ERROR] InvalidParameter: <msg> — Check parameters against EIP API docs.` |
+| `QuotaExceeded` | 0 | HALT | `[ERROR] Quota exceeded. Apply for EIP quota raise in Console → Service Quota.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
+| `EipAllocateFailed` | 0 | HALT | `[ERROR] EipAllocateFailed: <msg> — Region may be sold-out; try adjacent region.` |
+| Throttling / 429 | 3 · exponential | Back off; respect Retry-After | `[WARN] Rate limited. Retrying after computed backoff seconds...` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
 
 > **Idempotency caveat:** If a network blip occurs after a successful allocate, the retry
 > may produce a second EIP. Always `list` and dedupe by `public_ip_address` before retrying.

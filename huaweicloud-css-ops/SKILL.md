@@ -347,28 +347,28 @@ func main() {
 
 #### Failure Recovery
 
-| Error Code | Description | Max Retries | Backoff | Agent Action | UX Feedback | Recovery Steps |
-|------------|-------------|-------------|---------|--------------|-------------|----------------|
-| `CSS.0001` | Invalid request parameter | 0 | — | Fix args from OpenAPI | `[ERROR] InvalidParameter: {field} - {reason}` | 1. Check required fields<br>2. Validate parameter formats<br>3. Refer to API docs |
-| `CSS.0002` | Insufficient quota | 0 | — | HALT | `[ERROR] QuotaExceeded: {resource_type}` | 1. Check current usage<br>2. Request quota increase<br>3. Or delete unused resources |
-| `CSS.0003` | Insufficient balance | 0 | — | HALT | `[ERROR] InsufficientBalance` | 1. Check account balance<br>2. Recharge account<br>3. Retry operation |
-| `CSS.0004` | Resource already exists | 0 | — | Ask reuse vs new name | `[ERROR] AlreadyExists: {resource_name}` | 1. Use different name<br>2. Or use existing resource<br>3. Check with List operation |
-| `CSS.0005` | Rate limit exceeded | 3 | exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` | 1. Wait for backoff<br>2. Reduce request rate<br>3. Consider batch operations |
-| `CSS.0006` | Internal server error | 3 | 2s, 4s, 8s | Retry then HALT | `[ERROR] InternalError: {request_id}` | 1. Retry with backoff<br>2. If persists, escalate<br>3. Include request_id |
-| `CSS.0010` | Invalid VPC/Subnet | 0 | — | HALT | `[ERROR] InvalidNetwork: {vpc_id}` | 1. Verify VPC exists<br>2. Check subnet in VPC<br>3. Use huaweicloud-vpc-ops |
-| `CSS.0011` | Invalid flavor spec | 0 | — | HALT | `[ERROR] InvalidFlavor: {flavor_ref}` | 1. List available flavors<br>2. Check region availability<br>3. Select valid flavor |
-| `CSS.0012` | Invalid engine version | 0 | — | HALT | `[ERROR] InvalidVersion: {version}` | 1. Check supported versions<br>2. Use: 7.6.2, 7.10.2, 1.3.6, 2.17.1 |
-| `CSS.0013` | KMS key not found | 0 | — | HALT | `[ERROR] KMSKeyNotFound` | 1. Verify KMS key ID<br>2. Check key is enabled<br>3. Verify IAM permissions |
-| `CSS.0014` | OBS bucket not found | 0 | — | HALT | `[ERROR] BucketNotFound: {bucket}` | 1. Create OBS bucket<br>2. Check bucket permissions<br>3. Use huaweicloud-obs-ops |
-| `CSS.0015` | Insufficient permissions | 0 | — | HALT | `[ERROR] AccessDenied` | 1. Check IAM policies<br>2. Verify role permissions<br>3. Contact admin |
-| `CSS.0020` | Cluster not found | 0 | — | HALT | `[ERROR] ClusterNotFound: {cluster_id}` | 1. Verify cluster ID<br>2. List clusters to confirm<br>3. Check region |
-| `CSS.0021` | Cluster not available | 0 | — | Wait | `⏳ Cluster busy: {status}` | 1. Wait for operation complete<br>2. Poll until AVAILABLE<br>3. Retry operation |
-| `CSS.0022` | Operation in progress | 0 | — | Wait | `⏳ Operation in progress` | 1. Wait for current op<br>2. Check task status<br>3. Retry after completion |
-| `CSS.0030` | Snapshot not found | 0 | — | HALT | `[ERROR] SnapshotNotFound` | 1. List available snapshots<br>2. Verify snapshot ID<br>3. Check cluster |
-| `CSS.0031` | Snapshot creation failed | 1 | 5s | Retry once | `[ERROR] SnapshotFailed: {reason}` | 1. Check OBS permissions<br>2. Verify cluster health<br>3. Retry with delay |
-| `CSS.0032` | Snapshot restore failed | 0 | — | HALT | `[ERROR] RestoreFailed` | 1. Check snapshot integrity<br>2. Verify version compatibility<br>3. Try different snapshot |
-| `CSS.0040` | Node operation failed | 2 | 10s | Retry | `[ERROR] NodeOperationFailed` | 1. Check node status<br>2. Verify capacity<br>3. Retry or escalate |
-| `CSS.0041` | Scale out failed | 1 | 30s | Retry | `[ERROR] ScaleOutFailed` | 1. Check quota<br>2. Verify subnet IPs<br>3. Retry or contact support |
+| Error Code | Description | Retry | Agent Action | UX Feedback | Recovery Steps |
+|------------|-------------|-------|--------------|-------------|----------------|
+| `CSS.0001` | Invalid request parameter | 0 | Fix args from OpenAPI | `[ERROR] InvalidParameter: {field} - {reason}` | 1. Check required fields<br>2. Validate parameter formats<br>3. Refer to API docs |
+| `CSS.0002` | Insufficient quota | 0 | HALT | `[ERROR] QuotaExceeded: {resource_type}` | 1. Check current usage<br>2. Request quota increase<br>3. Or delete unused resources |
+| `CSS.0003` | Insufficient balance | 0 | HALT | `[ERROR] InsufficientBalance` | 1. Check account balance<br>2. Recharge account<br>3. Retry operation |
+| `CSS.0004` | Resource already exists | 0 | Ask reuse vs new name | `[ERROR] AlreadyExists: {resource_name}` | 1. Use different name<br>2. Or use existing resource<br>3. Check with List operation |
+| `CSS.0005` | Rate limit exceeded | 3 · exponential | Back off | `⚠️ Rate limited. Retrying in {backoff}s...` | 1. Wait for backoff<br>2. Reduce request rate<br>3. Consider batch operations |
+| `CSS.0006` | Internal server error | 3 · 2s, 4s, 8s | Retry then HALT | `[ERROR] InternalError: {request_id}` | 1. Retry with backoff<br>2. If persists, escalate<br>3. Include request_id |
+| `CSS.0010` | Invalid VPC/Subnet | 0 | HALT | `[ERROR] InvalidNetwork: {vpc_id}` | 1. Verify VPC exists<br>2. Check subnet in VPC<br>3. Use huaweicloud-vpc-ops |
+| `CSS.0011` | Invalid flavor spec | 0 | HALT | `[ERROR] InvalidFlavor: {flavor_ref}` | 1. List available flavors<br>2. Check region availability<br>3. Select valid flavor |
+| `CSS.0012` | Invalid engine version | 0 | HALT | `[ERROR] InvalidVersion: {version}` | 1. Check supported versions<br>2. Use: 7.6.2, 7.10.2, 1.3.6, 2.17.1 |
+| `CSS.0013` | KMS key not found | 0 | HALT | `[ERROR] KMSKeyNotFound` | 1. Verify KMS key ID<br>2. Check key is enabled<br>3. Verify IAM permissions |
+| `CSS.0014` | OBS bucket not found | 0 | HALT | `[ERROR] BucketNotFound: {bucket}` | 1. Create OBS bucket<br>2. Check bucket permissions<br>3. Use huaweicloud-obs-ops |
+| `CSS.0015` | Insufficient permissions | 0 | HALT | `[ERROR] AccessDenied` | 1. Check IAM policies<br>2. Verify role permissions<br>3. Contact admin |
+| `CSS.0020` | Cluster not found | 0 | `[ERROR] ClusterNotFound: {cluster_id}` | 1. Verify cluster ID<br>2. List clusters to confirm<br>3. Check region ||
+| `CSS.0021` | Cluster not available | 0 | `⏳ Cluster busy: {status}` | 1. Wait for operation complete<br>2. Poll until AVAILABLE<br>3. Retry operation ||
+| `CSS.0022` | Operation in progress | 0 | `⏳ Operation in progress` | 1. Wait for current op<br>2. Check task status<br>3. Retry after completion ||
+| `CSS.0030` | Snapshot not found | 0 | `[ERROR] SnapshotNotFound` | 1. List available snapshots<br>2. Verify snapshot ID<br>3. Check cluster ||
+| `CSS.0031` | Snapshot creation failed | 1 · 5s · Retry once | `[ERROR] SnapshotFailed: {reason}` | 1. Check OBS permissions<br>2. Verify cluster health<br>3. Retry with delay ||
+| `CSS.0032` | Snapshot restore failed | 0 | `[ERROR] RestoreFailed` | 1. Check snapshot integrity<br>2. Verify version compatibility<br>3. Try different snapshot ||
+| `CSS.0040` | Node operation failed | 2 · 10s · Retry | `[ERROR] NodeOperationFailed` | 1. Check node status<br>2. Verify capacity<br>3. Retry or escalate ||
+| `CSS.0041` | Scale out failed | 1 · 30s · Retry | `[ERROR] ScaleOutFailed` | 1. Check quota<br>2. Verify subnet IPs<br>3. Retry or contact support ||
 
 ---
 

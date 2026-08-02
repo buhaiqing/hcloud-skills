@@ -289,18 +289,18 @@ func main() {
 
 #### Failure Recovery
 
-| Error | Max retries | Backoff | Agent Action | UX Feedback |
-|-------|-------------|---------|--------------|-------------|
-| `InvalidParameter` | 0–1 | — | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against OpenAPI docs.` |
-| `QuotaExceeded` | 0 | — | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused resources.` |
-| `InsufficientBalance` | 0 | — | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
-| `ResourceAlreadyExists` | 0 | — | Ask reuse vs new name | `[ERROR] Resource already exists. Use different name or reuse existing.` |
-| `VpcNotFound` | 0 | — | HALT | `[ERROR] VPC not found. Create VPC first using huaweicloud-vpc-ops.` |
-| `SubnetNotFound` | 0 | — | HALT | `[ERROR] Subnet not found. Create subnet first using huaweicloud-vpc-ops.` |
-| `SecurityGroupNotFound` | 0 | — | HALT | `[ERROR] Security group not found. Create SG first using huaweicloud-vpc-ops.` |
-| `FlavorNotFound` | 0 | — | HALT | `[ERROR] Flavor not found. List available flavors first.` |
-| Throttling / 429 | 3 | exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
-| `InternalError` / 5xx | 3 | 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
+| Error | Retry | Agent Action | UX Feedback |
+|-------|-------|--------------|-------------|
+| `InvalidParameter` | 0–1 | Fix args from OpenAPI | `[ERROR] InvalidParameter: Check parameters against OpenAPI docs.` |
+| `QuotaExceeded` | 0 | HALT | `[ERROR] Quota exceeded. Request quota increase or delete unused resources.` |
+| `InsufficientBalance` | 0 | HALT | `[ERROR] Insufficient balance. Recharge your Huawei Cloud account.` |
+| `ResourceAlreadyExists` | 0 | Ask reuse vs new name | `[ERROR] Resource already exists. Use different name or reuse existing.` |
+| `VpcNotFound` | 0 | HALT | `[ERROR] VPC not found. Create VPC first using huaweicloud-vpc-ops.` |
+| `SubnetNotFound` | 0 | HALT | `[ERROR] Subnet not found. Create subnet first using huaweicloud-vpc-ops.` |
+| `SecurityGroupNotFound` | 0 | HALT | `[ERROR] Security group not found. Create SG first using huaweicloud-vpc-ops.` |
+| `FlavorNotFound` | 0 | HALT | `[ERROR] Flavor not found. List available flavors first.` |
+| Throttling / 429 | 3 · exponential | Back off; respect Retry-After | `⚠️ Rate limited. Retrying in {backoff}s...` |
+| `InternalError` / 5xx | 3 · 2s, 4s, 8s | Retry; then HALT | `[ERROR] Server-side error. Retry or escalate with RequestId.` |
 
 ### Operation: Describe DB Instance
 

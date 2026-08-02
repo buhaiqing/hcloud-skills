@@ -2,22 +2,22 @@
 
 ## Error Code Taxonomy
 
-| Error Code | HTTP Status | Description | Retryable | Max Retries | Agent Action | User Guidance |
-|-----------|------------|-------------|-----------|------------|--------------|---------------|
-| NoSuchBucket | 404 | Bucket does not exist | No | 0 | Verify bucket name/region | `[ERROR] Bucket not found. Check bucket name: {{user.bucket_name}}` |
-| NoSuchKey | 404 | Object does not exist | No | 0 | Verify object key exists | `[ERROR] Object not found. Check key: {{user.object_key}}` |
-| AccessDenied | 403 | Permission denied | No | 0 | Check ACL, bucket policy, IAM | `[ERROR] Access denied. Check bucket ACL, policy, and IAM permissions.` |
-| InvalidAccessKeyId | 403 | AK not found or disabled | No | 0 | HALT; verify AK | `[ERROR] Invalid AK. Check HW_ACCESS_KEY_ID.` |
-| SignatureDoesNotMatch | 403 | Signature verification failed | No | 0 | HALT; verify SK | `[ERROR] Signature mismatch. Check HW_SECRET_ACCESS_KEY.` |
-| InvalidSecretAccessKey | 403 | SK is invalid | No | 0 | HALT; verify SK | `[ERROR] Invalid SK. Check HW_SECRET_ACCESS_KEY.` |
-| BucketAlreadyExists | 409 | Bucket name taken globally | No | 0 | Use different name | `[ERROR] Bucket name globally taken. Choose unique name.` |
-| EntityTooLarge | 400 | Object exceeds size limit | No | 0 | Use multipart upload | `[ERROR] Object too large for single PUT. Use multipart for files > 5GB.` |
-| InvalidBucketName | 400 | Bucket name format invalid | No | 0 | Fix name | `[ERROR] Invalid bucket name. 3-63 chars, lowercase letters/digits/hyphens.` |
-| InvalidPart | 400 | Multipart part error | No | 0 | Verify part number/order | `[ERROR] Invalid multipart part. Check part number and uploadId.` |
-| PartNumberInOrder | 400 | Parts must be uploaded sequentially | No | 0 | Fix part sequence | `[ERROR] Part number out of order. Upload parts 1, 2, 3... sequentially.` |
-| RequestTimeout | 408 | Request timed out | Yes | 3 | Retry with larger timeout | `[ERROR] Request timeout. Check network and retry.` |
-| SlowDown | 503 | Rate limit exceeded | Yes | 3 | Exponential backoff | `[ERROR] OBS rate limited. Retrying in {backoff}s...` |
-| InternalError | 500 | OBS server error | Yes | 3 | Retry; then HALT | `[ERROR] OBS internal error. Retry or escalate with RequestId.` |
+| Error Code | Description | Max Retries | Agent Action | User Guidance |
+|-----------|-------------|------------|--------------|---------------|
+| NoSuchBucket | Bucket does not exist | 0 | Verify bucket name/region | `[ERROR] Bucket not found. Check bucket name: {{user.bucket_name}}` |
+| NoSuchKey | Object does not exist | 0 | Verify object key exists | `[ERROR] Object not found. Check key: {{user.object_key}}` |
+| AccessDenied | Permission denied | 0 | Check ACL, bucket policy, IAM | `[ERROR] Access denied. Check bucket ACL, policy, and IAM permissions.` |
+| InvalidAccessKeyId | AK not found or disabled | 0 | HALT; verify AK | `[ERROR] Invalid AK. Check HW_ACCESS_KEY_ID.` |
+| SignatureDoesNotMatch | Signature verification failed | 0 | HALT; verify SK | `[ERROR] Signature mismatch. Check HW_SECRET_ACCESS_KEY.` |
+| InvalidSecretAccessKey | SK is invalid | 0 | HALT; verify SK | `[ERROR] Invalid SK. Check HW_SECRET_ACCESS_KEY.` |
+| BucketAlreadyExists | Bucket name taken globally | 0 | Use different name | `[ERROR] Bucket name globally taken. Choose unique name.` |
+| EntityTooLarge | Object exceeds size limit | 0 | Use multipart upload | `[ERROR] Object too large for single PUT. Use multipart for files > 5GB.` |
+| InvalidBucketName | Bucket name format invalid | 0 | Fix name | `[ERROR] Invalid bucket name. 3-63 chars, lowercase letters/digits/hyphens.` |
+| InvalidPart | Multipart part error | 0 | Verify part number/order | `[ERROR] Invalid multipart part. Check part number and uploadId.` |
+| PartNumberInOrder | Parts must be uploaded sequentially | 0 | Fix part sequence | `[ERROR] Part number out of order. Upload parts 1, 2, 3... sequentially.` |
+| RequestTimeout | Request timed out | 3 | Retry with larger timeout | `[ERROR] Request timeout. Check network and retry.` |
+| SlowDown | Rate limit exceeded | 3 | Exponential backoff | `[ERROR] OBS rate limited. Retrying in {backoff}s...` |
+| InternalError | OBS server error | 3 | Retry; then HALT | `[ERROR] OBS internal error. Retry or escalate with RequestId.` |
 
 ## Ordered Diagnostic Steps
 

@@ -2,18 +2,18 @@
 
 ## Error Code Taxonomy
 
-| Error Code | HTTP Status | Name | Description | Recovery Action |
-|------------|-------------|------|-------------|-----------------|
-| CES.0003 | 400 | InvalidParameter | Request parameter validation failed | Fix parameter format and retry |
-| CES.0006 | 429 | RequestLimitExceeded | API rate limit exceeded | Wait and retry with backoff |
-| CES.0010 | 400 | InvalidRequestData | Request body format/type mismatch | Check JSON schema against API docs |
-| CES.0012 | 409 | ResourceAlreadyExists | Alarm rule name already exists | Use different name or reuse existing |
-| CES.0013 | 404 | ResourceNotFound | Metric or alarm resource not found | Verify namespace, metric_name, resource_id |
-| CES.0016 | 403 | Forbidden | Project or resource unauthorized | Check IAM permissions, project_id |
-| CES.0020 | 403 | QuotaExceeded | Alarm rule quota limit reached | Delete unused alarms or request quota increase |
-| CES.0029 | 500 | InternalError | Internal server error | Retry with exponential backoff; HALT after 3 attempts |
-| Auth.0001 | 401 | AuthenticationFailed | AK/SK authentication failed | Verify credentials; NEVER log secret key |
-| Auth.0003 | 403 | AccessDenied | Insufficient permissions | Assign CES permissions via IAM |
+| Error Code | Name | Description | Recovery Action |
+|------------|------|-------------|-----------------|
+| CES.0003 | InvalidParameter | Request parameter validation failed | Fix parameter format and retry |
+| CES.0006 | RequestLimitExceeded | API rate limit exceeded | Wait and retry with backoff |
+| CES.0010 | InvalidRequestData | Request body format/type mismatch | Check JSON schema against API docs |
+| CES.0012 | ResourceAlreadyExists | Alarm rule name already exists | Use different name or reuse existing |
+| CES.0013 | ResourceNotFound | Metric or alarm resource not found | Verify namespace, metric_name, resource_id |
+| CES.0016 | Forbidden | Project or resource unauthorized | Check IAM permissions, project_id |
+| CES.0020 | QuotaExceeded | Alarm rule quota limit reached | Delete unused alarms or request quota increase |
+| CES.0029 | InternalError | Internal server error | Retry with exponential backoff; HALT after 3 attempts |
+| Auth.0001 | AuthenticationFailed | AK/SK authentication failed | Verify credentials; NEVER log secret key |
+| Auth.0003 | AccessDenied | Insufficient permissions | Assign CES permissions via IAM |
 
 ## Ordered Diagnostic Steps
 
