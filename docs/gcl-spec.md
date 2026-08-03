@@ -569,8 +569,22 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 | 1.7.0 | 2026-07-25 | Trace schema v2: added `trace_id`, `skill_version`, timing, `environment`, `token_usage` contract, `pre_execution_risk`, per-iteration `duration_ms` |
 | 1.8.0 | 2026-07-25 | Trace schema v3: FinOps (`resource_context`, `cost_attribution`, token retry-waste) + AIOps (`incident`, `slo_context`, `change_impact`, `anomaly_baseline`, `ops_efficiency`) full data contract; `--context-json` injection |
 | 1.9.0 | 2026-07-27 | Trust boundary contract (§14): `SanitizeRequest` enforces fail-closed sanitization of user request; `applyMaskFields` enforces `MaskedFields` declarations on persist; embedded JSON-schema validators for `operation_intent` (`embed.OperationIntentSchema`) and `critic_output` (`embed.CriticOutputSchema`) gate Critic input/output at the wire format |
+| 2.0.0 | 2026-08-03 | Hallucination Detection (§15): L1 (CLI flags existence), L2 (JSON schema compliance), L3 (WAF: security/cost/stability). L1/L2 block immediately → SAFETY_FAIL; L3 violations surface to Critic.
 
-## 13. See also
+## 14. Hallucination Detection
+
+Three-layer structural hallucination check runs after Generator and before Critic.
+See `docs/hallucination-detection-spec.md` for full design.
+
+| Layer | Checks | Blocks? |
+|------|--------|---------|
+| **L1 — CLI param existence** | All `--flag` tokens in command validated against `references/cli-usage.md` | Yes → SAFETY_FAIL |
+| **L2 — JSON structure** | Generator output validated against `references/openapi-schema.json` | Yes → SAFETY_FAIL |
+| **L3 — WAF compliance** | Credential exposure, dangerous verbs without guard, high-cost resources, no-rollback multi-resource mutations | No; surfaced to Critic as `correctness` penalty |
+
+**Implementation**: `internal/gcl/hallucination.go` + `hallucination_l1/2/3.go`.
+
+## 15. See also
 
 - `AGENTS.md` — always-loaded GCL hard constraints and validation pointers
 - `huaweicloud-*-ops/references/rubric.md` — per-skill scoring rubrics

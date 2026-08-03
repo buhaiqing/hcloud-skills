@@ -141,22 +141,23 @@ type CriticResult struct {
 // GCLTrace is the full record of a GCL loop execution.
 // Mirrors the trace schema in gcl_runner.py.
 type GCLTrace struct {
-	TraceSchemaVersion string           `json:"trace_schema_version"`
-	Skill              string           `json:"skill"`
-	Model              string           `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
-	Request            string           `json:"request"`
-	OperationIntent    map[string]any   `json:"operation_intent,omitempty"`
-	RouterDecision     map[string]any   `json:"router_decision,omitempty"`
-	RubricVersion      string           `json:"rubric_version"`
-	MaskedFields       []string         `json:"masked_fields"`
-	DurationMs         int              `json:"duration_ms"`
-	TokenUsage         map[string]any   `json:"token_usage,omitempty"`
-	ResourceContext    map[string]any   `json:"resource_context,omitempty"`
-	OpsEfficiency      *OpsEfficiency   `json:"ops_efficiency,omitempty"`
-	CostAttribution    *CostAttribution `json:"cost_attribution,omitempty"`
-	BudgetExceeded     string           `json:"budget_exceeded,omitempty"`
-	Iterations         []Iteration      `json:"iterations"`
-	Final              *FinalResult     `json:"final,omitempty"`
+	TraceSchemaVersion     string               `json:"trace_schema_version"`
+	Skill                  string               `json:"skill"`
+	Model                  string               `json:"model,omitempty"` // LLM model (e.g. "anthropic/claude-3-5-sonnet"); "unknown" if unavailable
+	Request                string               `json:"request"`
+	OperationIntent        map[string]any       `json:"operation_intent,omitempty"`
+	RouterDecision         map[string]any       `json:"router_decision,omitempty"`
+	RubricVersion          string               `json:"rubric_version"`
+	MaskedFields           []string             `json:"masked_fields"`
+	DurationMs             int                  `json:"duration_ms"`
+	TokenUsage             map[string]any       `json:"token_usage,omitempty"`
+	ResourceContext        map[string]any       `json:"resource_context,omitempty"`
+	OpsEfficiency          *OpsEfficiency       `json:"ops_efficiency,omitempty"`
+	CostAttribution        *CostAttribution     `json:"cost_attribution,omitempty"`
+	BudgetExceeded         string               `json:"budget_exceeded,omitempty"`
+	Iterations             []Iteration          `json:"iterations"`
+	HallucinationDetection *HallucinationResult `json:"hallucination_detection,omitempty"`
+	Final                  *FinalResult         `json:"final,omitempty"`
 	// SanitizedRequest is a masked form of Request safe to surface to the
 	// Critic (and to store on the trace). Resource IDs and credentials are
 	// replaced with placeholders; see SanitizeRequest for the contract.
@@ -173,11 +174,12 @@ type Iteration struct {
 
 // FinalResult describes the terminal state of a GCL loop.
 type FinalResult struct {
-	Status         string          `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
-	Iter           int             `json:"iter"`
-	Output         string          `json:"output,omitempty"`
-	FailurePattern *FailurePattern `json:"failure_pattern,omitempty"`
-	Unresolved     []string        `json:"unresolved,omitempty"`
+	Status               string          `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
+	Iter                 int             `json:"iter"`
+	Output               string          `json:"output,omitempty"`
+	FailurePattern       *FailurePattern `json:"failure_pattern,omitempty"`
+	HallucinationBlocked bool            `json:"hallucination_blocked,omitempty"`
+	Unresolved           []string        `json:"unresolved,omitempty"`
 }
 
 // FailurePattern categorizes a recurring failure for事后 analysis.
@@ -204,6 +206,7 @@ type RunConfig struct {
 	Stdout          io.Writer
 	Stderr          io.Writer
 	Root            string // repository root for audit-results/
+	SkillRoot       string // path to the skill dir (e.g. Root/huaweicloud-ecs-ops); defaults to Root/<skill>
 	Model           string // LLM model for the Generator (optional; "unknown" if unavailable)
 	Budget          ResourceBudget
 	RouterDecision  map[string]any
@@ -409,6 +412,45 @@ func Run(cfg RunConfig) RunResult {
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
 		if generator.ExitCode == ExitTimeout && commandTimeout == remaining {
 			return failBudget(&cfg, &trace, startTime, "wall_clock")
+		}
+
+		// [H] Hallucination Detection — L1/L2/L3 checks before Critic.
+		// L1+L2 blocks immediately; L3 violations surface to Critic.
+		hdSkillRoot := cfg.SkillRoot
+		if hdSkillRoot == "" && cfg.Root != "" {
+			hdSkillRoot = filepath.Join(cfg.Root, cfg.Skill)
+		}
+		var hdResult *HallucinationResult
+		if hdSkillRoot != "" {
+			hd := NewHallucinationDetector(hdSkillRoot)
+			hdResult, _ = hd.Run(context.Background(), generator, &trace)
+		}
+
+		// SAFETY_FAIL: L1 or L2 hallucination blocked the output.
+		if hdResult != nil && hdResult.BlockedBySafety() {
+			trace.HallucinationDetection = hdResult
+			trace.Final = &FinalResult{
+				Status:               "SAFETY_FAIL",
+				Iter:                 iteration,
+				Output:               "",
+				HallucinationBlocked: true,
+				FailurePattern: &FailurePattern{
+					Category: "hallucination",
+					Skill:    cfg.Skill,
+					Command:  generator.Command,
+					Error:    hdResult.Summary,
+					Fix:      "fix invalid flags / JSON schema / WAF violations before retrying",
+					Reusable: true,
+				},
+			}
+			trace.DurationMs = int(time.Since(startTime).Milliseconds())
+			FinalizeFinopsAiops(&trace)
+			path, err := PersistTrace(&trace, cfg.Root)
+			if err != nil {
+				fmt.Fprintf(rcStderr(&cfg), "warning: PersistTrace failed: %v\n", err)
+			}
+			fmt.Fprintf(rcStderr(&cfg), "SAFETY_FAIL (hallucination blocked) — %s — trace: %s\n", hdResult.Summary, path)
+			return RunResult{ExitCode: ExitSafety, TracePath: path}
 		}
 
 		// Critic evaluates the Generator output. Default is the
