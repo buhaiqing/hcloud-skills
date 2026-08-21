@@ -405,8 +405,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 		if risk == "" {
 			risk = "medium"
 		}
-		trustLevel := "L2_established"
-		score := 0.65
+		trustLevel, score := trustForRisk(risk)
 		rbacDec := CheckCommandPermission(candidate, trustLevel, score)
 
 		if !rbacDec.Allowed {

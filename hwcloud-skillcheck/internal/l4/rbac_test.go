@@ -4,6 +4,26 @@ import (
 	"testing"
 )
 
+func TestTrustForRisk(t *testing.T) {
+	cases := []struct {
+		risk      string
+		wantTrust string
+		wantScore float64
+	}{
+		{"low", "L1_observed", 0.8},
+		{"high", "L3_verified", 0.5},
+		{"medium", "L2_established", 0.65},
+		{"", "L2_established", 0.65},
+		{"bogus", "L2_established", 0.65}, // unrecognized -> medium default
+	}
+	for _, tc := range cases {
+		trust, score := trustForRisk(tc.risk)
+		if trust != tc.wantTrust || score != tc.wantScore {
+			t.Errorf("trustForRisk(%q) = (%q, %.2f), want (%q, %.2f)", tc.risk, trust, score, tc.wantTrust, tc.wantScore)
+		}
+	}
+}
+
 func TestCheckPermission_DeleteImperative(t *testing.T) {
 	// Delete operations are immutable — require approval even at L4.
 	decision := CheckPermission("delete", "L4_autonomous", 0.99)
