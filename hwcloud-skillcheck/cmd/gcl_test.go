@@ -12,8 +12,10 @@ import (
 
 // testBinary is the shared GCL test binary. Building it used to happen once per
 // test call (4+ times); sync.Once makes the whole cmd test binary a single go
-// build. A fixed path under os.TempDir is deliberate: t.TempDir() is per-test,
-// so it cannot be shared across tests.
+// build. A pid-suffixed path under os.TempDir is deliberate: t.TempDir() is
+// per-test so it cannot be shared across tests, and the pid keeps concurrent
+// `go test ./cmd/` processes from colliding on one path. TestMain removes the
+// binary after the suite.
 var (
 	testBinaryOnce sync.Once
 	testBinary     string
@@ -25,7 +27,7 @@ var (
 func buildSkillcheckBinary(t *testing.T) string {
 	t.Helper()
 	testBinaryOnce.Do(func() {
-		bin := filepath.Join(os.TempDir(), "hwcloud-skillcheck-gcl-test-bin")
+		bin := filepath.Join(os.TempDir(), fmt.Sprintf("hwcloud-skillcheck-gcl-test-%d-bin", os.Getpid()))
 		// Build the main package from the module root (not from cmd/).
 		cmd := exec.Command("go", "build", "-o", bin, "github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck")
 		cmd.Dir = os.Getenv("SKILLCHECK_ROOT")
