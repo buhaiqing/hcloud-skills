@@ -182,7 +182,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 		// Check if all steps are done.
 		if task.CurrentStep >= len(task.Steps) {
 			CompleteTask(task)
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 
@@ -222,7 +222,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 			}
 			task.Results = append(task.Results, result)
 			FailTask(task, rbacDec.Reason)
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 
@@ -264,7 +264,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 			}
 			task.Results = append(task.Results, result)
 			FailTask(task, "safety check failed")
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 
@@ -285,7 +285,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 				GCLScores:    crit.Scores,
 			})
 			task.CurrentStep++
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			continue
 		}
 
@@ -316,7 +316,7 @@ func RunExecutionLoop(root string, task *TaskState, plan *ExecutionPlan, matched
 		task.CurrentStep++
 
 		// Persist checkpoint after each step.
-		_ = PersistTask(root, task.ID, task)
+		persistTaskChecked(root, task)
 	}
 
 	// Never reached.
@@ -347,7 +347,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 	for {
 		if task.CurrentStep >= len(task.Steps) {
 			CompleteTask(task)
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 		// Reset per-step retry budget when the loop advances to a new step.
@@ -371,7 +371,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 					GCLDecision: "SKIPPED_BY_HEALING",
 				})
 				task.CurrentStep++
-				_ = PersistTask(root, task.ID, task)
+				persistTaskChecked(root, task)
 				continue
 			}
 		}
@@ -396,7 +396,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 					GCLDecision:  "SKIPPED_BY_PATTERN_RISK",
 				})
 				task.CurrentStep++
-				_ = PersistTask(root, task.ID, task)
+				persistTaskChecked(root, task)
 				continue
 			}
 		}
@@ -423,7 +423,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 				GCLDecision:  "blocked_by_rbac",
 			})
 			FailTask(task, rbacDec.Reason)
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 
@@ -445,7 +445,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 				GCLScores:    crit.Scores,
 			})
 			FailTask(task, "safety check failed")
-			_ = PersistTask(root, task.ID, task)
+			persistTaskChecked(root, task)
 			return task
 		}
 
@@ -488,7 +488,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 					time.Sleep(p.RetryBackoff)
 				}
 				retryCount++
-				_ = PersistTask(root, task.ID, task)
+				persistTaskChecked(root, task)
 				continue // re-run the same step
 			}
 			// Permanent failure → attempt autonomous remediation (L4 autofix).
@@ -527,7 +527,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 		}
 
 		task.CurrentStep++
-		_ = PersistTask(root, task.ID, task)
+		persistTaskChecked(root, task)
 	}
 }
 
