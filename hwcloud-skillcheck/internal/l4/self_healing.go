@@ -9,6 +9,11 @@ import (
 // HealingPolicy configures pre-exec and post-failure hooks.
 // Zero value disables auto-retry and skip-on-bad-history (safe default).
 type HealingPolicy struct {
+	// MaxRetries is the per-run retry budget for a single step: how many times
+	// a transient failure is retried before escalating. It is NOT a
+	// per-task-lifetime budget — the in-memory retry count resets when the
+	// loop advances to the next step, and crash-resume starts each step at
+	// zero again.
 	MaxRetries               int
 	RetryBackoff             time.Duration
 	DestructiveVerbs         []string
