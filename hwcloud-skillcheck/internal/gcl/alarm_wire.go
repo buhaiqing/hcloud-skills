@@ -336,6 +336,11 @@ func WritePlan(report *AlarmPlanReport, auditDir, suffix string) (string, error)
 	return path, nil
 }
 
+// execCommand is the seam ApplyAlarmPlan shells out through. Tests replace it
+// with a stub so failure accounting runs hermetically regardless of whether a
+// real hcloud CLI is on PATH.
+var execCommand = exec.Command
+
 // ApplyAlarmPlan executes a list of alarm plan entries via hcloud ces CLI.
 // dryRun=true only writes the plan without executing. Mirrors cmd_apply in gcl_alarm_wire.py.
 func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
@@ -355,7 +360,7 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 			"--period", strconv.Itoa(entry.Period),
 			"--evaluation-periods", strconv.Itoa(entry.EvaluationPeriods),
 		}
-		cmd := exec.Command("hcloud", args...)
+		cmd := execCommand("hcloud", args...)
 		// Bound a hung hcloud CLI; without this the alarm wire blocks
 		// indefinitely. Mirrors the 60s guard in gcl_alarm_wire.py:cmd_apply.
 		//
