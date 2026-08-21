@@ -75,6 +75,14 @@ gcl_quality:
 	}
 }
 
+func TestParseThresholdsFromYAML_Malformed(t *testing.T) {
+	// Malformed YAML must silently keep defaults — no panic.
+	cfg := ParseThresholdsFromYAML("gcl_quality: [unclosed")
+	if cfg != DefaultThresholds {
+		t.Errorf("ParseThresholdsFromYAML(malformed) = %+v, want DefaultThresholds %+v", cfg, DefaultThresholds)
+	}
+}
+
 func TestEvaluate_PassRateCritical(t *testing.T) {
 	summary := QualitySummary{PassRate: 0.50, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}
 	thresholds := DefaultThresholds
