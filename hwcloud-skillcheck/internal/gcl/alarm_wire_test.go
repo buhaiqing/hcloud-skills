@@ -60,6 +60,21 @@ func TestParseThresholdsFromYAML_InlineComment(t *testing.T) {
 	}
 }
 
+func TestParseThresholdsFromYAML_TopLevelKeyBeforeBlock(t *testing.T) {
+	// An unrelated top-level key before gcl_quality: must not break parsing.
+	yaml := `version: 2
+gcl_quality:
+  pass_rate_warn: 0.75
+`
+	cfg := ParseThresholdsFromYAML(yaml)
+	if cfg.PassRateWarn != 0.75 {
+		t.Errorf("PassRateWarn = %.2f, want 0.75", cfg.PassRateWarn)
+	}
+	if cfg.PassRateCritical != DefaultThresholds.PassRateCritical {
+		t.Errorf("PassRateCritical = %.2f, want default %.2f", cfg.PassRateCritical, DefaultThresholds.PassRateCritical)
+	}
+}
+
 func TestEvaluate_PassRateCritical(t *testing.T) {
 	summary := QualitySummary{PassRate: 0.50, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}
 	thresholds := DefaultThresholds

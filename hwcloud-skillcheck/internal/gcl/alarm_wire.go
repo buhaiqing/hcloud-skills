@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Default thresholds mirroring gcl_alarm_wire.DEFAULT_THRESHOLDS.
@@ -101,55 +103,36 @@ func LoadThresholdsFromConfig(configPath string) (ThresholdConfig, error) {
 	return ParseThresholdsFromYAML(string(data)), nil
 }
 
-// ParseThresholdsFromYAML extracts gcl_quality thresholds from arbitrary YAML text.
+// ParseThresholdsFromYAML extracts gcl_quality thresholds from arbitrary YAML
+// text. Absent keys leave the DefaultThresholds value untouched; unknown keys
+// and malformed input are ignored (defaults preserved).
 // Mirrors load_thresholds_from_config_for_check in gcl_alarm_wire.py.
 func ParseThresholdsFromYAML(text string) ThresholdConfig {
 	cfg := DefaultThresholds
-	inBlock := false
-	for _, line := range strings.Split(text, "\n") {
-		stripped := strings.TrimSpace(line)
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			continue
-		}
-		if strings.HasPrefix(stripped, "gcl_quality:") {
-			inBlock = true
-			continue
-		}
-		if inBlock {
-			// Block ends when we hit a top-level key that's not indented.
-			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(stripped, ":") {
-				break
-			}
-			if !strings.Contains(stripped, ":") {
-				continue
-			}
-			parts := strings.SplitN(stripped, ":", 2)
-			if len(parts) < 2 {
-				continue
-			}
-			key := strings.TrimSpace(parts[0])
-			raw := strings.TrimSpace(parts[1])
-			// Strip inline comments.
-			if idx := strings.Index(raw, "#"); idx >= 0 {
-				raw = strings.TrimSpace(raw[:idx])
-			}
-			switch key {
-			case "pass_rate_warn":
-				if f, err := strconv.ParseFloat(raw, 64); err == nil {
-					cfg.PassRateWarn = f
-				}
-			case "pass_rate_critical":
-				if f, err := strconv.ParseFloat(raw, 64); err == nil {
-					cfg.PassRateCritical = f
-				}
-			case "max_iter_warn_count":
-				if i, err := strconv.Atoi(raw); err == nil {
-					cfg.MaxIterWarnCount = i
-				}
-			case "safety_fail_alert":
-				cfg.SafetyFailAlert = raw == "true"
-			}
-		}
+	var doc struct {
+		GCLQuality struct {
+			PassRateWarn     *float64 `yaml:"pass_rate_warn"`
+			PassRateCritical *float64 `yaml:"pass_rate_critical"`
+			MaxIterWarnCount *int     `yaml:"max_iter_warn_count"`
+			SafetyFailAlert  *bool    `yaml:"safety_fail_alert"`
+		} `yaml:"gcl_quality"`
+	}
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		// Mirror the hand-rolled parser: malformed input silently keeps defaults.
+		return DefaultThresholds
+	}
+	q := doc.GCLQuality
+	if q.PassRateWarn != nil {
+		cfg.PassRateWarn = *q.PassRateWarn
+	}
+	if q.PassRateCritical != nil {
+		cfg.PassRateCritical = *q.PassRateCritical
+	}
+	if q.MaxIterWarnCount != nil {
+		cfg.MaxIterWarnCount = *q.MaxIterWarnCount
+	}
+	if q.SafetyFailAlert != nil {
+		cfg.SafetyFailAlert = *q.SafetyFailAlert
 	}
 	return cfg
 }
