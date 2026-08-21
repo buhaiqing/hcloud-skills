@@ -2,7 +2,9 @@ package gcl
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -243,5 +245,30 @@ func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 	}
 	if len(loaded.AlarmPlan) != 4 {
 		t.Errorf("len(AlarmPlan) = %d, want 4", len(loaded.AlarmPlan))
+	}
+}
+
+// TestApplyAlarmPlan_ReturnsErrorOnFailure asserts ApplyAlarmPlan surfaces a
+// non-nil error when entries fail to apply, instead of swallowing them and
+// returning nil (the CLI caller wraps the error for the user).
+func TestApplyAlarmPlan_ReturnsErrorOnFailure(t *testing.T) {
+	// A live hcloud on PATH would make ApplyAlarmPlan shell out to a real
+	// cloud API — refuse to run that in tests. hcloud is normally absent, in
+	// which case CombinedOutput fails immediately and the accounting runs.
+	if _, err := exec.LookPath("hcloud"); err == nil {
+		t.Skip("hcloud in PATH: refusing to hit a live cloud CLI in tests")
+	}
+	plan := []AlarmPlanEntry{
+		{Name: "gcl-pass-rate-critical", Namespace: GCLNamespace, MetricName: GCLPassRateMetric, Period: 60, EvaluationPeriods: 1},
+		{Name: "gcl-safety-fail-critical", Namespace: GCLNamespace, MetricName: GCLSafetyFailMetric, Period: 60, EvaluationPeriods: 1},
+	}
+	err := ApplyAlarmPlan(plan, false)
+	if err == nil {
+		t.Fatal("ApplyAlarmPlan should return an error when every entry fails to apply")
+	}
+	for _, want := range []string{"2 of 2", "gcl-pass-rate-critical", "gcl-safety-fail-critical"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got %q", want, err.Error())
+		}
 	}
 }

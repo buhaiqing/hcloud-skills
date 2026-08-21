@@ -339,6 +339,7 @@ func WritePlan(report *AlarmPlanReport, auditDir, suffix string) (string, error)
 // ApplyAlarmPlan executes a list of alarm plan entries via hcloud ces CLI.
 // dryRun=true only writes the plan without executing. Mirrors cmd_apply in gcl_alarm_wire.py.
 func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
+	var failed []string
 	for _, entry := range plan {
 		if dryRun {
 			fmt.Printf("[dry-run] would: hcloud ces create-alarm-rule --name %s ...\n", entry.Name)
@@ -372,9 +373,13 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 		timer.Stop()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[apply] FAILED %s: %s\n", entry.Name, string(out))
+			failed = append(failed, entry.Name)
 			continue
 		}
 		fmt.Printf("[apply] OK: %s\n", entry.Name)
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d alarm rule(s) failed to apply: %s", len(failed), len(plan), strings.Join(failed, ", "))
 	}
 	return nil
 }
