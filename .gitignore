@@ -220,6 +220,7 @@ __marimo__/
 .omc/
 .omp/
 .codegraph/
+.codebase-memory/
 .claude/
 .agents/
 .lingma/
