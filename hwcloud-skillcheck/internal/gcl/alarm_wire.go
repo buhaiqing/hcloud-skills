@@ -211,9 +211,11 @@ func Evaluate(summary QualitySummary, thresholds ThresholdConfig) EvaluationResu
 	}
 }
 
-// RenderPlan generates CES alarm rule entries from an evaluation result.
+// RenderPlan generates the static SLO alarm rule entries for a GCL deployment.
+// The rules are fixed thresholds, not breach-driven — the evaluation result is
+// never consulted (callers run Evaluate separately).
 // Mirrors render_plan() in gcl_alarm_wire.py.
-func RenderPlan(evaluation EvaluationResult, passRateWarn, passRateCritical float64, maxIterWarnCount int) []AlarmPlanEntry {
+func RenderPlan(passRateWarn, passRateCritical float64, maxIterWarnCount int) []AlarmPlanEntry {
 	return []AlarmPlanEntry{
 		{
 			Op:                 "create-or-update-alarm-rule",
@@ -288,7 +290,7 @@ func BuildReport(summaryPath string, configPath string) (*AlarmPlanReport, error
 	}
 
 	evaluation := Evaluate(summary, thresholds)
-	alarmPlan := RenderPlan(evaluation, thresholds.PassRateWarn, thresholds.PassRateCritical, thresholds.MaxIterWarnCount)
+	alarmPlan := RenderPlan(thresholds.PassRateWarn, thresholds.PassRateCritical, thresholds.MaxIterWarnCount)
 
 	return &AlarmPlanReport{
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),

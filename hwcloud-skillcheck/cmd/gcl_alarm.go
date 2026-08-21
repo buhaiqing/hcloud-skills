@@ -81,7 +81,6 @@ func runGCLAlarmWire(args []string) error {
 
 	// Build alarm plan entries.
 	alarmPlan := gcl.RenderPlan(
-		evaluation,
 		thresholds.PassRateWarn,
 		thresholds.PassRateCritical,
 		thresholds.MaxIterWarnCount,

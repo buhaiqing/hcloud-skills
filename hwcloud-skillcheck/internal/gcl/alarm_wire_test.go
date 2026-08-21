@@ -172,8 +172,7 @@ func TestEvaluate_OK_CriticalBreachPresent(t *testing.T) {
 }
 
 func TestRenderPlan(t *testing.T) {
-	evaluation := Evaluate(QualitySummary{PassRate: 0.50, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}, DefaultThresholds)
-	plan := RenderPlan(evaluation, 0.85, 0.70, 3)
+	plan := RenderPlan(0.85, 0.70, 3)
 	if len(plan) != 4 {
 		t.Fatalf("len(plan) = %d, want 4", len(plan))
 	}
@@ -247,7 +246,7 @@ func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 		SummaryPath:     "/tmp/summary.json",
 		Thresholds:      DefaultThresholds,
 		Evaluation:      EvaluationResult{PassRate: 0.90, OK: true, Breaches: nil},
-		AlarmPlan:       RenderPlan(EvaluationResult{PassRate: 0.90, OK: true}, 0.85, 0.70, 3),
+		AlarmPlan:       RenderPlan(0.85, 0.70, 3),
 	}
 	// P1-5: ThresholdConfig must serialize with snake_case keys — the Python
 	// gcl_alarm_wire.py mirror reads pass_rate_warn, not PassRateWarn.
