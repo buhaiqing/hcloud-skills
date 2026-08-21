@@ -179,14 +179,18 @@ func CheckPermission(opType string, trustLevel string, score float64) RBACDecisi
 }
 
 // trustForRisk maps a step risk level to the RBAC trust level + score used
-// to auto-approve its command. Low risk permits broad auto-approval; high
-// risk requires stricter verification.
+// to auto-approve its command. Low step risk maps to a broad trust tier (wide
+// auto-approval); high step risk maps to a strict tier (tight auto-approval).
+// Unrecognized risk falls back to the medium default, matching pre-fix.
+//
+// ponytail: score is currently unused by trustToMaxRisk; kept for future
+// score-gated tiers and API stability.
 func trustForRisk(risk string) (string, float64) {
 	switch strings.ToLower(risk) {
-	case "low":
-		return "L1_observed", 0.8
 	case "high":
-		return "L3_verified", 0.5
+		return "L1_provisional", 0.5
+	case "low":
+		return "L3_trusted", 0.8
 	default: // medium / empty / unrecognized
 		return "L2_established", 0.65
 	}
