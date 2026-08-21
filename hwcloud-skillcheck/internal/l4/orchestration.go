@@ -308,9 +308,9 @@ func BuildExecutionPlan(fault string, skills []MatchedSkill, strategy string) *E
 		// Parallel/fan_out steps run concurrently, so the wall-clock bound is the
 		// max step timeout; sequential/pipeline sum their serial timeouts. The
 		// executor reuses MaxTotalTimeoutSeconds as the per-step timeout.
-		if (strategy == "parallel" || strategy == "fan_out_collect") && s.TimeoutSeconds > totalTimeout {
-			totalTimeout = s.TimeoutSeconds
-		} else if strategy != "parallel" && strategy != "fan_out_collect" {
+		if strategy == "parallel" || strategy == "fan_out_collect" {
+			totalTimeout = max(totalTimeout, s.TimeoutSeconds)
+		} else {
 			totalTimeout += s.TimeoutSeconds
 		}
 	}
