@@ -218,6 +218,9 @@ func TestBuildExecutionPlan_FanOutCollect(t *testing.T) {
 		{Skill: "huaweicloud-rds-ops", Confidence: 0.5, Domain: "database"},
 	}
 	plan := BuildExecutionPlan("multi-fault", skills, "fan_out_collect")
+	// Pin (not a regression test): guards a future else-branch refactor from
+	// accidentally serializing fan_out_collect — asserts the strategy name is
+	// honored and the plan stays parallel no-dep.
 	if plan.Strategy != "fan_out_collect" {
 		t.Fatalf("plan.strategy=%q, want fan_out_collect", plan.Strategy)
 	}

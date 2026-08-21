@@ -271,21 +271,9 @@ func BuildExecutionPlan(fault string, skills []MatchedSkill, strategy string) *E
 				TimeoutSeconds: 300,
 			})
 		}
-	} else if strategy == "parallel" {
-		for i, s := range skills {
-			steps = append(steps, PlanStep{
-				Step:           i + 1,
-				Skill:          s.Skill,
-				SkillShort:     skillShort(s.Skill),
-				Action:         "diagnose_and_remediate",
-				DependsOn:      []int{},
-				Confidence:     s.Confidence,
-				TimeoutSeconds: 300,
-			})
-		}
-	} else if strategy == "fan_out_collect" {
-		// >3 independent skills: fan-out = execute every skill in parallel
-		// with no inter-step dependency, then collect the results.
+	} else if strategy == "parallel" || strategy == "fan_out_collect" {
+		// parallel and fan_out_collect both mean independent no-dep steps
+		// (fan-out collects every skill's result at the end).
 		for i, s := range skills {
 			steps = append(steps, PlanStep{
 				Step:           i + 1,
