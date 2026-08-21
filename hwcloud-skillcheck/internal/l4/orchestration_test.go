@@ -255,3 +255,21 @@ func TestBuildExecutionPlan_ParallelMaxTimeout(t *testing.T) {
 		t.Errorf("sequential MaxTotalTimeoutSeconds = %d, want 900 (sum)", plan.MaxTotalTimeoutSeconds)
 	}
 }
+
+// TestSkillShort pins skillShort's behavior: strips the huaweicloud- prefix and
+// the -ops suffix. The huaweicloud-ops edge resolves to "ops" (no suffix to
+// strip after the prefix is removed) — pinned as-is rather than changed.
+func TestSkillShort(t *testing.T) {
+	for _, tc := range []struct {
+		in, want string
+	}{
+		{"huaweicloud-ecs-ops", "ecs"},
+		{"huaweicloud-css-ops", "css"},
+		{"ecs-ops", "ecs"},
+		{"huaweicloud-ops", "ops"},
+	} {
+		if got := skillShort(tc.in); got != tc.want {
+			t.Errorf("skillShort(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
