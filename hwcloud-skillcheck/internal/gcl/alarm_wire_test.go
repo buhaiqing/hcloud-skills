@@ -268,7 +268,7 @@ func TestApplyAlarmPlan_ReturnsErrorOnFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("ApplyAlarmPlan should return an error when every entry fails to apply")
 	}
-	for _, want := range []string{"2 of 2", "gcl-pass-rate-critical"} {
+	for _, want := range []string{"2 of 2", "gcl-pass-rate-critical", "apply boom"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %q, got %q", want, err.Error())
 		}
