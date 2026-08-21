@@ -294,6 +294,9 @@ func (c *criticArgsValue) String() string {
 }
 
 func (c *criticArgsValue) Set(v string) error {
+	if c.slice == nil {
+		return fmt.Errorf("criticArgsValue: nil slice")
+	}
 	*c.slice = append(*c.slice, v)
 	return nil
 }
