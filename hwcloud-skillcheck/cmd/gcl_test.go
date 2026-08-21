@@ -93,8 +93,9 @@ func TestGCLAlarmHelp(t *testing.T) {
 // TestGCLRunSmoke exercises `gcl run` against a real skill to verify no panic.
 func TestGCLRunSmoke(t *testing.T) {
 	bin := buildSkillcheckBinary(t)
-	// huaweicloud-ecs-ops is in the parent of the hwcloud-skillcheck worktree.
-	skillDir := filepath.Join(os.Getenv("SKILLCHECK_ROOT"), "huaweicloud-ecs-ops")
+	// Skill dirs live at the repo root, siblings of the hwcloud-skillcheck
+	// module (SKILLCHECK_ROOT points at the module root for the build above).
+	skillDir := filepath.Join(os.Getenv("SKILLCHECK_ROOT"), "..", "huaweicloud-ecs-ops")
 	if _, err := os.Stat(skillDir); err != nil {
 		t.Skip("huaweicloud-ecs-ops not found, skipping smoke test")
 	}
@@ -104,5 +105,17 @@ func TestGCLRunSmoke(t *testing.T) {
 	// log-only output would let a broken `gcl run` silently pass.
 	if err != nil || cmd.ProcessState.ExitCode() != 0 {
 		t.Fatalf("gcl run failed: %v\n%s", err, out)
+	}
+}
+
+// TestGCLRunSmoke_FailsOnNonZeroExit proves the smoke assertion is real, not
+// dead code: `gcl run` against a nonexistent skill dir exits non-zero — the
+// exact condition TestGCLRunSmoke's Fatalf guards on.
+func TestGCLRunSmoke_FailsOnNonZeroExit(t *testing.T) {
+	bin := buildSkillcheckBinary(t)
+	cmd := exec.Command(bin, "gcl", "run", "--root", filepath.Join(t.TempDir(), "no-such-skill"), "--quiet")
+	out, err := cmd.CombinedOutput()
+	if err == nil || cmd.ProcessState.ExitCode() == 0 {
+		t.Fatalf("gcl run on a missing root should exit non-zero, got err=%v exit=%v\n%s", err, cmd.ProcessState.ExitCode(), out)
 	}
 }
