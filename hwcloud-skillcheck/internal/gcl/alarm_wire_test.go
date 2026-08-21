@@ -1,9 +1,11 @@
 package gcl
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -232,6 +234,34 @@ func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 		Evaluation:      EvaluationResult{PassRate: 0.90, OK: true, Breaches: nil},
 		AlarmPlan:       RenderPlan(EvaluationResult{PassRate: 0.90, OK: true}, 0.85, 0.70, 3),
 	}
+	// P1-5: ThresholdConfig must serialize with snake_case keys — the Python
+	// gcl_alarm_wire.py mirror reads pass_rate_warn, not PassRateWarn.
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	thr, ok := raw["thresholds"].(map[string]any)
+	if !ok {
+		t.Fatalf("thresholds not an object in JSON: %T", raw["thresholds"])
+	}
+	keys := make([]string, 0, len(thr))
+	for k := range thr {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, want := range []string{"pass_rate_warn", "pass_rate_critical", "max_iter_warn_count", "safety_fail_alert"} {
+		if _, present := thr[want]; !present {
+			t.Errorf("thresholds JSON missing key %q; got %v", want, keys)
+		}
+	}
+	if _, present := thr["PassRateWarn"]; present {
+		t.Error("thresholds JSON leaks Go field name PassRateWarn")
+	}
+
 	path, err := WritePlan(report, tmpDir, "roundtrip")
 	if err != nil {
 		t.Fatalf("WritePlan: %v", err)

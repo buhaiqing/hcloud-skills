@@ -30,11 +30,12 @@ const (
 )
 
 // ThresholdConfig holds the SLO threshold values for GCL quality evaluation.
+// JSON tags match the Python gcl_alarm_wire.py snake_case contract.
 type ThresholdConfig struct {
-	PassRateWarn     float64
-	PassRateCritical float64
-	MaxIterWarnCount int
-	SafetyFailAlert  bool
+	PassRateWarn     float64 `json:"pass_rate_warn"`
+	PassRateCritical float64 `json:"pass_rate_critical"`
+	MaxIterWarnCount int     `json:"max_iter_warn_count"`
+	SafetyFailAlert  bool    `json:"safety_fail_alert"`
 }
 
 // QualitySummary represents the aggregated GCL quality data from gcl_trace_aggregate.
