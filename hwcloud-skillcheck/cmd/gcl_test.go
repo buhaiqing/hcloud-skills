@@ -1,23 +1,49 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
 
-// skillcheckBinary is built on demand for each test that needs it.
+// testBinary is the shared GCL test binary. Building it used to happen once per
+// test call (4+ times); sync.Once makes the whole cmd test binary a single go
+// build. A pid-suffixed path under os.TempDir is deliberate: t.TempDir() is
+// per-test so it cannot be shared across tests, and the pid keeps concurrent
+// `go test ./cmd/` processes from colliding on one path. TestMain removes the
+// binary after the suite.
+var (
+	testBinaryOnce sync.Once
+	testBinary     string
+	testBinaryErr  error
+)
+
+// buildSkillcheckBinary returns the shared test binary path, building it once
+// on first call.
 func buildSkillcheckBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join("/tmp", "hwcloud-skillcheck-gcl-test-"+filepath.Base(t.TempDir()))
-	// Build the main package from the module root (not from cmd/).
-	cmd := exec.Command("go", "build", "-o", bin, "github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck")
-	cmd.Dir = os.Getenv("SKILLCHECK_ROOT")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("go build failed: %v\n%s", err, out)
+	testBinaryOnce.Do(func() {
+		bin := filepath.Join(os.TempDir(), fmt.Sprintf("hwcloud-skillcheck-gcl-test-%d-bin", os.Getpid()))
+		// Build the main package from the module root (not from cmd/).
+		cmd := exec.Command("go", "build", "-o", bin, "github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck")
+		cmd.Dir = os.Getenv("SKILLCHECK_ROOT")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			// Record the error instead of t.Skipf here: t.Skipf Goexits, which
+			// unwinds sync.Once before it marks itself done, so the next test
+			// would re-run the closure AND read an empty binary path.
+			testBinaryErr = fmt.Errorf("go build failed: %w\n%s", err, out)
+			return
+		}
+		testBinary = bin
+	})
+	if testBinaryErr != nil {
+		t.Skipf("%v", testBinaryErr)
 	}
-	return bin
+	return testBinary
 }
 
 func TestGCLHelp(t *testing.T) {
@@ -29,7 +55,7 @@ func TestGCLHelp(t *testing.T) {
 	}
 	got := string(out)
 	for _, want := range []string{"hwcloud-skillcheck gcl run", "hwcloud-skillcheck gcl alarm-wire"} {
-		if !contains(got, want) {
+		if !strings.Contains(got, want) {
 			t.Errorf("gcl --help output missing %q:\n%s", want, got)
 		}
 	}
@@ -43,11 +69,11 @@ func TestGCLRunHelp(t *testing.T) {
 		t.Fatalf("gcl run --help failed: %v", err)
 	}
 	got := string(out)
-	if !contains(got, "-root") && !contains(got, "hwcloud-skillcheck gcl run") {
+	if !strings.Contains(got, "-root") && !strings.Contains(got, "hwcloud-skillcheck gcl run") {
 		t.Errorf("gcl run --help output unexpected:\n%s", got)
 	}
 	for _, want := range []string{"-budget-tokens", "-budget-tool-calls", "-budget-wall-clock", "-max-iter", "-structural-critic-only"} {
-		if !contains(got, want) {
+		if !strings.Contains(got, want) {
 			t.Errorf("gcl run help missing %q:\n%s", want, got)
 		}
 	}
@@ -61,7 +87,7 @@ func TestGCLAlarmHelp(t *testing.T) {
 		t.Fatalf("gcl alarm-wire --help failed: %v", err)
 	}
 	got := string(out)
-	if !contains(got, "-root") && !contains(got, "-json") {
+	if !strings.Contains(got, "-root") && !strings.Contains(got, "-json") {
 		t.Errorf("gcl alarm-wire --help output unexpected:\n%s", got)
 	}
 }
@@ -69,26 +95,29 @@ func TestGCLAlarmHelp(t *testing.T) {
 // TestGCLRunSmoke exercises `gcl run` against a real skill to verify no panic.
 func TestGCLRunSmoke(t *testing.T) {
 	bin := buildSkillcheckBinary(t)
-	// huaweicloud-ecs-ops is in the parent of the hwcloud-skillcheck worktree.
-	skillDir := filepath.Join(os.Getenv("SKILLCHECK_ROOT"), "huaweicloud-ecs-ops")
+	// Skill dirs live at the repo root, siblings of the hwcloud-skillcheck
+	// module (SKILLCHECK_ROOT points at the module root for the build above).
+	skillDir := filepath.Join(os.Getenv("SKILLCHECK_ROOT"), "..", "huaweicloud-ecs-ops")
 	if _, err := os.Stat(skillDir); err != nil {
 		t.Skip("huaweicloud-ecs-ops not found, skipping smoke test")
 	}
 	cmd := exec.Command(bin, "gcl", "run", "--root", skillDir, "--quiet")
 	out, err := cmd.CombinedOutput()
-	t.Logf("gcl run output: %s", string(out))
-	t.Logf("gcl run exit error: %v", err)
-}
-
-func contains(s, substr string) bool {
-	return len(substr) > 0 && len(s) >= len(substr) && findSubstring(s, substr)
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+	// A non-zero exit (or a failed spawn) means the smoke run itself broke —
+	// log-only output would let a broken `gcl run` silently pass.
+	if err != nil || cmd.ProcessState.ExitCode() != 0 {
+		t.Fatalf("gcl run failed: %v\n%s", err, out)
 	}
-	return false
+}
+
+// TestGCLRunSmoke_FailsOnNonZeroExit proves the smoke assertion is real, not
+// dead code: `gcl run` against a nonexistent skill dir exits non-zero — the
+// exact condition TestGCLRunSmoke's Fatalf guards on.
+func TestGCLRunSmoke_FailsOnNonZeroExit(t *testing.T) {
+	bin := buildSkillcheckBinary(t)
+	cmd := exec.Command(bin, "gcl", "run", "--root", filepath.Join(t.TempDir(), "no-such-skill"), "--quiet")
+	out, err := cmd.CombinedOutput()
+	if err == nil || cmd.ProcessState.ExitCode() == 0 {
+		t.Fatalf("gcl run on a missing root should exit non-zero, got err=%v exit=%v\n%s", err, cmd.ProcessState.ExitCode(), out)
+	}
 }

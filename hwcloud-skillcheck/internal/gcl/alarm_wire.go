@@ -144,6 +144,11 @@ func Evaluate(summary QualitySummary, thresholds ThresholdConfig) EvaluationResu
 	if passRate < 0 {
 		passRate = 0
 	}
+	// A pass rate above 100% is data corruption; clamp to 1.0 (perfect) so a
+	// garbage value can't silently skew threshold comparisons.
+	if passRate > 1 {
+		passRate = 1
+	}
 
 	safetyFail := 0
 	if t, ok := summary.Totals["SAFETY_FAIL"]; ok {

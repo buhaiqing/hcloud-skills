@@ -179,6 +179,29 @@ func TestEvaluate_OK_CriticalBreachPresent(t *testing.T) {
 	}
 }
 
+// TestEvaluate_PassRateUpperBound pins both pass_rate clamps. A rate above
+// 100% is data corruption — it must clamp to 1.0 (perfect) so a garbage value
+// can't silently shift threshold comparisons. The negative clamp is pinned too
+// so both bounds stay covered together.
+func TestEvaluate_PassRateUpperBound(t *testing.T) {
+	summary := QualitySummary{PassRate: 1.5, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}
+	result := Evaluate(summary, DefaultThresholds)
+	if result.PassRate != 1.0 {
+		t.Errorf("pass_rate=1.5 should clamp to 1.0, got %.2f", result.PassRate)
+	}
+	if !result.OK {
+		t.Errorf("pass_rate clamped to 1.0 should be OK=true, got breaches=%v", result.Breaches)
+	}
+	if len(result.Breaches) != 0 {
+		t.Errorf("pass_rate clamped to 1.0 should produce no breaches, got %d", len(result.Breaches))
+	}
+
+	negative := QualitySummary{PassRate: -0.5, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}
+	if res := Evaluate(negative, DefaultThresholds); res.PassRate != 0 {
+		t.Errorf("pass_rate=-0.5 should clamp to 0, got %.2f", res.PassRate)
+	}
+}
+
 func TestRenderPlan(t *testing.T) {
 	plan := RenderPlan(0.85, 0.70, 3)
 	if len(plan) != 4 {

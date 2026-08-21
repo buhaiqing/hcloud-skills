@@ -14,7 +14,12 @@ import (
 // `go test -v` output without adding signal.
 func TestMain(m *testing.M) {
 	os.Setenv("SKILLCHECK_QUIET", "1")
-	os.Exit(m.Run())
+	code := m.Run()
+	// Remove the shared GCL test binary left behind by buildSkillcheckBinary.
+	if testBinary != "" {
+		os.Remove(testBinary)
+	}
+	os.Exit(code)
 }
 
 // scaffoldGCLGoFiles writes minimal internal/gcl/*.go stubs into
