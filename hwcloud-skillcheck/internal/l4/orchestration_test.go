@@ -206,3 +206,33 @@ func TestBuildExecutionPlan_PlanIDFormat(t *testing.T) {
 		t.Errorf("plan_id=%q, want 12 hex chars after orch-", plan.PlanID)
 	}
 }
+
+// TestBuildExecutionPlan_FanOutCollect pins the fan_out_collect strategy: it
+// must produce one parallel no-dep step per skill so the strategy name the
+// plan declares is actually honored by the plan shape.
+func TestBuildExecutionPlan_FanOutCollect(t *testing.T) {
+	skills := []MatchedSkill{
+		{Skill: "huaweicloud-ecs-ops", Confidence: 0.5, Domain: "compute"},
+		{Skill: "huaweicloud-ces-ops", Confidence: 0.5, Domain: "monitoring"},
+		{Skill: "huaweicloud-vpc-ops", Confidence: 0.5, Domain: "network"},
+		{Skill: "huaweicloud-rds-ops", Confidence: 0.5, Domain: "database"},
+	}
+	plan := BuildExecutionPlan("multi-fault", skills, "fan_out_collect")
+	// Pin (not a regression test): guards a future else-branch refactor from
+	// accidentally serializing fan_out_collect — asserts the strategy name is
+	// honored and the plan stays parallel no-dep.
+	if plan.Strategy != "fan_out_collect" {
+		t.Fatalf("plan.strategy=%q, want fan_out_collect", plan.Strategy)
+	}
+	if len(plan.Steps) != len(skills) {
+		t.Fatalf("plan has %d steps, want %d", len(plan.Steps), len(skills))
+	}
+	for i, s := range plan.Steps {
+		if len(s.DependsOn) != 0 {
+			t.Errorf("fan_out_collect step[%d].depends_on=%v, want []", i, s.DependsOn)
+		}
+		if s.Skill != skills[i].Skill {
+			t.Errorf("step[%d].skill=%q, want %q", i, s.Skill, skills[i].Skill)
+		}
+	}
+}

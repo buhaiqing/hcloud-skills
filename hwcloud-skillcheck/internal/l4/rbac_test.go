@@ -4,6 +4,48 @@ import (
 	"testing"
 )
 
+func TestTrustForRisk(t *testing.T) {
+	cases := []struct {
+		risk      string
+		wantTrust string
+		wantScore float64
+	}{
+		{"low", "L3_trusted", 0.8},      // broad tier for low-risk steps
+		{"high", "L1_provisional", 0.5}, // strict tier for high-risk steps
+		{"medium", "L2_established", 0.65},
+		{"", "L2_established", 0.65},
+		{"bogus", "L2_established", 0.65}, // unrecognized -> medium default
+		{"Low", "L3_trusted", 0.8},        // case-insensitive
+		{"HIGH", "L1_provisional", 0.5},   // case-insensitive
+	}
+	for _, tc := range cases {
+		trust, score := trustForRisk(tc.risk)
+		if trust != tc.wantTrust || score != tc.wantScore {
+			t.Errorf("trustForRisk(%q) = (%q, %.2f), want (%q, %.2f)", tc.risk, trust, score, tc.wantTrust, tc.wantScore)
+		}
+	}
+}
+
+// TestTrustForRisk_DecisionTiers asserts the mapping is decision-relevant:
+// the low-risk step's broad tier (L3_trusted) auto-approves an op that the
+// high-risk step's strict tier (L1_provisional) denies, and the medium
+// default (L2_established) keeps approving medium-risk ops as pre-fix.
+func TestTrustForRisk_DecisionTiers(t *testing.T) {
+	// create-server is not in DefaultOperationPermissions, so it falls back to
+	// high risk — an op the L3 broad tier allows but L1 strict tier denies.
+	cmd := "hcloud ecs create-server --image img-1"
+	if got := CheckCommandPermission(cmd, "L3_trusted", 0.8); !got.Allowed {
+		t.Errorf("L3_trusted (low-risk step tier) should auto-approve, denied: %s", got.Reason)
+	}
+	if got := CheckCommandPermission(cmd, "L1_provisional", 0.5); got.Allowed {
+		t.Errorf("L1_provisional (high-risk step tier) should deny, allowed: %s", got.Reason)
+	}
+	// Medium risk unchanged from pre-fix: L2_established still auto-approves.
+	if got := CheckCommandPermission("hcloud ecs create --image img-1", "L2_established", 0.65); !got.Allowed {
+		t.Errorf("L2_established should auto-approve medium-risk create, denied: %s", got.Reason)
+	}
+}
+
 func TestCheckPermission_DeleteImperative(t *testing.T) {
 	// Delete operations are immutable — require approval even at L4.
 	decision := CheckPermission("delete", "L4_autonomous", 0.99)

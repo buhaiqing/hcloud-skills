@@ -271,7 +271,9 @@ func BuildExecutionPlan(fault string, skills []MatchedSkill, strategy string) *E
 				TimeoutSeconds: 300,
 			})
 		}
-	} else if strategy == "parallel" {
+	} else if strategy == "parallel" || strategy == "fan_out_collect" {
+		// parallel and fan_out_collect both mean independent no-dep steps
+		// (fan-out collects every skill's result at the end).
 		for i, s := range skills {
 			steps = append(steps, PlanStep{
 				Step:           i + 1,

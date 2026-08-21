@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Default thresholds mirroring gcl_alarm_wire.DEFAULT_THRESHOLDS.
@@ -30,11 +32,12 @@ const (
 )
 
 // ThresholdConfig holds the SLO threshold values for GCL quality evaluation.
+// JSON tags match the Python gcl_alarm_wire.py snake_case contract.
 type ThresholdConfig struct {
-	PassRateWarn     float64
-	PassRateCritical float64
-	MaxIterWarnCount int
-	SafetyFailAlert  bool
+	PassRateWarn     float64 `json:"pass_rate_warn"`
+	PassRateCritical float64 `json:"pass_rate_critical"`
+	MaxIterWarnCount int     `json:"max_iter_warn_count"`
+	SafetyFailAlert  bool    `json:"safety_fail_alert"`
 }
 
 // QualitySummary represents the aggregated GCL quality data from gcl_trace_aggregate.
@@ -100,55 +103,36 @@ func LoadThresholdsFromConfig(configPath string) (ThresholdConfig, error) {
 	return ParseThresholdsFromYAML(string(data)), nil
 }
 
-// ParseThresholdsFromYAML extracts gcl_quality thresholds from arbitrary YAML text.
+// ParseThresholdsFromYAML extracts gcl_quality thresholds from arbitrary YAML
+// text. Absent keys leave the DefaultThresholds value untouched; unknown keys
+// and malformed input are ignored (defaults preserved).
 // Mirrors load_thresholds_from_config_for_check in gcl_alarm_wire.py.
 func ParseThresholdsFromYAML(text string) ThresholdConfig {
 	cfg := DefaultThresholds
-	inBlock := false
-	for _, line := range strings.Split(text, "\n") {
-		stripped := strings.TrimSpace(line)
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			continue
-		}
-		if strings.HasPrefix(stripped, "gcl_quality:") {
-			inBlock = true
-			continue
-		}
-		if inBlock {
-			// Block ends when we hit a top-level key that's not indented.
-			if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") && strings.Contains(stripped, ":") {
-				break
-			}
-			if !strings.Contains(stripped, ":") {
-				continue
-			}
-			parts := strings.SplitN(stripped, ":", 2)
-			if len(parts) < 2 {
-				continue
-			}
-			key := strings.TrimSpace(parts[0])
-			raw := strings.TrimSpace(parts[1])
-			// Strip inline comments.
-			if idx := strings.Index(raw, "#"); idx >= 0 {
-				raw = strings.TrimSpace(raw[:idx])
-			}
-			switch key {
-			case "pass_rate_warn":
-				if f, err := strconv.ParseFloat(raw, 64); err == nil {
-					cfg.PassRateWarn = f
-				}
-			case "pass_rate_critical":
-				if f, err := strconv.ParseFloat(raw, 64); err == nil {
-					cfg.PassRateCritical = f
-				}
-			case "max_iter_warn_count":
-				if i, err := strconv.Atoi(raw); err == nil {
-					cfg.MaxIterWarnCount = i
-				}
-			case "safety_fail_alert":
-				cfg.SafetyFailAlert = raw == "true"
-			}
-		}
+	var doc struct {
+		GCLQuality struct {
+			PassRateWarn     *float64 `yaml:"pass_rate_warn"`
+			PassRateCritical *float64 `yaml:"pass_rate_critical"`
+			MaxIterWarnCount *int     `yaml:"max_iter_warn_count"`
+			SafetyFailAlert  *bool    `yaml:"safety_fail_alert"`
+		} `yaml:"gcl_quality"`
+	}
+	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
+		// Mirror the hand-rolled parser: malformed input silently keeps defaults.
+		return DefaultThresholds
+	}
+	q := doc.GCLQuality
+	if q.PassRateWarn != nil {
+		cfg.PassRateWarn = *q.PassRateWarn
+	}
+	if q.PassRateCritical != nil {
+		cfg.PassRateCritical = *q.PassRateCritical
+	}
+	if q.MaxIterWarnCount != nil {
+		cfg.MaxIterWarnCount = *q.MaxIterWarnCount
+	}
+	if q.SafetyFailAlert != nil {
+		cfg.SafetyFailAlert = *q.SafetyFailAlert
 	}
 	return cfg
 }
@@ -227,9 +211,11 @@ func Evaluate(summary QualitySummary, thresholds ThresholdConfig) EvaluationResu
 	}
 }
 
-// RenderPlan generates CES alarm rule entries from an evaluation result.
+// RenderPlan generates the static SLO alarm rule entries for a GCL deployment.
+// The rules are fixed thresholds, not breach-driven — the evaluation result is
+// never consulted (callers run Evaluate separately).
 // Mirrors render_plan() in gcl_alarm_wire.py.
-func RenderPlan(evaluation EvaluationResult, passRateWarn, passRateCritical float64, maxIterWarnCount int) []AlarmPlanEntry {
+func RenderPlan(passRateWarn, passRateCritical float64, maxIterWarnCount int) []AlarmPlanEntry {
 	return []AlarmPlanEntry{
 		{
 			Op:                 "create-or-update-alarm-rule",
@@ -304,7 +290,7 @@ func BuildReport(summaryPath string, configPath string) (*AlarmPlanReport, error
 	}
 
 	evaluation := Evaluate(summary, thresholds)
-	alarmPlan := RenderPlan(evaluation, thresholds.PassRateWarn, thresholds.PassRateCritical, thresholds.MaxIterWarnCount)
+	alarmPlan := RenderPlan(thresholds.PassRateWarn, thresholds.PassRateCritical, thresholds.MaxIterWarnCount)
 
 	return &AlarmPlanReport{
 		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
@@ -336,9 +322,18 @@ func WritePlan(report *AlarmPlanReport, auditDir, suffix string) (string, error)
 	return path, nil
 }
 
+// execCommand is the seam ApplyAlarmPlan shells out through. Tests replace it
+// with a stub so failure accounting runs hermetically regardless of whether a
+// real hcloud CLI is on PATH.
+var execCommand = exec.Command
+
 // ApplyAlarmPlan executes a list of alarm plan entries via hcloud ces CLI.
 // dryRun=true only writes the plan without executing. Mirrors cmd_apply in gcl_alarm_wire.py.
 func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
+	failedCount := 0
+	// Keep the first failure's name + output so the aggregate error carries a
+	// representative detail snippet for the CLI caller to surface.
+	firstFailName, firstFailOut := "", ""
 	for _, entry := range plan {
 		if dryRun {
 			fmt.Printf("[dry-run] would: hcloud ces create-alarm-rule --name %s ...\n", entry.Name)
@@ -354,7 +349,7 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 			"--period", strconv.Itoa(entry.Period),
 			"--evaluation-periods", strconv.Itoa(entry.EvaluationPeriods),
 		}
-		cmd := exec.Command("hcloud", args...)
+		cmd := execCommand("hcloud", args...)
 		// Bound a hung hcloud CLI; without this the alarm wire blocks
 		// indefinitely. Mirrors the 60s guard in gcl_alarm_wire.py:cmd_apply.
 		//
@@ -372,9 +367,20 @@ func ApplyAlarmPlan(plan []AlarmPlanEntry, dryRun bool) error {
 		timer.Stop()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "[apply] FAILED %s: %s\n", entry.Name, string(out))
+			if failedCount == 0 {
+				firstFailName = entry.Name
+				firstFailOut = strings.TrimSpace(string(out))
+				if len(firstFailOut) > 200 {
+					firstFailOut = firstFailOut[:200] + "..."
+				}
+			}
+			failedCount++
 			continue
 		}
 		fmt.Printf("[apply] OK: %s\n", entry.Name)
+	}
+	if failedCount > 0 {
+		return fmt.Errorf("%d of %d alarm rule(s) failed to apply (e.g. %s: %s)", failedCount, len(plan), firstFailName, firstFailOut)
 	}
 	return nil
 }

@@ -94,13 +94,14 @@ func TestRetryPromptBuilder_InterfaceContract(t *testing.T) {
 	}
 	p1 := b.Build(gen, critic, 1)
 	p2 := b.Build(gen, critic, 1)
-	// Identical inputs should produce the same *shape* — we cannot
-	// guarantee identical timestamps, but the command + scores must
-	// be byte-identical and the timestamp must be present both times.
+	// Identical inputs produce byte-identical output (no wall-clock stamp).
 	for _, sub := range []string{gen.Command, "correctness="} {
 		if !strings.Contains(p1, sub) || !strings.Contains(p2, sub) {
 			t.Errorf("missing %q in repeated builds", sub)
 		}
+	}
+	if p1 != p2 {
+		t.Errorf("identical inputs produced differing prompts")
 	}
 }
 
@@ -142,6 +143,26 @@ func TestMinimalFeedbackRetry_SurfacesLeakWarning(t *testing.T) {
 	got := b.Build(gen, critic, 1)
 	if !strings.Contains(got, "credential leak") {
 		t.Errorf("prompt missing leak warning: %q", got)
+	}
+}
+
+// TestMinimalFeedbackRetryDeterministic pins the interface contract:
+// identical inputs must produce byte-identical output (the runner depends
+// on stable fixtures for reproducible retries). A wall-clock stamp would
+// break this, so this test guards against reintroducing one.
+func TestMinimalFeedbackRetryDeterministic(t *testing.T) {
+	var b RetryPromptBuilder = MinimalFeedbackRetry{}
+	gen := GeneratorOutput{Command: "hcloud ecs list --region cn-north-4", ExitCode: 1, DurationMs: 42, StdoutLen: 8, StderrLen: 64}
+	critic := CriticResult{
+		Scores:      map[string]float64{"correctness": 0.0, "safety": 1.0, "idempotency": 0.0, "traceability": 0.0, "spec_compliance": 0.0},
+		Suggestions: []string{"check region first"},
+		Blocking:    false,
+		Mode:        "structural-only",
+	}
+	p1 := b.Build(gen, critic, 2)
+	p2 := b.Build(gen, critic, 2)
+	if p1 != p2 {
+		t.Fatalf("Build is non-deterministic for identical inputs:\n--- p1 ---\n%s\n--- p2 ---\n%s", p1, p2)
 	}
 }
 

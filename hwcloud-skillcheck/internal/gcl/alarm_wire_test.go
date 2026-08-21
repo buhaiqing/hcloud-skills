@@ -1,8 +1,12 @@
 package gcl
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +57,29 @@ func TestParseThresholdsFromYAML_InlineComment(t *testing.T) {
 	}
 	if !cfg.SafetyFailAlert {
 		t.Error("SafetyFailAlert = false, want true")
+	}
+}
+
+func TestParseThresholdsFromYAML_TopLevelKeyBeforeBlock(t *testing.T) {
+	// An unrelated top-level key before gcl_quality: must not break parsing.
+	yaml := `version: 2
+gcl_quality:
+  pass_rate_warn: 0.75
+`
+	cfg := ParseThresholdsFromYAML(yaml)
+	if cfg.PassRateWarn != 0.75 {
+		t.Errorf("PassRateWarn = %.2f, want 0.75", cfg.PassRateWarn)
+	}
+	if cfg.PassRateCritical != DefaultThresholds.PassRateCritical {
+		t.Errorf("PassRateCritical = %.2f, want default %.2f", cfg.PassRateCritical, DefaultThresholds.PassRateCritical)
+	}
+}
+
+func TestParseThresholdsFromYAML_Malformed(t *testing.T) {
+	// Malformed YAML must silently keep defaults — no panic.
+	cfg := ParseThresholdsFromYAML("gcl_quality: [unclosed")
+	if cfg != DefaultThresholds {
+		t.Errorf("ParseThresholdsFromYAML(malformed) = %+v, want DefaultThresholds %+v", cfg, DefaultThresholds)
 	}
 }
 
@@ -153,8 +180,7 @@ func TestEvaluate_OK_CriticalBreachPresent(t *testing.T) {
 }
 
 func TestRenderPlan(t *testing.T) {
-	evaluation := Evaluate(QualitySummary{PassRate: 0.50, Totals: map[string]int{"SAFETY_FAIL": 0, "MAX_ITER": 0}}, DefaultThresholds)
-	plan := RenderPlan(evaluation, 0.85, 0.70, 3)
+	plan := RenderPlan(0.85, 0.70, 3)
 	if len(plan) != 4 {
 		t.Fatalf("len(plan) = %d, want 4", len(plan))
 	}
@@ -228,8 +254,36 @@ func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 		SummaryPath:     "/tmp/summary.json",
 		Thresholds:      DefaultThresholds,
 		Evaluation:      EvaluationResult{PassRate: 0.90, OK: true, Breaches: nil},
-		AlarmPlan:       RenderPlan(EvaluationResult{PassRate: 0.90, OK: true}, 0.85, 0.70, 3),
+		AlarmPlan:       RenderPlan(0.85, 0.70, 3),
 	}
+	// P1-5: ThresholdConfig must serialize with snake_case keys — the Python
+	// gcl_alarm_wire.py mirror reads pass_rate_warn, not PassRateWarn.
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal report: %v", err)
+	}
+	thr, ok := raw["thresholds"].(map[string]any)
+	if !ok {
+		t.Fatalf("thresholds not an object in JSON: %T", raw["thresholds"])
+	}
+	keys := make([]string, 0, len(thr))
+	for k := range thr {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, want := range []string{"pass_rate_warn", "pass_rate_critical", "max_iter_warn_count", "safety_fail_alert"} {
+		if _, present := thr[want]; !present {
+			t.Errorf("thresholds JSON missing key %q; got %v", want, keys)
+		}
+	}
+	if _, present := thr["PassRateWarn"]; present {
+		t.Error("thresholds JSON leaks Go field name PassRateWarn")
+	}
+
 	path, err := WritePlan(report, tmpDir, "roundtrip")
 	if err != nil {
 		t.Fatalf("WritePlan: %v", err)
@@ -243,5 +297,32 @@ func TestAlarmPlanReport_JSONRoundTrip(t *testing.T) {
 	}
 	if len(loaded.AlarmPlan) != 4 {
 		t.Errorf("len(AlarmPlan) = %d, want 4", len(loaded.AlarmPlan))
+	}
+}
+
+// TestApplyAlarmPlan_ReturnsErrorOnFailure asserts ApplyAlarmPlan surfaces a
+// non-nil error when entries fail to apply, instead of swallowing them and
+// returning nil (the CLI caller wraps the error for the user). The execCommand
+// seam makes it hermetic: it never touches a real hcloud CLI, installed or not.
+func TestApplyAlarmPlan_ReturnsErrorOnFailure(t *testing.T) {
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		// Deterministic stub: write to stderr and exit 1 without invoking hcloud.
+		return exec.Command("sh", "-c", "printf 'apply boom' >&2; exit 1")
+	}
+	t.Cleanup(func() { execCommand = orig })
+
+	plan := []AlarmPlanEntry{
+		{Name: "gcl-pass-rate-critical", Namespace: GCLNamespace, MetricName: GCLPassRateMetric, Period: 60, EvaluationPeriods: 1},
+		{Name: "gcl-safety-fail-critical", Namespace: GCLNamespace, MetricName: GCLSafetyFailMetric, Period: 60, EvaluationPeriods: 1},
+	}
+	err := ApplyAlarmPlan(plan, false)
+	if err == nil {
+		t.Fatal("ApplyAlarmPlan should return an error when every entry fails to apply")
+	}
+	for _, want := range []string{"2 of 2", "gcl-pass-rate-critical", "apply boom"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got %q", want, err.Error())
+		}
 	}
 }

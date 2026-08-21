@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -125,6 +126,16 @@ func PersistTask(root, id string, state *TaskState) error {
 		return fmt.Errorf("persist task: write: %w", err)
 	}
 	return nil
+}
+
+// persistTaskChecked persists a task checkpoint and logs a warning on failure
+// instead of silently dropping it — a lost checkpoint breaks crash recovery
+// with no signal. Persistence is best-effort: the in-memory task continues,
+// but the gap must be visible to operators.
+func persistTaskChecked(root string, task *TaskState) {
+	if err := PersistTask(root, task.ID, task); err != nil {
+		slog.Warn("persist task checkpoint failed", "task_id", task.ID, "err", err)
+	}
 }
 
 // LoadTask reads a persisted task state from disk.

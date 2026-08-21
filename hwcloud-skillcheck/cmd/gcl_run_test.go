@@ -89,3 +89,28 @@ func TestPrintGCLRunHumanRealSafetyViolation(t *testing.T) {
 		t.Errorf("真安全违规不应含 budget_exceeded，got %q", buf.String())
 	}
 }
+
+// TestCriticArgsValueSet guards the flag.Value adapter against a nil slice:
+// a zero-value criticArgsValue (e.g. used as a bare var) must return an error
+// instead of panicking on append.
+func TestCriticArgsValueSet(t *testing.T) {
+	var zero criticArgsValue
+	if err := zero.Set("x"); err == nil {
+		t.Fatal("Set on zero-value criticArgsValue should return an error")
+	}
+
+	var dst []string
+	v := criticArgsValue{slice: &dst}
+	if err := v.Set("a"); err != nil {
+		t.Fatalf("Set(a) unexpected error: %v", err)
+	}
+	if err := v.Set("b"); err != nil {
+		t.Fatalf("Set(b) unexpected error: %v", err)
+	}
+	if len(dst) != 2 || dst[0] != "a" || dst[1] != "b" {
+		t.Fatalf("got %v, want [a b]", dst)
+	}
+	if v.String() != "[a b]" {
+		t.Fatalf("String() = %q, want %q", v.String(), "[a b]")
+	}
+}

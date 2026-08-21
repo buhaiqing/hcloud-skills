@@ -1,18 +1,14 @@
 // Package gcl — retry.go
 //
 // RetryPromptBuilder is the seam between the GCL loop's Critic verdict and
-// the Generator's next attempt. The Runner (slice 2 will wire it) calls
-// Builder.Build after a RETRY decision to assemble a new prompt that the
-// LLM can use to fix the most recent failure.
-//
-// THIS FILE IS NOT WIRED INTO Run() YET — slice 2 owns the integration.
-// Slice 3 owns the type + the minimal-implementation reference only.
+// the Generator's next attempt. The Runner calls Builder.Build after a RETRY
+// decision to assemble a new prompt that the LLM can use to fix the most
+// recent failure (runner.go wires cfg.RetryBuilder on iteration > 1).
 package gcl
 
 import (
 	"fmt"
 	"strings"
-	"time"
 )
 
 // RetryPromptBuilder returns the prompt for the next Generator iteration,
@@ -36,7 +32,6 @@ type MinimalFeedbackRetry struct{}
 // Build assembles the retry prompt. Shape:
 //
 //	Retry iter=<n> blocking=<bool>
-//	Skill-iteration started at <RFC3339>
 //
 //	Command: <gen.Command>
 //	Exit: <gen.ExitCode>   Duration: <gen.DurationMs>ms
@@ -58,7 +53,6 @@ type MinimalFeedbackRetry struct{}
 func (MinimalFeedbackRetry) Build(gen GeneratorOutput, lastCritic CriticResult, iter int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Retry iter=%d blocking=%t\n", iter, lastCritic.Blocking)
-	fmt.Fprintf(&b, "Skill-iteration started at %s\n", time.Now().UTC().Format(time.RFC3339))
 
 	fmt.Fprintf(&b, "\nCommand: %s\n", gen.Command)
 	fmt.Fprintf(&b, "Exit: %d   Duration: %dms\n", gen.ExitCode, gen.DurationMs)
@@ -75,17 +69,20 @@ func (MinimalFeedbackRetry) Build(gen GeneratorOutput, lastCritic CriticResult, 
 	}
 
 	fmt.Fprintf(&b, "\nCritic mode=%s  Failed dimensions (score below threshold):\n", fallback(lastCritic.Mode, "unknown"))
-	wrote := 0
-	for dim, threshold := range map[string]float64{
-		"correctness":     0.5,
-		"safety":          1.0,
-		"idempotency":     0.5,
-		"traceability":    0.5,
-		"spec_compliance": 0.5,
+	// Fixed order — ranging a map literal would randomize line order and
+	// break the deterministic-output contract.
+	for _, dt := range []struct {
+		dim       string
+		threshold float64
+	}{
+		{"correctness", 0.5},
+		{"safety", 1.0},
+		{"idempotency", 0.5},
+		{"traceability", 0.5},
+		{"spec_compliance", 0.5},
 	} {
-		if s, ok := lastCritic.Scores[dim]; ok && s < threshold {
-			fmt.Fprintf(&b, "  %s=%s (threshold %.2f)\n", dim, fmtScore(s), threshold)
-			wrote++
+		if s, ok := lastCritic.Scores[dt.dim]; ok && s < dt.threshold {
+			fmt.Fprintf(&b, "  %s=%s (threshold %.2f)\n", dt.dim, fmtScore(s), dt.threshold)
 		}
 	}
 

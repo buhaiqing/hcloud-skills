@@ -414,7 +414,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		decision = "auto_proceed"
 		// Build task from plan and run execution loop with persistence + RBAC.
 		task := BuildTaskFromPlan(plan, in.Fault, root)
-		_ = PersistTask(root, task.ID, task)
+		persistTaskChecked(root, task)
 
 		// Record task creation in context memory.
 		if cm != nil {
