@@ -7,14 +7,20 @@ import (
 	"time"
 )
 
-// transientFailExecutor always fails transiently and counts invocations.
-// Kept hermetic: no real exec, just a controlled transient error.
-type transientFailExecutor struct {
-	calls int32
+// boundedTransientExecutor fails transiently for the first transientCalls
+// invocations, then returns a permanent sentinel. The bound means a retry-budget
+// regression (loop never escalates) terminates quickly with a count mismatch
+// instead of spinning on transient errors until the package timeout.
+type boundedTransientExecutor struct {
+	transientCalls int
+	calls          int32
 }
 
-func (e *transientFailExecutor) Run(candidate string, timeout time.Duration) (int, string, error) {
-	atomic.AddInt32(&e.calls, 1)
+func (e *boundedTransientExecutor) Run(candidate string, timeout time.Duration) (int, string, error) {
+	n := atomic.AddInt32(&e.calls, 1)
+	if int(n) > e.transientCalls {
+		return 1, "", errors.New("permanent-bounded")
+	}
 	return 1, "", errors.New("connection timeout")
 }
 
@@ -35,7 +41,10 @@ func TestRunExecutionLoopWithHealing_RetryBudgetBounded(t *testing.T) {
 	}
 	plan := &ExecutionPlan{Steps: []PlanStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "list"}}}
 	p := HealingPolicy{MaxRetries: 2}
-	exec := &transientFailExecutor{}
+	// MaxRetries=2 → at most 2 retries after the initial attempt, so the fake
+	// stays transient through call 3 and turns permanent on call 4+. A budget
+	// regression that never escalates hits the permanent sentinel and fails.
+	exec := &boundedTransientExecutor{transientCalls: 3}
 
 	out := RunExecutionLoopWithHealing(dir, task, plan, nil, mem, p, exec)
 
