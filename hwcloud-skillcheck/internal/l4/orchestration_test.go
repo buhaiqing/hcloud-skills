@@ -236,3 +236,22 @@ func TestBuildExecutionPlan_FanOutCollect(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildExecutionPlan_ParallelMaxTimeout pins the wall-clock budget: parallel
+// and fan_out_collect steps run concurrently, so MaxTotalTimeoutSeconds is the
+// max step timeout, not the sum. execution.go:470 reuses this value as the
+// per-step timeout, so for parallel the correct bound is the max step budget.
+func TestBuildExecutionPlan_ParallelMaxTimeout(t *testing.T) {
+	skills := []MatchedSkill{
+		{Skill: "huaweicloud-ecs-ops", Confidence: 0.5, Domain: "compute"},
+		{Skill: "huaweicloud-ces-ops", Confidence: 0.5, Domain: "monitoring"},
+		{Skill: "huaweicloud-vpc-ops", Confidence: 0.5, Domain: "network"},
+	}
+	if plan := BuildExecutionPlan("perf slow", skills, "parallel"); plan.MaxTotalTimeoutSeconds != 300 {
+		t.Errorf("parallel MaxTotalTimeoutSeconds = %d, want 300 (max not sum)", plan.MaxTotalTimeoutSeconds)
+	}
+	// Sequential steps run back-to-back, so the budget is the full sum.
+	if plan := BuildExecutionPlan("perf slow", skills, "sequential"); plan.MaxTotalTimeoutSeconds != 900 {
+		t.Errorf("sequential MaxTotalTimeoutSeconds = %d, want 900 (sum)", plan.MaxTotalTimeoutSeconds)
+	}
+}
