@@ -25,8 +25,8 @@ compatibility: >-
   network access to Huawei Cloud endpoints.
 metadata:
   author: huaweicloud
-  version: "1.0.0"
-  last_updated: "2026-05-20"
+  version: "1.2.0"
+  last_updated: "2026-09-08"
   runtime: Harness AI Agent, Claude Code, Cursor, or compatible Agent runtimes
   go_version_minimum: "1.21"
   go_version_jit: "1.24+"
@@ -49,6 +49,9 @@ metadata:
     prompts_ref: "references/prompt-templates.md"
     trace_dir: "./audit-results/"
     changelog:
+      - version: "1.2.0"
+        date: "2026-09-08"
+        change: "SKILL.md split: Well-Architected Framework table moved to references/well-architected-assessment.md (TE-7 token efficiency, professional content layered in references/).
       - version: "1.1.0"
         date: "2026-06-04"
         change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 CCE/Kubernetes-specific Safety rules, including drain-before-delete, PDB guard, StatefulSet scale, privileged manifest, master cordon) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."
@@ -692,14 +695,6 @@ Use the Go CLI to invoke the loop: `hwcloud-skillcheck gcl run --root . --skill 
 
 ## Well-Architected + Three-Pillar Assessment
 
-This skill's operations are evaluated against Huawei Cloud's Well-Architected Framework (卓越架构) five pillars plus FinOps, SecOps, and AIOps integration:
-- [Security Assessment](references/well-architected-assessment.md)
-- [Stability Assessment](references/well-architected-assessment.md)
-- [Cost Assessment](references/well-architected-assessment.md)
-- [Efficiency Assessment](references/well-architected-assessment.md)
-- [Performance Assessment](references/well-architected-assessment.md)
-- [FinOps Integration](references/well-architected-assessment.md)
-- [SecOps Integration](references/well-architected-assessment.md)
-- [AIOps Integration](references/knowledge-base.md)
+See [references/well-architected-assessment.md](references/well-architected-assessment.md) for the full five-pillar assessment with FinOps, SecOps, and AIOps integration details.
 
 > 任务完成后按根 AGENTS.md 的「复利资产沉淀机制 (CADL)」复盘并沉淀可复用资产。

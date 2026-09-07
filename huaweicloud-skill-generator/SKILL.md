@@ -20,16 +20,25 @@ compatibility: >-
   `references/user-experience-spec.md` (mandatory UX requirements for generated skills),
   `references/execution-environment.md` (CLI + Go SDK setup details),
   `references/cli-behavior.md` (verified huawei CLI behavioral notes),
+   (generated skill quality checklist — P0/P1 criteria);
+   (five-pillar assessment template);
   and agentskills.io frontmatter conventions.
 metadata:
   author: huaweicloud
-  version: "1.0.0"
-  last_updated: "2026-05-20"
+  version: "1.1.0"
+  last_updated: "2026-09-08"
   runtime: Harness AI Agent, Claude Code, Cursor, or compatible Agent runtimes
   type: meta-skill
   guidance_freedom_level: medium
   go_version_minimum: "1.21"
   go_version_jit: "1.25+"
+  changelog:
+    - version: "1.1.0"
+      date: "2026-09-08"
+      change: "SKILL.md split: P0/P1 checklist moved to references/p0-p1-checklist.md (86 lines, TE-7 token efficiency). Compatibility section updated with new reference files.
+    - version: "1.0.0"
+      date: "2026-05-20"
+      change: "Initial skill release."
 ---
 
 # Huawei Cloud Skill Generator (Meta-Skill)
@@ -467,98 +476,12 @@ Every generated skill MUST integrate FinOps, SecOps, and AIOps best practices in
 
 ## P0/P1 Checklist
 
-### P0 — MUST PASS
+See [references/p0-p1-checklist.md](references/p0-p1-checklist.md) for the complete checklist with all P0 MUST-PASS and P1 SHOULD-PASS items.
 
-- [ ] **Trigger & Scope** with SHOULD-use / SHOULD-NOT-use and delegation rules
-- [ ] **Variables:** `{{env.*}}` vs `{{user.*}}`; no secret literals; `{{env.*}}` never collected from user
-- [ ] **Flows:** Pre-flight → Execute → Validate → Recover for **each** critical operation
-- [ ] **Primary path** per `cli_applicability` documented
-- [ ] **Failure recovery:** HALT vs retry; throttling with exponential backoff; non-retryable business errors
-- [ ] **API fidelity:** Fields and paths traceable to OpenAPI/SDK for the stated version
-- [ ] **CLI fidelity:** Commands match official docs; JSON paths verified
-- [ ] **Safety gates** for destructive operations
-- [ ] **Timeouts** for polling and long-running operations (default: 5s interval, 300s max wait)
-- [ ] **Self-Healing Framework:** All installation flows follow enhanced-self-healing-framework pattern
-- [ ] **UX Onboarding:** Quick Start section present; first-time user can execute first command within 60 seconds
-- [ ] **UX Interaction:** Common operations require ≤ 3 prompts; smart defaults documented
-- [ ] **UX Error Handling:** Error messages follow [ERROR] format
-- [ ] **Description Optimization:** `description` field follows agentskills.io optimization principles
-- [ ] **Eval Queries:** `assets/eval_queries.json` created with should/should-not trigger queries
-
-#### Well-Architected + Three-Pillar (P0)
-- [ ] **FinOps — Cost Visibility:** Billing model table present; cost attribution guidance documented
-- [ ] **FinOps — Cost Optimization:** Idle resource detection pattern; right-sizing guidance present
-- [ ] **FinOps — Unit Economics:** At least 1 unit cost metric defined (cost/request or cost/vCPU)
-- [ ] **FinOps — Anomaly Detection:** Cost anomaly detection rule documented
-- [ ] **SecOps — IAM Security:** Minimum IAM permissions table documented; credential masking enforced
-- [ ] **SecOps — Network Security:** VPC/security group isolation guidance; encryption recommendations present
-- [ ] **AIOps — Multi-Metric Correlation:** ≥ 4 anomaly patterns with detection logic (monitoring skills)
-- [ ] **AIOps — Cross-Skill Delegation:** Delegation matrix defined in `integration.md` (diagnostic skills)
-- [ ] **AIOps — Knowledge Base:** Fault pattern library present (diagnostic skills)
-- [ ] **AIOps — SLO/SLI:** At least 1 SLO with SLI, Error Budget, and burn rate alerting defined
-- [ ] **Five Pillars:** All five Well-Architected pillars addressed per well-architected-assessment.md
-- [ ] **Well-Architected Reference:** SKILL.md links to well-architected-assessment.md section
-- [ ] **Maturity Scorecard:** Self-assessment scorecard completed
-- [ ] **Cross-Pillar Conflicts:** Trade-off matrix reviewed for known pillar conflicts
-
-### P1 — SHOULD PASS
-
-- [ ] **Chaining:** Stable output fields for downstream skills
-- [ ] **Naming:** `huaweicloud-[product]-ops` consistent with repo conventions
-- [ ] **Pinned** SDK/API baseline in integration.md
-- [ ] **Idempotency** documented when automation applies
-- [ ] **Adversarial scenarios** considered
-- [ ] **FinOps — Right-Sizing:** Resource utilization → recommendation mapping
-- [ ] **FinOps — Budget:** Budget alert integration documented
-- [ ] **FinOps — Reserved Coverage:** RI/包年包月覆盖率 analysis template
-- [ ] **FinOps — TCO Model:** Total Cost of Ownership model documented
-- [ ] **SecOps — Threat Detection:** HSS/WAF integration trigger conditions
-- [ ] **SecOps — Compliance:** Data protection alignment with industry standards
-- [ ] **SecOps — Zero Trust:** Zero Trust Architecture alignment guidance
-- [ ] **SecOps — Incident Response:** Security incident response runbook
-- [ ] **SecOps — Supply Chain:** SDK dependency security + SBOM guidance
-- [ ] **SecOps — Key Lifecycle:** KMS key lifecycle management strategy
-- [ ] **AIOps — Proactive Inspection:** Scheduled巡检 workflow defined
-- [ ] **AIOps — Alarm Storm:** Aggregation and suppression workflow
-- [ ] **AIOps — Change Correlation:** CTS-based change-anomaly correlation
-- [ ] **AIOps — Capacity Forecast:** 30-day capacity prediction methodology
-- [ ] **AIOps — Diagnosis Confidence:** Confidence score with uncertainty declaration
-- [ ] **Five Pillars — Multi-AZ:** Cross-AZ deployment recommendation
-- [ ] **Five Pillars — DR Runbook:** Phase 1/2/3 structure
-- [ ] **Five Pillars — Auto-Scaling:** Scaling trigger thresholds
-- [ ] **Efficiency — IaC:** Terraform/Ansible integration template
-- [ ] **Architecture — ADR:** Architecture Decision Records for key decisions
-- [ ] **Self-Reflection:** Round 1 + Round 2 self-reflection completed during generation
+| Tier | Count | Scope |
+|------|-------|-------|
+| **P0** | 27 items | Trigger/Variables/Flows/Failure/API-CLI fidelity/Safety/Timeouts/Self-Healing/UX Onboarding/UX Interaction/UX Errors/Description/Eval Queries/FinOps (4)/SecOps (2)/AIOps (4)/Five Pillars/Well-Architected Reference/Maturity/Cross-Pillar |
+| **P1** | 27 items | Chaining/Naming/SDK pin/Idempotency/Adversarial/FinOps (4)/SecOps (6)/AIOps (5)/Five Pillars (3)/Efficiency/ADR/Self-Reflection |
 
 ---
 
-## Example Request
-
-> Add a Huawei Cloud skill for ECS in this repo: instances, disks, snapshots. Docs: `https://support.huaweicloud.com/api-ecs`. Go SDK (JIT fallback).
-
-**Expected output:** `huaweicloud-ecs-ops` tree with **real** operationIds, Go SDK types, response paths, **and** matching CLI commands (primary path), plus JIT Go SDK fallback documentation.
-
----
-
-## Reference Directory
-
-| File | Purpose |
-|------|---------|
-| [huaweicloud-skill-template.md](references/huaweicloud-skill-template.md) | Base template for generated SKILL.md |
-| [execution-environment.md](references/execution-environment.md) | CLI install, Go JIT download, credential config |
-| [cli-behavior.md](references/cli-behavior.md) | Verified CLI behavioral notes |
-| [enhanced-self-healing-framework.md](references/enhanced-self-healing-framework.md) | Self-healing patterns for installation flows |
-| [governance-and-adversarial-review.md](references/governance-and-adversarial-review.md) | Adversarial review scenarios and governance checklist |
-| [prompt-library.md](references/prompt-library.md) | Structured prompts for the generation lifecycle |
-| [optimization-analysis.md](references/optimization-analysis.md) | Three-dimensional optimization framework |
-| [user-experience-spec.md](references/user-experience-spec.md) | Mandatory UX requirements for all generated skills |
-| [aiops-best-practices.md](references/aiops-best-practices.md) | Mandatory AIOps patterns for monitoring/diagnosis skills |
-| [well-architected-assessment.md](references/well-architected-assessment.md) | **MANDATORY** Five-pillar + FinOps + SecOps + AIOps integration |
-
-### External References
-
-- [Huawei Cloud Go SDK](https://github.com/huaweicloud/huaweicloud-sdk-go-v3)
-- [Huawei Cloud API Docs](https://support.huaweicloud.com/api/)
-- [Huawei Cloud CLI (hcloud)](https://support.huaweicloud.com/hcli/index.html)
-- [Agent Skills Open Specification](https://agentskills.io/specification)
-- [Huawei Cloud Well-Architected Framework](https://support.huaweicloud.com/topic/68733-1-I)
