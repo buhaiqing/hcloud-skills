@@ -1,0 +1,196 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-waf-ops",
+  "playbooks": [
+    {
+      "id": "WAF-R001",
+      "name": "WAF Policy Re-Enable after Accidental Disable",
+      "trigger": {
+        "metric": "waf_policy_disabled",
+        "condition": "status == DISABLED after config_deployment",
+        "namespace": "SYS.WAF"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud waf list-policies",
+          "hcloud waf get-policy --policy_id {{ctx.policy_id}}"
+        ],
+        "confidence_factors": ["policy_disabled_by_deployment", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud waf get-policy --policy_id {{ctx.policy_id}} | grep -q 'status.*DISABLED'"
+        ],
+        "dry_run": "hcloud waf update-policy --policy_id {{ctx.policy_id}} --status enabled --dry-run",
+        "execute": "hcloud waf update-policy --policy_id {{ctx.policy_id}} --status enabled",
+        "verification": "hcloud waf get-policy --policy_id {{ctx.policy_id}} | grep -q 'status.*enabled'",
+        "rollback": "hcloud waf update-policy --policy_id {{ctx.policy_id}} --status disabled",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Policy was intentionally disabled due to incident or maintenance",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "WAF-R002",
+      "name": "CC Attack Protection Auto-Tune after False Positive",
+      "trigger": {
+        "metric": "waf_cc_block_rate",
+        "condition": "status == high_false_positive after rule_update",
+        "namespace": "SYS.WAF"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud waf list-cc-rules --policy_id {{ctx.policy_id}}",
+          "hcloud waf list-attack-events --policy_id {{ctx.policy_id}} --attack_type cc --limit 20"
+        ],
+        "confidence_factors": ["cc_rule_too_strict", "no_active_attack"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud waf list-cc-rules --policy_id {{ctx.policy_id}} | grep -q 'block'"
+        ],
+        "dry_run": "hcloud waf update-cc-rule --policy_id {{ctx.policy_id}} --rule_id {{ctx.rule_id}} --action detection --dry-run",
+        "execute": "hcloud waf update-cc-rule --policy_id {{ctx.policy_id}} --rule_id {{ctx.rule_id}} --action detection",
+        "verification": "hcloud waf list-cc-rules --policy_id {{ctx.policy_id}} --rule_id {{ctx.rule_id}} | grep -q 'detection'",
+        "rollback": "hcloud waf update-cc-rule --policy_id {{ctx.policy_id}} --rule_id {{ctx.rule_id}} --action block",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "CC rule modification may expose site to ongoing attack",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.87,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "WAF-R003",
+      "name": "False Positive Rule Bypass after Legitimate Traffic Block",
+      "trigger": {
+        "metric": "waf_false_positive_count",
+        "condition": "status == elevated after rule_deployment",
+        "namespace": "SYS.WAF"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud waf list-precise-protection-rules --policy_id {{ctx.policy_id}}",
+          "hcloud waf list-attack-events --policy_id {{ctx.policy_id}} --block_result blocked --limit 20"
+        ],
+        "confidence_factors": ["legitimate_traffic_blocked", "no_active_attack"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud waf list-precise-protection-rules --policy_id {{ctx.policy_id}} | grep -q '{{ctx.false_positive_path}}'"
+        ],
+        "dry_run": "hcloud waf create-ignore-rule --policy_id {{ctx.policy_id}} --path '{{ctx.false_positive_path}}' --mode bypass --dry-run",
+        "execute": "hcloud waf create-ignore-rule --policy_id {{ctx.policy_id}} --path '{{ctx.false_positive_path}}' --mode bypass",
+        "verification": "hcloud waf list-ignore-rules --policy_id {{ctx.policy_id}} | grep -q '{{ctx.false_positive_path}}'",
+        "rollback": "hcloud waf delete-ignore-rule --policy_id {{ctx.policy_id}} --rule_id {{ctx.new_rule_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Bypass rule may allow malicious traffic through on the specific path",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.82,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "WAF-R004",
+      "name": "WAF Domain Re-Bind after ELB Configuration Change",
+      "trigger": {
+        "metric": "waf_domain_unbound",
+        "condition": "status == unbound after elb_change",
+        "namespace": "SYS.WAF"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud waf list-domains --policy_id {{ctx.policy_id}}",
+          "hcloud elb list-load-balancers --vpc_id {{ctx.vpc_id}}"
+        ],
+        "confidence_factors": ["domain_unbound_by_elb_update", "elb_still_active"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud waf list-domains --policy_id {{ctx.policy_id}} | grep -q '{{ctx.domain}}'"
+        ],
+        "dry_run": "hcloud waf bind-domain --policy_id {{ctx.policy_id}} --domain '{{ctx.domain}}' --lb_id {{ctx.lb_id}} --dry-run",
+        "execute": "hcloud waf bind-domain --policy_id {{ctx.policy_id}} --domain '{{ctx.domain}}' --lb_id {{ctx.lb_id}}",
+        "verification": "hcloud waf list-domains --policy_id {{ctx.policy_id}} | grep -q '{{ctx.domain}}.*bound'",
+        "rollback": "hcloud waf unbind-domain --policy_id {{ctx.policy_id}} --domain '{{ctx.domain}}'",
+        "timeout_seconds": 45
+      },
+      "escalation": {
+        "condition": "Domain binding fails due to certificate mismatch or ELB configuration issue",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.86,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "WAF-R005",
+      "name": "Geolocation Block List Auto-Adjust after Unexpected Region Block",
+      "trigger": {
+        "metric": "waf_geo_false_positive_rate",
+        "condition": "status == high_fp after geo_rule_deployment",
+        "namespace": "SYS.WAF"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud waf list-geolocation-access-rules --policy_id {{ctx.policy_id}}",
+          "hcloud waf list-attack-events --policy_id {{ctx.policy_id}} --attack_type custom --limit 20"
+        ],
+        "confidence_factors": ["geo_rule_too_broad", "no_active_threat_from_region"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud waf list-geolocation-access-rules --policy_id {{ctx.policy_id}} | grep -q 'block.*{{ctx.blocked_region}}'"
+        ],
+        "dry_run": "hcloud waf update-geolocation-rule --policy_id {{ctx.policy_id}} --region {{ctx.blocked_region}} --action allow --dry-run",
+        "execute": "hcloud waf update-geolocation-rule --policy_id {{ctx.policy_id}} --region {{ctx.blocked_region}} --action allow",
+        "verification": "hcloud waf list-geolocation-access-rules --policy_id {{ctx.policy_id}} | grep -q 'allow.*{{ctx.blocked_region}}'",
+        "rollback": "hcloud waf update-geolocation-rule --policy_id {{ctx.policy_id}} --region {{ctx.blocked_region}} --action block",
+        "timeout_seconds": 20
+      },
+      "escalation": {
+        "condition": "Region unblock exposes application to threats from that geographic region",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.9,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

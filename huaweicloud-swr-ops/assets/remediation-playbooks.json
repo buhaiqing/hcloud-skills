@@ -1,0 +1,196 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-swr-ops",
+  "playbooks": [
+    {
+      "id": "SWR-R001",
+      "name": "Re-Enable Organization after Accidental Disable",
+      "trigger": {
+        "metric": "swr_org_inaccessible",
+        "condition": "status == inaccessible after permission_update",
+        "namespace": "SYS.SWR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud swr list-organizations",
+          "hcloud swr get-organization --org {{ctx.org_name}}"
+        ],
+        "confidence_factors": ["org_disabled_by_update", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud swr get-organization --org {{ctx.org_name}} | grep -q 'DISABLED\\|inaccessible'"
+        ],
+        "dry_run": "hcloud swr update-organization --org {{ctx.org_name}} --visibility public --dry-run",
+        "execute": "hcloud swr update-organization --org {{ctx.org_name}} --visibility public",
+        "verification": "hcloud swr get-organization --org {{ctx.org_name}} | grep -q 'public\\|ACTIVE'",
+        "rollback": "hcloud swr update-organization --org {{ctx.org_name}} --visibility private",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Organization update requires tenant admin privileges",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SWR-R002",
+      "name": "Retention Policy Auto-Apply after Tag Misconfiguration",
+      "trigger": {
+        "metric": "swr_retention_policy_mismatch",
+        "condition": "status == mismatch after repository_update",
+        "namespace": "SYS.SWR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud swr list-retention-policies --namespace {{ctx.namespace}} --repo {{ctx.repo}}",
+          "hcloud swr list-images --namespace {{ctx.namespace}} --repo {{ctx.repo}} --max-items 10"
+        ],
+        "confidence_factors": ["retention_policy_not_applied", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud swr list-retention-policies --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q 'retention'"
+        ],
+        "dry_run": "hcloud swr apply-retention-policy --namespace {{ctx.namespace}} --repo {{ctx.repo}} --rule '{{ctx.retention_rule}}' --dry-run",
+        "execute": "hcloud swr apply-retention-policy --namespace {{ctx.namespace}} --repo {{ctx.repo}} --rule '{{ctx.retention_rule}}'",
+        "verification": "hcloud swr list-images --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -c '{{ctx.tag}}' | awk '{exit !($1>0)}'",
+        "rollback": "hcloud swr delete-retention-policy --namespace {{ctx.namespace}} --repo {{ctx.repo}} --rule_id {{ctx.rule_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "Retention policy deletion risks losing images needed by active workloads",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SWR-R003",
+      "name": "Cross-Region Sync Resume after Endpoint Failure",
+      "trigger": {
+        "metric": "swr_sync_lag_seconds",
+        "condition": "status == lag > 1800 after sync_config_change",
+        "namespace": "SYS.SWR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud swr list-repository-sync-record --namespace {{ctx.namespace}} --repo {{ctx.repo}} --limit 5",
+          "hcloud swr get-repository --namespace {{ctx.namespace}} --repo {{ctx.repo}}"
+        ],
+        "confidence_factors": ["sync_disabled_by_config", "source_repo_accessible"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud swr get-repository --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q 'sync'"
+        ],
+        "dry_run": "hcloud swr update-repository-sync --namespace {{ctx.namespace}} --repo {{ctx.repo}} --enabled true --dry-run",
+        "execute": "hcloud swr update-repository-sync --namespace {{ctx.namespace}} --repo {{ctx.repo}} --enabled true",
+        "verification": "hcloud swr list-repository-sync-record --namespace {{ctx.namespace}} --repo {{ctx.repo}} --limit 1 | grep -q 'SUCCESS'",
+        "rollback": "hcloud swr update-repository-sync --namespace {{ctx.namespace}} --repo {{ctx.repo}} --enabled false",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "Sync fails due to network or authentication issue with target region",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 35,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SWR-R004",
+      "name": "Repository Permission Repair after IAM Role Update",
+      "trigger": {
+        "metric": "swr_image_pull_failure",
+        "condition": "status == pull_denied after iam_role_change",
+        "namespace": "SYS.SWR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud swr list-repository-permissions --namespace {{ctx.namespace}} --repo {{ctx.repo}}",
+          "hcloud iam list-users-for-group --group {{ctx.target_group}}"
+        ],
+        "confidence_factors": ["permission_removed_by_iam_update", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud swr list-repository-permissions --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q '{{ctx.user}}'"
+        ],
+        "dry_run": "hcloud swr add-repository-permission --namespace {{ctx.namespace}} --repo {{ctx.repo}} --user {{ctx.user}} --role read --dry-run",
+        "execute": "hcloud swr add-repository-permission --namespace {{ctx.namespace}} --repo {{ctx.repo}} --user {{ctx.user}} --role read",
+        "verification": "hcloud swr list-repository-permissions --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q '{{ctx.user}}'",
+        "rollback": "hcloud swr remove-repository-permission --namespace {{ctx.namespace}} --repo {{ctx.repo}} --user {{ctx.user}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "User lacks SWR tenant-level permissions; requires tenant admin",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 14,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SWR-R005",
+      "name": "Vulnerability Scan Re-Enable after Service Misconfiguration",
+      "trigger": {
+        "metric": "swr_vul_scan_disabled",
+        "condition": "status == disabled after config_update",
+        "namespace": "SYS.SWR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud swr list-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}}",
+          "hcloud swr get-repository --namespace {{ctx.namespace}} --repo {{ctx.repo}}"
+        ],
+        "confidence_factors": ["vul_scan_disabled_by_update", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud swr list-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q 'Disabled'"
+        ],
+        "dry_run": "hcloud swr enable-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}} --dry-run",
+        "execute": "hcloud swr enable-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}}",
+        "verification": "hcloud swr list-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}} | grep -q 'Enabled'",
+        "rollback": "hcloud swr disable-repository-vul-scan --namespace {{ctx.namespace}} --repo {{ctx.repo}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Vulnerability scan requires HSS (Host Security Service) integration",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-ces-ops",
+  "playbooks": [
+    {
+      "id": "CES-R001",
+      "name": "Alarm Rule Re-Enable after Deployment",
+      "trigger": {
+        "metric": "alarm_status",
+        "condition": "status == DISABLED after deployment",
+        "namespace": "SYS.CES"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES listAlarms --alarm-name \"*\" --status DISABLED",
+          "hcloud CTS listTraces --resource_type alarm --action updateAlarm --limit 5"
+        ],
+        "confidence_factors": ["alarm_disabled_by_deployment", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud CES getAlarm --alarm_id {{output.alarm_id}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud CES listAlarms --alarm-name \"*\" --status ENABLED --dry-run",
+        "execute": "hcloud CES enableAlarm --alarm_id {{output.alarm_id}}",
+        "verification": "hcloud CES getAlarm --alarm_id {{output.alarm_id}} | grep -q ENABLED",
+        "rollback": "hcloud CES disableAlarm --alarm_id {{output.alarm_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "alarm re-enable fails or alarm was intentionally disabled",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.98,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CES-R002",
+      "name": "Alarm Storm Suppression",
+      "trigger": {
+        "metric": "alarm_count",
+        "condition": "> 50 alarms in 5min per alarm_rule_prefix",
+        "namespace": "SYS.CES"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES listAlarms --alarm-name {{output.alarm_prefix}} --status ENABLED",
+          "hcloud CES getAlarm --alarm_id {{output.top_alarm_id}}",
+          "hcloud CTS listTraces --resource_type alarm --action createAlarm --limit 10"
+        ],
+        "confidence_factors": ["alarm_count_exceeds_threshold", "no_deployment_activity", "same_root_cause"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud CES listAlarms --alarm-name {{output.alarm_prefix}} --status ENABLED | grep -c alarm_id | xargs test 5"
+        ],
+        "dry_run": "hcloud CES updateAlarm --alarm_id {{output.target_alarm_id}} --alarm_enabled false --dry-run",
+        "execute": "hcloud CES updateAlarm --alarm_id {{output.target_alarm_id}} --alarm_enabled false",
+        "verification": "hcloud CES getAlarm --alarm_id {{output.target_alarm_id}} | grep -q DISABLED",
+        "rollback": "hcloud CES updateAlarm --alarm_id {{output.target_alarm_id}} --alarm_enabled true",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "alarm storm persists after suppression or critical alarm disabled",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 45,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CES-R003",
+      "name": "Monitored Resource Agent Recovery",
+      "trigger": {
+        "metric": "node_alive",
+        "condition": "status == 0 for 3min after metric_gap detected",
+        "namespace": "SYS.CES"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES listMetrics --namespace SYS.ECS --dim instance_id={{output.instance_id}}",
+          "hcloud ECS listInstances --instance_ids {{output.instance_id}}",
+          "hcloud CTS listTraces --resource_type instance --resource_id {{output.instance_id}} --limit 5"
+        ],
+        "confidence_factors": ["metric_gap_detected", "instance_exists_and_running", "agent_not_reported"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.5,
+        "preconditions": [
+          "hcloud ECS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud ECS rebootInstance --instance_id {{output.instance_id}} --dry-run",
+        "execute": "hcloud ECS rebootInstance --instance_id {{output.instance_id}}",
+        "verification": "hcloud CES getMetricData --namespace SYS.ECS --metric_name node_alive --dim instance_id={{output.instance_id}} --period 60 --filter avg",
+        "rollback": null,
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "instance reboot fails or agent stays down after 5min",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 90,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CES-R004",
+      "name": "Dashboard Widget Data Gap Recovery",
+      "trigger": {
+        "metric": "dashboard_widget_status",
+        "condition": "status == NO_DATA for 10min",
+        "namespace": "SYS.CES"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CES listDashboards --dashboard_id {{output.dashboard_id}}",
+          "hcloud CES listWidgets --dashboard_id {{output.dashboard_id}}",
+          "hcloud CES listMetrics --namespace {{output.namespace}} --metric_name {{output.metric_name}}"
+        ],
+        "confidence_factors": ["widget_shows_no_data", "metric_exists", "namespace_matches"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud CES getMetric --namespace {{output.namespace}} --metric_name {{output.metric_name}} | grep -q metric_name"
+        ],
+        "dry_run": null,
+        "execute": "hcloud CES updateWidget --dashboard_id {{output.dashboard_id}} --widget_id {{output.widget_id}} --refresh_interval 300",
+        "verification": "hcloud CES getWidget --dashboard_id {{output.dashboard_id}} --widget_id {{output.widget_id}} | grep -q refresh_interval",
+        "rollback": "hcloud CES updateWidget --dashboard_id {{output.dashboard_id}} --widget_id {{output.widget_id}} --refresh_interval 900",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "metric no longer exists or widget update fails",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.90,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

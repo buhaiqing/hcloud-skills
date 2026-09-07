@@ -1,0 +1,162 @@
+{
+  "$schema": "huaweicloud-ops-remediation-v1",
+  "skill_id": "huaweicloud-billing-ops",
+  "playbooks": [
+    {
+      "id": "BILL-R001",
+      "name": "Budget Alert Re-Enable after Threshold Update",
+      "trigger": {
+        "metric": "budget_alert_status",
+        "condition": "status == DISABLED after budget threshold update",
+        "namespace": "SYS.BSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud bss listBudgets --status DISABLED",
+          "hcloud bss listResourceUsage --budget_id {{output.budget_id}} --cycle MONTHLY",
+          "hcloud CTS listTraces --resource_type budget --action updateBudget --limit 5"
+        ],
+        "confidence_factors": ["budget_disabled_by_threshold_change", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud bss getBudget --budget_id {{output.budget_id}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud bss enableBudget --budget_id {{output.budget_id}} --dry-run",
+        "execute": "hcloud bss enableBudget --budget_id {{output.budget_id}}",
+        "verification": "hcloud bss getBudget --budget_id {{output.budget_id}} | grep -q ENABLED",
+        "rollback": "hcloud bss disableBudget --budget_id {{output.budget_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "budget re-enable fails or budget was intentionally disabled",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "BILL-R002",
+      "name": "Resource Package Renewal After Expiration",
+      "trigger": {
+        "metric": "package_status",
+        "condition": "status == EXPIRED for active resource package",
+        "namespace": "SYS.BSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud bss listResourcePackages --status EXPIRED",
+          "hcloud bss getResourcePackage --package_id {{output.package_id}}",
+          "hcloud bss listOrders --package_id {{output.package_id}} --status PAID"
+        ],
+        "confidence_factors": ["package_auto_renew_disabled", "usage_below_threshold"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.5,
+        "preconditions": [
+          "hcloud bss getResourcePackage --package_id {{output.package_id}} | grep -q EXPIRED"
+        ],
+        "dry_run": "hcloud bss renewResourcePackage --package_id {{output.package_id}} --dry-run",
+        "execute": "hcloud bss renewResourcePackage --package_id {{output.package_id}} --period 1 --cycle MONTHLY",
+        "verification": "hcloud bss getResourcePackage --package_id {{output.package_id}} | grep -q ACTIVE",
+        "rollback": "hcloud bss cancelResourcePackageRenewal --package_id {{output.package_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "renewal fails, payment method invalid, or package already substituted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 45,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "BILL-R003",
+      "name": "Cost Anomaly Detection and Alert Escalation",
+      "trigger": {
+        "metric": "daily_cost",
+        "condition": "daily_cost > 2x 7-day average AND absolute_delta > 100 CNY",
+        "namespace": "SYS.BSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud bss listBillDetails --cycle DAILY --start_date {{output.start_date}} --end_date {{output.end_date}}",
+          "hcloud bss listResourceUsage --start_date {{output.start_date}} --end_date {{output.end_date}}",
+          "hcloud CES listAlarms --alarm-name \"*cost*\" --status ENABLED"
+        ],
+        "confidence_factors": ["new_resource_deployed", "price_model_change", "renewal_charge"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud bss getDailyBill --date {{output.date}} | awk '/total_amount/ {print $2}' | bc | awk '{if ($1 > threshold) exit 0; else exit 1}'"
+        ],
+        "dry_run": "hcloud bss createBudget --budget_name cost-spike-{{output.date}} --type DAILY --amount {{output.threshold}} --dry-run",
+        "execute": "hcloud bss createBudget --budget_name cost-spike-{{output.date}} --type DAILY --amount {{output.threshold}} --alert_threshold 0.8",
+        "verification": "hcloud bss listBudgets --budget_name cost-spike-{{output.date}} | grep -q cost-spike",
+        "rollback": "hcloud bss deleteBudget --budget_name cost-spike-{{output.date}}",
+        "timeout_seconds": 45
+      },
+      "escalation": {
+        "condition": "cost delta exceeds 10x average or exceeds monthly budget cap",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "BILL-R004",
+      "name": "Payment Method Update After Failure",
+      "trigger": {
+        "metric": "order_payment_status",
+        "condition": "status == PAYMENT_FAILED after order placement",
+        "namespace": "SYS.BSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud bss listOrders --payment_status FAILED --start_time {{output.start_time}}",
+          "hcloud bss getOrder --order_id {{output.order_id}}",
+          "hcloud bss listPaymentMethods"
+        ],
+        "confidence_factors": ["default_payment_method_expired", "quota_exceeded", "insufficient_balance"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.3,
+        "preconditions": [
+          "hcloud bss getOrder --order_id {{output.order_id}} | grep -q PAYMENT_FAILED"
+        ],
+        "dry_run": "hcloud bss setDefaultPaymentMethod --method_id {{output.alt_method_id}} --dry-run",
+        "execute": "hcloud bss setDefaultPaymentMethod --method_id {{output.alt_method_id}} && hcloud bss payOrder --order_id {{output.order_id}}",
+        "verification": "hcloud bss getOrder --order_id {{output.order_id}} | grep -q PAID",
+        "rollback": "hcloud bss revertPaymentMethod --method_id {{output.original_method_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "payment fails due to credit limit, compliance hold, or method dispute",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.75,
+        "avg_execution_seconds": 40,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

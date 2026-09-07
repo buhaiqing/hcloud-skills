@@ -1,0 +1,161 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-dns-ops",
+  "playbooks": [
+    {
+      "id": "DNS-R001",
+      "name": "Resume Paused Zone After Billing Recovery",
+      "trigger": {
+        "metric": "zone_status",
+        "condition": "status == PAUSED after payment",
+        "namespace": "SYS.DNS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DNS listZones --status PAUSED",
+          "hcloud DNS showZone --zone_id {{output.zone_id}}",
+          "hcloud CES listAlarms --alarm-name \"*dns*\" --status ENABLED"
+        ],
+        "confidence_factors": ["zone_paused_after_billing", "account_unblocked"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud DNS showZone --zone_id {{output.zone_id}} | grep -q PAUSED",
+          "hcloud bill consumption --customer_id {{env.HW_CUSTOMER_ID}} | grep -q normal"
+        ],
+        "dry_run": "hcloud DNS updateZone --zone_id {{output.zone_id}} --dry-run",
+        "execute": "hcloud DNS updateZone --zone_id {{output.zone_id}} --status active",
+        "verification": "hcloud DNS showZone --zone_id {{output.zone_id}} | grep -q ACTIVE",
+        "rollback": "hcloud DNS updateZone --zone_id {{output.zone_id}} --status pause",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "zone still paused after 60s or account still in arrears",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DNS-R002",
+      "name": "Retry Failed DNSSEC Signing",
+      "trigger": {
+        "metric": "dnssec_status",
+        "condition": "status == sign_failed after 10min",
+        "namespace": "SYS.DNS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DNS showZoneDnssec --zone_id {{output.zone_id}}",
+          "hcloud DNS listKeysets --zone_id {{output.zone_id}}"
+        ],
+        "confidence_factors": ["dnssec_sign_failed", "keys_not_expired"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud DNS showZoneDnssec --zone_id {{output.zone_id}} | grep -q FAILED"
+        ],
+        "dry_run": "hcloud DNS enableZoneDnssec --zone_id {{output.zone_id}} --dry-run",
+        "execute": "hcloud DNS enableZoneDnssec --zone_id {{output.zone_id}}",
+        "verification": "hcloud DNS showZoneDnssec --zone_id {{output.zone_id}} | grep -q ACTIVE",
+        "rollback": "hcloud DNS disableZoneDnssec --zone_id {{output.zone_id}}",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "DNSSEC still fails after 3 retries or key expired",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 45,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DNS-R003",
+      "name": "Retry Record Set Propagation Failure",
+      "trigger": {
+        "metric": "record_status",
+        "condition": "status == PENDING_CREATE for more than 5min",
+        "namespace": "SYS.DNS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DNS listRecordSets --zone_id {{output.zone_id}} --status PENDING",
+          "hcloud DNS showRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}}"
+        ],
+        "confidence_factors": ["record_pending_timeout", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud DNS showRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}} | grep -q PENDING"
+        ],
+        "dry_run": "hcloud DNS updateRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}} --dry-run",
+        "execute": "hcloud DNS updateRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}} --ttl {{output.ttl}} --type {{output.type}} --value {{output.value}}",
+        "verification": "hcloud DNS showRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}} | grep -q ACTIVE",
+        "rollback": "hcloud DNS deleteRecordSet --zone_id {{output.zone_id}} --record_id {{output.record_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "record still pending after 3 retries or quota exhausted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 18,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DNS-R004",
+      "name": "Failover Primary/Secondary Zone After Outage",
+      "trigger": {
+        "metric": "health_check",
+        "condition": "primary_unreachable for 3 consecutive checks",
+        "namespace": "SYS.DNS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DNS showZone --zone_id {{output.primary_zone_id}}",
+          "hcloud DNS listSecondayZones --zone_id {{output.primary_zone_id}}",
+          "hcloud CES getMetricData --namespace SYS.DNS --metric_name zone_availability --dim zone_id={{output.primary_zone_id}}"
+        ],
+        "confidence_factors": ["primary_unreachable", "secondary_available", "health_check_failed"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "hcloud DNS showZone --zone_id {{output.secondary_zone_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud DNS updateZone --zone_id {{output.secondary_zone_id}} --dry-run",
+        "execute": "hcloud DNS updateZone --zone_id {{output.secondary_zone_id}} --type primary",
+        "verification": "hcloud DNS showZone --zone_id {{output.secondary_zone_id}} | grep -q PRIMARY",
+        "rollback": "hcloud DNS updateZone --zone_id {{output.secondary_zone_id}} --type secondary",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "failover fails or both zones unreachable",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

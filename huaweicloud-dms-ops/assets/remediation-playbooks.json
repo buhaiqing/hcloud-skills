@@ -1,0 +1,162 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-dms-ops",
+  "playbooks": [
+    {
+      "id": "DMS-R001",
+      "name": "Consumer Group Lag Recovery",
+      "trigger": {
+        "metric": "consumer_lag",
+        "condition": "lag_messages > 50000 for 10min",
+        "namespace": "SYS.DMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DMS listConsumerGroups --instance_id {{output.instance_id}} --group {{output.group_id}}",
+          "hcloud DMS listTopics --instance_id {{output.instance_id}}",
+          "hcloud DMS listConnections --instance_id {{output.instance_id}}"
+        ],
+        "confidence_factors": ["consumer_lag_high", "consumer_active", "partition_count_adequate"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud DMS showConsumerGroup --instance_id {{output.instance_id}} --group {{output.group_id}} | grep -q active"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DMS resetConsumerGroupOffset --instance_id {{output.instance_id}} --group {{output.group_id}} --topic {{output.topic}} --timestamp {{output.target_timestamp}}",
+        "verification": "hcloud DMS showConsumerGroup --instance_id {{output.instance_id}} --group {{output.group_id}} | grep -q lag_messages",
+        "rollback": null,
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "reset fails or consumer group shows inactive",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 60,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DMS-R002",
+      "name": "Partition Reassignment — Broker Imbalance",
+      "trigger": {
+        "metric": "partition_leader_distribution",
+        "condition": "stddev > 3 across brokers for 5min",
+        "namespace": "SYS.DMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DMS listBrokers --instance_id {{output.instance_id}}",
+          "hcloud DMS listTopics --instance_id {{output.instance_id}}",
+          "hcloud DMS listPartitions --instance_id {{output.instance_id}} --topic {{output.topic}}"
+        ],
+        "confidence_factors": ["partition_imbalanced", "broker_count_stable", "no_reassignment_in_progress"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.4,
+        "preconditions": [
+          "hcloud DMS showInstance --instance_id {{output.instance_id}} | grep -q running"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DMS createPartitionReassignment --instance_id {{output.instance_id}} --topic {{output.topic}} --target_assignment {\"0\":[1],\"1\":[2],\"2\":[0]}",
+        "verification": "hcloud DMS listPartitions --instance_id {{output.instance_id}} --topic {{output.topic}} | grep -c leader_id",
+        "rollback": null,
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "reassignment fails or instance enters error state",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.75,
+        "avg_execution_seconds": 480,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DMS-R003",
+      "name": "Message Accumulation — Topic Retention Tune",
+      "trigger": {
+        "metric": "message_accumulation",
+        "condition": "unacked_messages > 100000 for 15min",
+        "namespace": "SYS.DMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DMS listTopics --instance_id {{output.instance_id}}",
+          "hcloud DMS showTopic --instance_id {{output.instance_id}} --topic {{output.topic}}",
+          "hcloud DMS listConsumerGroups --instance_id {{output.instance_id}} --group {{output.group_id}}"
+        ],
+        "confidence_factors": ["messages_accumulating", "consumer_group_exists", "no_disk_pressure"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud DMS showTopic --instance_id {{output.instance_id}} --topic {{output.topic}} | grep -q topic"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DMS updateTopic --instance_id {{output.instance_id}} --topic {{output.topic}} --retention_time 86400",
+        "verification": "hcloud DMS showTopic --instance_id {{output.instance_id}} --topic {{output.topic}} | grep -q retention_time",
+        "rollback": "hcloud DMS updateTopic --instance_id {{output.instance_id}} --topic {{output.topic}} --retention_time 72",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "topic update fails or disk quota exceeded",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DMS-R004",
+      "name": "Kafka Broker Connection Failure Recovery",
+      "trigger": {
+        "metric": "broker_connected",
+        "condition": "connected == false for 3min",
+        "namespace": "SYS.DMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DMS showInstance --instance_id {{output.instance_id}}",
+          "hcloud DMS listBrokers --instance_id {{output.instance_id}}",
+          "hcloud VPC listSecurityGroups --vpc_id {{output.vpc_id}}"
+        ],
+        "confidence_factors": ["broker_unreachable", "instance_running", "sg_allows_connection"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.5,
+        "preconditions": [
+          "hcloud DMS showInstance --instance_id {{output.instance_id}} | grep -q running"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DMS restartBroker --instance_id {{output.instance_id}} --broker_id {{output.broker_id}}",
+        "verification": "hcloud DMS listBrokers --instance_id {{output.instance_id}} | grep -q status running",
+        "rollback": null,
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "broker restart fails or instance enters error state",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 180,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

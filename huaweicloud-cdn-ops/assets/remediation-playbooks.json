@@ -1,0 +1,161 @@
+{
+  "$schema": "huaweicloud-ops-remediation-v1",
+  "skill_id": "huaweicloud-cdn-ops",
+  "playbooks": [
+    {
+      "id": "CDN-R001",
+      "name": "Retry Cache Purge after Failure",
+      "trigger": {
+        "metric": "purge_task_status",
+        "condition": "status == FAILED for cache purge task",
+        "namespace": "SYS.CDN"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cdn listPurgeTasks --status FAILED",
+          "hcloud cdn showDomain --domain_id {{output.domain_id}}",
+          "hcloud CES listAlarms --alarm-name \"*cdn*\" --status ENABLED"
+        ],
+        "confidence_factors": ["transient_api_timeout", "quota_rate_limit", "domain_not_active"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud cdn listPurgeTasks --task_id {{output.task_id}} | grep -q FAILED"
+        ],
+        "dry_run": "hcloud cdn createPurgeCache --domain_id {{output.domain_id}} --urls '{{output.urls}}' --dry-run",
+        "execute": "hcloud cdn createPurgeCache --domain_id {{output.domain_id}} --urls '{{output.urls}}' --purge_type file",
+        "verification": "hcloud cdn showPurgeTask --task_id {{output.new_task_id}} | grep -q SUCCESS",
+        "rollback": "hcloud cdn createRefreshCache --domain_id {{output.domain_id}} --urls '{{output.urls}}'",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "purge fails 3 times or domain is in a locked state",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 60,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CDN-R002",
+      "name": "Domain Re-Enable after Accidental Disable",
+      "trigger": {
+        "metric": "domain_status",
+        "condition": "status == DISABLED for active CDN domain",
+        "namespace": "SYS.CDN"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cdn listDomains --status disabled",
+          "hcloud CTS listTraces --resource_type cdn-domain --action updateDomain --limit 5"
+        ],
+        "confidence_factors": ["domain_accidentally_disabled", "config_change_revert", "no_incident_active"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud cdn showDomain --domain_id {{output.domain_id}} | grep -q disabled"
+        ],
+        "dry_run": "hcloud cdn updateDomain --domain_id {{output.domain_id}} --status on --dry-run",
+        "execute": "hcloud cdn updateDomain --domain_id {{output.domain_id}} --status on",
+        "verification": "hcloud cdn showDomain --domain_id {{output.domain_id}} | grep -q online",
+        "rollback": "hcloud cdn updateDomain --domain_id {{output.domain_id}} --status off",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "domain was disabled due to compliance violation or overdue payment",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CDN-R003",
+      "name": "HTTPS Certificate Renewal before Expiry",
+      "trigger": {
+        "metric": "certificate_expiry_days",
+        "condition": "expiry_days < 14 for active HTTPS certificate",
+        "namespace": "SYS.CDN"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cdn listDomains --https_enabled true",
+          "hcloud cdn showDomainConfig --domain_id {{output.domain_id}} | grep certificate",
+          "hcloud CES listAlarms --alarm-name \"*cert*\" --status ENABLED"
+        ],
+        "confidence_factors": ["certificate_expiring_soon", "no_auto_renew_configured"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud cdn showCertificate --domain_id {{output.domain_id}} | awk '/expire_time/ {print $2}' | xargs -I{} date -d {} +%s | awk '{if (($1 - systime()) < 1209600) exit 0; else exit 1}'"
+        ],
+        "dry_run": "hcloud cdn updateCertificate --domain_id {{output.domain_id}} --certificate '{{output.new_cert}}' --private_key '{{output.new_key}}' --dry-run",
+        "execute": "hcloud cdn updateCertificate --domain_id {{output.domain_id}} --certificate '{{output.new_cert}}' --private_key '{{output.new_key}}'",
+        "verification": "hcloud cdn showCertificate --domain_id {{output.domain_id}} | grep -q {{output.new_serial}}",
+        "rollback": "hcloud cdn updateCertificate --domain_id {{output.domain_id}} --certificate '{{output.old_cert}}' --private_key '{{output.old_key}}'",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "certificate renewal fails or domain HTTPS is enforced by WAF policy",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.89,
+        "avg_execution_seconds": 40,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CDN-R004",
+      "name": "Origin Error Source Switch to Backup Origin",
+      "trigger": {
+        "metric": "origin_5xx_error_rate",
+        "condition": "5xx_rate > 0.05 for 5 consecutive minutes on primary origin",
+        "namespace": "SYS.CDN"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cdn listDomainOrigin --domain_id {{output.domain_id}}",
+          "hcloud cdn showOriginHealth --domain_id {{output.domain_id}}",
+          "hcloud cdn listDomainStats --domain_id {{output.domain_id}} --metric origin_5xx --start_time {{output.start_time}} --end_time {{output.end_time}}"
+        ],
+        "confidence_factors": ["origin_server_down", "origin_overloaded", "origin_network_unreachable"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.55,
+        "preconditions": [
+          "hcloud cdn showOriginHealth --domain_id {{output.domain_id}} | grep primary | grep -q unhealthy"
+        ],
+        "dry_run": "hcloud cdn updateOrigin --domain_id {{output.domain_id}} --origin_type backup --dry-run",
+        "execute": "hcloud cdn updateOrigin --domain_id {{output.domain_id}} --origin_type backup --switch_priority 0",
+        "verification": "hcloud cdn showOriginHealth --domain_id {{output.domain_id}} | grep backup | grep -q healthy",
+        "rollback": "hcloud cdn updateOrigin --domain_id {{output.domain_id}} --origin_type primary --switch_priority 1",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "backup origin also unhealthy or CDN domain is under DDoS attack",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.82,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

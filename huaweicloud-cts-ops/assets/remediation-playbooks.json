@@ -1,0 +1,160 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-cts-ops",
+  "playbooks": [
+    {
+      "id": "CTS-R001",
+      "name": "Tracker Re-Enable after Deployment",
+      "trigger": {
+        "metric": "tracker_status",
+        "condition": "status == DISABLED after deployment",
+        "namespace": "SYS.CTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CTS listTrackers --tracker_name {{output.tracker_name}}",
+          "hcloud CTS listTraces --resource_type tracker --action updateTracker --limit 5"
+        ],
+        "confidence_factors": ["tracker_disabled_by_deployment", "no_compliance_issue"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud CTS showTracker --tracker_name {{output.tracker_name}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud CTS updateTracker --tracker_name {{output.tracker_name}} --status ENABLED --dry-run",
+        "execute": "hcloud CTS updateTracker --tracker_name {{output.tracker_name}} --status ENABLED",
+        "verification": "hcloud CTS showTracker --tracker_name {{output.tracker_name}} | grep -q ENABLED",
+        "rollback": "hcloud CTS updateTracker --tracker_name {{output.tracker_name}} --status DISABLED",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "tracker re-enable fails or tracker was disabled for compliance reason",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CTS-R002",
+      "name": "OBS Bucket Full — Trace Delivery Failure",
+      "trigger": {
+        "metric": "trace_delivery_status",
+        "condition": "error_code == OBSBucketQuotaExceeded",
+        "namespace": "SYS.CTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CTS showTracker --tracker_name {{output.tracker_name}}",
+          "hcloud OBS listBuckets",
+          "hcloud OBS listObjects --bucket {{output.bucket_name}} --max-keys 1"
+        ],
+        "confidence_factors": ["trace_delivery_failed", "bucket_exists", "quota_exceeded"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud OBS headBucket --bucket {{output.bucket_name}} | grep -q 200"
+        ],
+        "dry_run": null,
+        "execute": "hcloud CTS updateTracker --tracker_name {{output.tracker_name}} --bucket_name {{output.new_bucket_name}} --bucket_prefix cts/",
+        "verification": "hcloud CTS showTracker --tracker_name {{output.tracker_name}} | grep -q bucket_name",
+        "rollback": "hcloud CTS updateTracker --tracker_name {{output.tracker_name}} --bucket_name {{output.old_bucket_name}}",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "no alternative OBS bucket available or IAM permission insufficient",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 60,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CTS-R003",
+      "name": "Trace Query Timeout Recovery",
+      "trigger": {
+        "metric": "query_latency",
+        "condition": "latency_ms > 30000 for trace query",
+        "namespace": "SYS.CTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud CTS listTraces --limit 50 --from {{output.time_from}} --to {{output.time_to}}",
+          "hcloud CTS listTraceGroups --group_id {{output.group_id}}",
+          "hcloud LTS listLogGroups --log_group_id {{output.log_group_id}}"
+        ],
+        "confidence_factors": ["query_timeout", "log_group_exists", "time_range_too_broad"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud CTS listTraces --limit 1 --from {{output.time_from}} --to {{output.time_to}} | grep -q trace_id"
+        ],
+        "dry_run": null,
+        "execute": "hcloud CTS listTraces --limit 100 --from {{output.time_from}} --to {{output.time_to}} --tracker_name {{output.tracker_name}}",
+        "verification": "hcloud CTS listTraces --limit 100 --from {{output.time_from}} --to {{output.time_to}} --tracker_name {{output.tracker_name}} | grep -q trace_id",
+        "rollback": null,
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "query still times out after narrowing time range",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 35,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CTS-R004",
+      "name": "LTS Log Group Retention Policy Violation",
+      "trigger": {
+        "metric": "log_retention_days",
+        "condition": "retention_days < 30 for LTS log group used by CTS",
+        "namespace": "SYS.LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS listLogGroups --log_group_name {{output.log_group_name}}",
+          "hcloud CTS showTracker --tracker_name {{output.tracker_name}}"
+        ],
+        "confidence_factors": ["retention_too_short", "log_group_in_use_by_cts", "compliance_risk"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.65,
+        "preconditions": [
+          "hcloud LTS showLogGroup --log_group_id {{output.log_group_id}} | grep -q log_group_id"
+        ],
+        "dry_run": null,
+        "execute": "hcloud LTS updateLogGroup --log_group_id {{output.log_group_id}} --ttl_in_days 90",
+        "verification": "hcloud LTS showLogGroup --log_group_id {{output.log_group_id}} | grep -q ttl_in_days",
+        "rollback": "hcloud LTS updateLogGroup --log_group_id {{output.log_group_id}} --ttl_in_days 30",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "LTS update fails or log group is locked for compliance",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

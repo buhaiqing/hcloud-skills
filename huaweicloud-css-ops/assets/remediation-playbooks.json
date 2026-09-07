@@ -1,0 +1,162 @@
+{
+  "$schema": "huaweicloud-ops-remediation-v1",
+  "skill_id": "huaweicloud-css-ops",
+  "playbooks": [
+    {
+      "id": "CSS-R001",
+      "name": "Cluster Health Recovery from RED to YELLOW",
+      "trigger": {
+        "metric": "cluster_health_status",
+        "condition": "status == RED after cluster deployment",
+        "namespace": "SYS.CSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud css getCluster --cluster_id {{output.cluster_id}}",
+          "hcloud css listClusterSnapshots --cluster_id {{output.cluster_id}} --status FAILED",
+          "hcloud css listUnassignedShards --cluster_id {{output.cluster_id}}",
+          "hcloud CES listAlarms --alarm-name \"*css*\" --status ENABLED"
+        ],
+        "confidence_factors": ["shard_allocation_failed", "insufficient_node_quorum", "disk_watermark_high"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.4,
+        "preconditions": [
+          "hcloud css getCluster --cluster_id {{output.cluster_id}} | grep -q RED"
+        ],
+        "dry_run": "hcloud css rerouteShards --cluster_id {{output.cluster_id}} --dry-run",
+        "execute": "hcloud css rerouteShards --cluster_id {{output.cluster_id}}",
+        "verification": "hcloud css getCluster --cluster_id {{output.cluster_id}} | grep -E 'YELLOW|GREEN'",
+        "rollback": "hcloud css restoreSnapshot --cluster_id {{output.cluster_id}} --snapshot_id {{output.latest_snapshot_id}}",
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "cluster remains RED after reroute or data integrity risk detected",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.72,
+        "avg_execution_seconds": 180,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CSS-R002",
+      "name": "Disk Watermark High — Force Merge and Clear",
+      "trigger": {
+        "metric": "disk_watermark_high",
+        "condition": "disk.watermark.high == true on one or more data nodes",
+        "namespace": "SYS.CSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud css listClusterNodes --cluster_id {{output.cluster_id}} --node_type data",
+          "hcloud css getClusterDisk --cluster_id {{output.cluster_id}}",
+          "hcloud css listIndices --cluster_id {{output.cluster_id}} --health red"
+        ],
+        "confidence_factors": ["index_segments_fragmented", "too_many_segments", "disk_near_full"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud css getClusterDisk --cluster_id {{output.cluster_id}} | grep -q high"
+        ],
+        "dry_run": "hcloud css forceMergeIndices --cluster_id {{output.cluster_id}} --index '*' --max_num_segments 1 --dry-run",
+        "execute": "hcloud css forceMergeIndices --cluster_id {{output.cluster_id}} --index '*' --max_num_segments 1",
+        "verification": "hcloud css getClusterDisk --cluster_id {{output.cluster_id}} | grep -q false",
+        "rollback": "hcloud css cancelForceMerge --cluster_id {{output.cluster_id}}",
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "disk watermark remains high after merge or cluster goes READONLY",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.83,
+        "avg_execution_seconds": 400,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CSS-R003",
+      "name": "Snapshot Restore after Index Corruption",
+      "trigger": {
+        "metric": "index_health",
+        "condition": "index status == FAILED or index corruption detected",
+        "namespace": "SYS.CSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud css listIndices --cluster_id {{output.cluster_id}} --health red",
+          "hcloud css listClusterSnapshots --cluster_id {{output.cluster_id}} --state SUCCESS --sort_by updated_at:desc --limit 3",
+          "hcloud css verifySnapshot --cluster_id {{output.cluster_id}} --snapshot_id {{output.snapshot_id}}"
+        ],
+        "confidence_factors": ["index_data_corrupted", "shard_restore_failed", "mapping_conflict"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.3,
+        "preconditions": [
+          "hcloud css listIndices --cluster_id {{output.cluster_id}} --index_name {{output.index_name}} | grep -q FAILED"
+        ],
+        "dry_run": "hcloud css restoreSnapshot --cluster_id {{output.cluster_id}} --snapshot_id {{output.snapshot_id}} --indices {{output.index_name}} --dry-run",
+        "execute": "hcloud css restoreSnapshot --cluster_id {{output.cluster_id}} --snapshot_id {{output.snapshot_id}} --indices {{output.index_name}}",
+        "verification": "hcloud css listIndices --cluster_id {{output.cluster_id}} --index_name {{output.index_name}} | grep -q open",
+        "rollback": "hcloud css closeIndex --cluster_id {{output.cluster_id}} --index {{output.index_name}}",
+        "timeout_seconds": 1200
+      },
+      "escalation": {
+        "condition": "snapshot restore fails or latest snapshot is also corrupted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.68,
+        "avg_execution_seconds": 800,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CSS-R004",
+      "name": "Auto-Snapshot Policy Re-Enable after Accidental Disable",
+      "trigger": {
+        "metric": "snapshot_policy_status",
+        "condition": "status == DISABLED for active auto-snapshot policy",
+        "namespace": "SYS.CSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud css listSnapshotPolicies --cluster_id {{output.cluster_id}} --status DISABLED",
+          "hcloud CTS listTraces --resource_type snapshot-policy --action updateSnapshotPolicy --limit 5"
+        ],
+        "confidence_factors": ["policy_accidentally_disabled", "manual_override_no_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud css getSnapshotPolicy --cluster_id {{output.cluster_id}} --policy_id {{output.policy_id}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud css updateSnapshotPolicy --cluster_id {{output.cluster_id}} --policy_id {{output.policy_id}} --status ENABLED --dry-run",
+        "execute": "hcloud css updateSnapshotPolicy --cluster_id {{output.cluster_id}} --policy_id {{output.policy_id}} --status ENABLED",
+        "verification": "hcloud css getSnapshotPolicy --cluster_id {{output.cluster_id}} --policy_id {{output.policy_id}} | grep -q ENABLED",
+        "rollback": "hcloud css updateSnapshotPolicy --cluster_id {{output.cluster_id}} --policy_id {{output.policy_id}} --status DISABLED",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "policy re-enable fails or policy was disabled intentionally",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

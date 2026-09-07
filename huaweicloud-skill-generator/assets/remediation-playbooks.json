@@ -1,0 +1,197 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-skill-generator",
+  "playbooks": [
+    {
+      "id": "SKG-R001",
+      "name": "Regenerate Skill after Frontmatter Validation Failure",
+      "trigger": {
+        "metric": "skill_frontmatter_validation",
+        "condition": "status == invalid after skill_regeneration",
+        "namespace": "SYS.SKILL_GENERATOR"
+      },
+      "diagnosis": {
+        "steps": [
+          "grep -n '^---' {{ctx.skill_dir}}/SKILL.md | head -4",
+          "cat {{ctx.skill_dir}}/SKILL.md | head -30 | grep -E '(name|skill_id|author|version|delegates_to)'"
+        ],
+        "confidence_factors": ["frontmatter_missing_required_fields", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "test -f {{ctx.skill_dir}}/SKILL.md",
+          "head -30 {{ctx.skill_dir}}/SKILL.md | grep -q '^---'"
+        ],
+        "dry_run": "hcloud skill validate --skill_dir {{ctx.skill_dir}} --dry-run",
+        "execute": "hcloud skill generate --product {{ctx.product_name}} --output_dir {{ctx.skill_dir}} --force",
+        "verification": "hcloud skill validate --skill_dir {{ctx.skill_dir}}",
+        "rollback": "cd {{ctx.skill_dir}} && git checkout HEAD -- SKILL.md",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "OpenAPI spec is unavailable or malformed for the target product",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 60,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SKG-R002",
+      "name": "Fix Missing delegates_to after Product Dependency Change",
+      "trigger": {
+        "metric": "skill_delegates_validation",
+        "condition": "status == missing_delegate after dependency_update",
+        "namespace": "SYS.SKILL_GENERATOR"
+      },
+      "diagnosis": {
+        "steps": [
+          "cat {{ctx.skill_dir}}/SKILL.md | grep -A 20 'delegates_to'",
+          "ls {{ctx.base_dir}}/huaweicloud-{{ctx.missing_delegate}}-ops/SKILL.md 2>/dev/null || echo 'MISSING'"
+        ],
+        "confidence_factors": ["delegate_skill_exists", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "test -d {{ctx.base_dir}}/huaweicloud-{{ctx.missing_delegate}}-ops"
+        ],
+        "dry_run": "echo 'Adding {{ctx.missing_delegate}} to delegates_to'",
+        "execute": "python3 -c \"import re; content=open('{{ctx.skill_dir}}/SKILL.md').read(); m=re.search(r'(delegates_to:\\s*\\n)((?:  - .+\\n)+)', content); print(m.group(0) if m else 'NOT FOUND')\"",
+        "verification": "cat {{ctx.skill_dir}}/SKILL.md | grep -q 'huaweicloud-{{ctx.missing_delegate}}-ops'",
+        "rollback": "cd {{ctx.skill_dir}} && git checkout HEAD -- SKILL.md",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Delegate skill does not exist; must generate it first",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SKG-R003",
+      "name": "Patch Skill API Profile after Huawei Cloud API Version Change",
+      "trigger": {
+        "metric": "skill_api_profile_outdated",
+        "condition": "status == outdated after api_version_change",
+        "namespace": "SYS.SKILL_GENERATOR"
+      },
+      "diagnosis": {
+        "steps": [
+          "cat {{ctx.skill_dir}}/SKILL.md | grep 'api_profile'",
+          "curl -s '{{ctx.api_discovery_url}}' | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get(\"version\",\"unknown\"))'"
+        ],
+        "confidence_factors": ["api_version_mismatch_confirmed", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "curl -sf '{{ctx.api_discovery_url}}' > /dev/null"
+        ],
+        "dry_run": "echo 'Would update api_profile in SKILL.md'",
+        "execute": "python3 -c \"content=open('{{ctx.skill_dir}}/SKILL.md').read(); content=content.replace('{{ctx.old_api_profile}}', '{{ctx.new_api_profile}}'); open('{{ctx.skill_dir}}/SKILL.md','w').write(content)\"",
+        "verification": "cat {{ctx.skill_dir}}/SKILL.md | grep '{{ctx.new_api_profile}}'",
+        "rollback": "cd {{ctx.skill_dir}} && git checkout HEAD -- SKILL.md",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "API endpoint changed breaking backward compatibility; requires full skill regeneration",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 40,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SKG-R004",
+      "name": "Regenerate Skill Assets after Governance Review Failure",
+      "trigger": {
+        "metric": "skill_governance_score",
+        "condition": "status == below_threshold after governance_review",
+        "namespace": "SYS.SKILL_GENERATOR"
+      },
+      "diagnosis": {
+        "steps": [
+          "cat {{ctx.skill_dir}}/SKILL.md | head -60 | grep -E '(author|version|last_updated|type)'",
+          "ls {{ctx.skill_dir}}/assets/"
+        ],
+        "confidence_factors": ["governance_review_ran", "score_below_0.7"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "test -d {{ctx.skill_dir}}/assets"
+        ],
+        "dry_run": "hcloud skill validate --skill_dir {{ctx.skill_dir}} --governance --dry-run",
+        "execute": "hcloud skill generate --product {{ctx.product_name}} --output_dir {{ctx.skill_dir}} --include-assets --force",
+        "verification": "hcloud skill validate --skill_dir {{ctx.skill_dir}} --governance | grep -q 'score.*>.*0.7'",
+        "rollback": "cd {{ctx.skill_dir}} && git checkout HEAD -- SKILL.md assets/",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "Governance failures require manual intervention in skill design",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.8,
+        "avg_execution_seconds": 90,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "SKG-R005",
+      "name": "Restore Missing Skill Metadata Fields after Template Update",
+      "trigger": {
+        "metric": "skill_metadata_complete",
+        "condition": "status == incomplete after template_upgrade",
+        "namespace": "SYS.SKILL_GENERATOR"
+      },
+      "diagnosis": {
+        "steps": [
+          "cat {{ctx.skill_dir}}/SKILL.md | grep -E '(runtime|go_version_minimum|go_version_jit)'",
+          "cat {{ctx.base_dir}}/huaweicloud-skill-generator/references/user-experience-spec.md | grep 'required.*metadata' -A 5"
+        ],
+        "confidence_factors": ["metadata_field_missing", "template_updated"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "grep -q 'go_version_minimum' {{ctx.skill_dir}}/SKILL.md || echo 'MISSING'"
+        ],
+        "dry_run": "echo 'Would add missing metadata fields to SKILL.md'",
+        "execute": "python3 -c \"content=open('{{ctx.skill_dir}}/SKILL.md').read(); patch='  go_version_minimum: \\\"1.21\\\"\\n  go_version_jit: \\\"1.25+\\\"\\n'; content=content.replace('metadata:', 'metadata:\\n'+patch); open('{{ctx.skill_dir}}/SKILL.md','w').write(content)\"",
+        "verification": "cat {{ctx.skill_dir}}/SKILL.md | grep -q 'go_version_minimum'",
+        "rollback": "cd {{ctx.skill_dir}} && git checkout HEAD -- SKILL.md",
+        "timeout_seconds": 20
+      },
+      "escalation": {
+        "condition": "Template change requires structural updates beyond metadata patching",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

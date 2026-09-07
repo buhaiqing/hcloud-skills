@@ -1,0 +1,197 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-obs-ops",
+  "playbooks": [
+    {
+      "id": "OBS-R001",
+      "name": "Bucket ACL Permission Fix after Unauthorized Access",
+      "trigger": {
+        "metric": "obs_access_denied_count",
+        "condition": "status == elevated after policy_deployment",
+        "namespace": "SYS.OBS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud obs list-buckets --output json | jq '.[] | select(.Name == \"{{ctx.bucket_name}}\")'",
+          "hcloud obs get-bucket-acl --bucket {{ctx.bucket_name}}",
+          "hcloud OBS list-bucket-policy --bucket {{ctx.bucket_name}}"
+        ],
+        "confidence_factors": ["acl_modified_outside_deployment", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud obs get-bucket-acl --bucket {{ctx.bucket_name}} | grep -q 'ACCESS_DENIED'"
+        ],
+        "dry_run": "hcloud obs set-bucket-acl --bucket {{ctx.bucket_name}} --acl private --dry-run",
+        "execute": "hcloud obs set-bucket-acl --bucket {{ctx.bucket_name}} --acl private",
+        "verification": "hcloud obs get-bucket-acl --bucket {{ctx.bucket_name}} | grep -q 'private'",
+        "rollback": "hcloud obs set-bucket-acl --bucket {{ctx.bucket_name}} --acl {{ctx.original_acl}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "ACL is intentionally restrictive or bucket policy conflicts",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "OBS-R002",
+      "name": "Lifecycle Rule Re-Enable after Misconfiguration",
+      "trigger": {
+        "metric": "obs_object_expiry_missed",
+        "condition": "status == missed after lifecycle_update",
+        "namespace": "SYS.OBS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud obs list-bucket-lifecycle-config --bucket {{ctx.bucket_name}}",
+          "hcloud OBS list-bucket-extended-info --bucket {{ctx.bucket_name}} --query lifecycle"
+        ],
+        "confidence_factors": ["lifecycle_disabled_by_update", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud obs list-bucket-lifecycle-config --bucket {{ctx.bucket_name}} | grep -q 'Enabled\\|Suspended'"
+        ],
+        "dry_run": "hcloud obs set-bucket-lifecycle-config --bucket {{ctx.bucket_name}} --lifecycle-rule '{{ctx.rule_json}}' --dry-run",
+        "execute": "hcloud obs set-bucket-lifecycle-config --bucket {{ctx.bucket_name}} --lifecycle-rule '{{ctx.rule_json}}'",
+        "verification": "hcloud obs list-bucket-lifecycle-config --bucket {{ctx.bucket_name}} | grep -q 'Enabled'",
+        "rollback": "hcloud obs delete-bucket-lifecycle-config --bucket {{ctx.bucket_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Lifecycle rule update causes data loss risk or conflicts with existing rules",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "OBS-R003",
+      "name": "Cross-Region Replication Resume after Break",
+      "trigger": {
+        "metric": "obs_replication_lag_seconds",
+        "condition": "status == lag > 3600 after configuration_change",
+        "namespace": "SYS.OBS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud obs get-bucket-replication --bucket {{ctx.bucket_name}}",
+          "hcloud OBS list-bucket-versions --bucket {{ctx.bucket_name}} --max-items 5"
+        ],
+        "confidence_factors": ["replication_paused_by_config", "source_bucket_accessible"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud obs get-bucket-replication --bucket {{ctx.bucket_name}} | grep -q 'Disabled\\|Paused'"
+        ],
+        "dry_run": "hcloud obs set-bucket-replication --bucket {{ctx.bucket_name}} --status Enabled --dry-run",
+        "execute": "hcloud obs set-bucket-replication --bucket {{ctx.bucket_name}} --status Enabled",
+        "verification": "hcloud obs get-bucket-replication --bucket {{ctx.bucket_name}} | grep -q 'Enabled'",
+        "rollback": "hcloud obs set-bucket-replication --bucket {{ctx.bucket_name}} --status Disabled",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "Replication fails due to IAM role or destination bucket issue",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "OBS-R004",
+      "name": "Static Website Hosting Re-Enable after Bucket Policy Reset",
+      "trigger": {
+        "metric": "obs_website_unavailable",
+        "condition": "status == unavailable after policy_reset",
+        "namespace": "SYS.OBS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud obs get-bucket-website-config --bucket {{ctx.bucket_name}}",
+          "hcloud obs get-bucket-policy --bucket {{ctx.bucket_name}}"
+        ],
+        "confidence_factors": ["website_config_reset", "bucket_policy_blocks_public_access"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud obs get-bucket-website-config --bucket {{ctx.bucket_name}} | grep -q 'IndexDocument\\|ErrorDocument'"
+        ],
+        "dry_run": "hcloud obs set-bucket-website-config --bucket {{ctx.bucket_name}} --index {{ctx.index_doc}} --error {{ctx.error_doc}} --dry-run",
+        "execute": "hcloud obs set-bucket-website-config --bucket {{ctx.bucket_name}} --index {{ctx.index_doc}} --error {{ctx.error_doc}}",
+        "verification": "hcloud obs get-bucket-website-config --bucket {{ctx.bucket_name}} | grep -q 'IndexDocument'",
+        "rollback": "hcloud obs delete-bucket-website-config --bucket {{ctx.bucket_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Website config conflicts with bucket policy or index document missing",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.9,
+        "avg_execution_seconds": 18,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "OBS-R005",
+      "name": "Versioning Suspension Resume after Audit Finding",
+      "trigger": {
+        "metric": "obs_versioning_disabled",
+        "condition": "status == Suspended after security_audit",
+        "namespace": "SYS.OBS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud obs get-bucket-versioning --bucket {{ctx.bucket_name}}",
+          "hcloud OBS list-bucket-versions --bucket {{ctx.bucket_name}} --max-items 3"
+        ],
+        "confidence_factors": ["versioning_suspended_for_compliance", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.65,
+        "preconditions": [
+          "hcloud obs get-bucket-versioning --bucket {{ctx.bucket_name}} | grep -q 'Suspended'"
+        ],
+        "dry_run": "hcloud obs set-bucket-versioning --bucket {{ctx.bucket_name}} --status Enabled --dry-run",
+        "execute": "hcloud obs set-bucket-versioning --bucket {{ctx.bucket_name}} --status Enabled",
+        "verification": "hcloud obs get-bucket-versioning --bucket {{ctx.bucket_name}} | grep -q 'Enabled'",
+        "rollback": "hcloud obs set-bucket-versioning --bucket {{ctx.bucket_name}} --status Suspended",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "Versioning resume causes storage cost spike or conflicts with retention policy",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 14,
+        "last_updated": "2026-07-25T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

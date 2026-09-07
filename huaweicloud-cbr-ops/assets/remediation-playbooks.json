@@ -1,0 +1,161 @@
+{
+  "$schema": "huaweicloud-ops-remediation-v1",
+  "skill_id": "huaweicloud-cbr-ops",
+  "playbooks": [
+    {
+      "id": "CBR-R001",
+      "name": "Retry Backup after Failure",
+      "trigger": {
+        "metric": "backup_status",
+        "condition": "status == FAILED for scheduled backup",
+        "namespace": "SYS.CBR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cbr listBackups --vault_id {{output.vault_id}} --status FAILED",
+          "hcloud cbr showTask --task_id {{output.task_id}}",
+          "hcloud CES listAlarms --alarm-name \"*backup*\" --status ENABLED"
+        ],
+        "confidence_factors": ["transient_network_timeout", "source_resource_busy", "vault_quota_near_full"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.65,
+        "preconditions": [
+          "hcloud cbr listBackups --vault_id {{output.vault_id}} --status FAILED | grep -q {{output.backup_id}}"
+        ],
+        "dry_run": "hcloud cbr createBackup --vault_id {{output.vault_id}} --resource_id {{output.resource_id}} --backup_type DAILY --dry-run",
+        "execute": "hcloud cbr createBackup --vault_id {{output.vault_id}} --resource_id {{output.resource_id}} --backup_type DAILY",
+        "verification": "hcloud cbr showBackup --backup_id {{output.new_backup_id}} | grep -q AVAILABLE",
+        "rollback": "hcloud cbr deleteBackup --backup_id {{output.new_backup_id}}",
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "retry fails 3 times or vault quota is exhausted",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 300,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CBR-R002",
+      "name": "Vault Quota Expansion after Capacity Warning",
+      "trigger": {
+        "metric": "vault_capacity_percent",
+        "condition": "used_capacity / total_capacity > 0.9",
+        "namespace": "SYS.CBR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cbr showVault --vault_id {{output.vault_id}}",
+          "hcloud cbr listBackups --vault_id {{output.vault_id}} --status AVAILABLE",
+          "hcloud cbr listPolicies --vault_id {{output.vault_id}}"
+        ],
+        "confidence_factors": ["backup_retention_too_long", "backup_frequency_too_high", "no_auto_cleanup"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud cbr showVault --vault_id {{output.vault_id}} | awk '/used_capacity/ {print $2}' | bc | awk '{if ($1 > 0.9 * total) exit 0; else exit 1}'"
+        ],
+        "dry_run": "hcloud cbr updateVault --vault_id {{output.vault_id}} --capacity 1000 --dry-run",
+        "execute": "hcloud cbr updateVault --vault_id {{output.vault_id}} --capacity 1000",
+        "verification": "hcloud cbr showVault --vault_id {{output.vault_id}} | grep -q 1000",
+        "rollback": "hcloud cbr updateVault --vault_id {{output.vault_id}} --capacity {{output.original_capacity}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "vault is at max capacity or billing limit reached",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.90,
+        "avg_execution_seconds": 45,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CBR-R003",
+      "name": "Restore from Latest Available Backup after Restore Failure",
+      "trigger": {
+        "metric": "restore_status",
+        "condition": "status == FAILED for restore operation",
+        "namespace": "SYS.CBR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cbr listBackups --vault_id {{output.vault_id}} --resource_id {{output.resource_id}} --status AVAILABLE --sort_by created_at:desc --limit 5",
+          "hcloud cbr showBackup --backup_id {{output.backup_id}}",
+          "hcloud cbr showVault --vault_id {{output.vault_id}}"
+        ],
+        "confidence_factors": ["target_resource_busy", "backup_inconsistent_state", "vault_locked"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.4,
+        "preconditions": [
+          "hcloud cbr showRestore --restore_id {{output.restore_id}} | grep -q FAILED"
+        ],
+        "dry_run": "hcloud cbr restoreBackup --backup_id {{output.latest_backup_id}} --resource_id {{output.target_resource_id}} --dry-run",
+        "execute": "hcloud cbr restoreBackup --backup_id {{output.latest_backup_id}} --resource_id {{output.target_resource_id}}",
+        "verification": "hcloud cbr showRestore --restore_id {{output.new_restore_id}} | grep -q SUCCESS",
+        "rollback": "hcloud cbr stopRestore --restore_id {{output.new_restore_id}}",
+        "timeout_seconds": 1800
+      },
+      "escalation": {
+        "condition": "restore fails due to resource state conflict or vault encryption key rotated",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.78,
+        "avg_execution_seconds": 900,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "CBR-R004",
+      "name": "Policy Re-Enable after Accidental Disable",
+      "trigger": {
+        "metric": "policy_status",
+        "condition": "status == DISABLED for active backup policy",
+        "namespace": "SYS.CBR"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud cbr listPolicies --status DISABLED",
+          "hcloud CTS listTraces --resource_type policy --action updatePolicy --limit 5"
+        ],
+        "confidence_factors": ["policy_accidentally_disabled", "manual_override_no_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud cbr showPolicy --policy_id {{output.policy_id}} | grep -q DISABLED"
+        ],
+        "dry_run": "hcloud cbr updatePolicy --policy_id {{output.policy_id}} --status ENABLED --dry-run",
+        "execute": "hcloud cbr updatePolicy --policy_id {{output.policy_id}} --status ENABLED",
+        "verification": "hcloud cbr showPolicy --policy_id {{output.policy_id}} | grep -q ENABLED",
+        "rollback": "hcloud cbr updatePolicy --policy_id {{output.policy_id}} --status DISABLED",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "policy re-enable fails or policy was disabled intentionally",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

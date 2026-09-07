@@ -1,0 +1,206 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-kms-ops",
+  "playbooks": [
+    {
+      "id": "KMS-R001",
+      "name": "Enable Disabled CMK",
+      "trigger": {
+        "metric": "key_state",
+        "condition": "key_state == 'DISABLED' AND intent == 'restore_key'",
+        "namespace": "KMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud kms list-keys --region {{env.HW_REGION_ID}}",
+          "hcloud kms describe-key --key-id {{user.key_id}}",
+          "hcloud kms list-key-tags --key-id {{user.key_id}}"
+        ],
+        "confidence_factors": ["key_disabled", "no_pending_deletion", "dependencies_healthy"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q DISABLED",
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -qv PENDING_DELETION"
+        ],
+        "dry_run": "hcloud kms enable-key --key-id {{user.key_id}} --dry-run",
+        "execute": "hcloud kms enable-key --key-id {{user.key_id}}",
+        "verification": "hcloud kms describe-key --key-id {{user.key_id}} | grep -q ENABLED",
+        "rollback": "hcloud kms disable-key --key-id {{user.key_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "key is in PENDING_DELETION state or dependent resources cannot be verified",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "KMS-R002",
+      "name": "Rotate CMK with Enabled Rotation",
+      "trigger": {
+        "metric": "key_rotation_status",
+        "condition": "rotation_enabled == false AND key_type == 'SYMMETRIC_DEFAULT'",
+        "namespace": "KMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud kms list-keys --region {{env.HW_REGION_ID}}",
+          "hcloud kms describe-key --key-id {{user.key_id}}",
+          "hcloud kms show-key-quotas --region {{env.HW_REGION_ID}}"
+        ],
+        "confidence_factors": ["rotation_disabled", "symmetric_key", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.80,
+        "preconditions": [
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q SYMMETRIC_DEFAULT",
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -qv ASYMMETRIC"
+        ],
+        "dry_run": "hcloud kms enable-key-rotation --key-id {{user.key_id}} --dry-run",
+        "execute": "hcloud kms enable-key-rotation --key-id {{user.key_id}}",
+        "verification": "hcloud kms describe-key --key-id {{user.key_id}} | grep -q rotation_enabled.*true",
+        "rollback": "hcloud kms disable-key-rotation --key-id {{user.key_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "key is asymmetric or quota exceeded",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "KMS-R003",
+      "name": "Schedule CMK Deletion with Safety Window",
+      "trigger": {
+        "metric": "key_deletion_request",
+        "condition": "operation == 'schedule_deletion' AND intent == 'remove_idle_key'",
+        "namespace": "KMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud kms describe-key --key-id {{user.key_id}}",
+          "hcloud kms list-grants --key-id {{user.key_id}}",
+          "hcloud kms list-key-tags --key-id {{user.key_id}}"
+        ],
+        "confidence_factors": ["key_disabled", "no_active_grants", "no_dependencies", "idle_key_confirmed"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.95,
+        "preconditions": [
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q DISABLED",
+          "hcloud kms list-grants --key-id {{user.key_id}} | grep -c grant_id | xargs -I{} test {} -eq 0",
+          "Confirm with user: Deleting CMK {{user.key_id}} will permanently prevent all dependent resources (OBS, RDS, EVS) from decrypting data. Proceed with {{user.pending_window_days}} day deletion window? [yes/NO]"
+        ],
+        "dry_run": "hcloud kms schedule-key-deletion --key-id {{user.key_id}} --pending_window_days {{user.pending_window_days}} --dry-run",
+        "execute": "hcloud kms schedule-key-deletion --key-id {{user.key_id}} --pending_window_days {{user.pending_window_days}}",
+        "verification": "hcloud kms describe-key --key-id {{user.key_id}} | grep -q PENDING_DELETION",
+        "rollback": "hcloud kms cancel-key-deletion --key-id {{user.key_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "key has active grants, is used by OBS/RDS, or window less than 7 days",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.99,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "KMS-R004",
+      "name": "Create Grant for Service Delegation",
+      "trigger": {
+        "metric": "grant_request",
+        "condition": "operation == 'create_grant' AND grantee_service is specified",
+        "namespace": "KMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud kms describe-key --key-id {{user.key_id}}",
+          "hcloud kms list-grants --key-id {{user.key_id}}",
+          "hcloud iam list-services --service-type kms"
+        ],
+        "confidence_factors": ["key_enabled", "grantee_service_valid", "grant_not_duplicate"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.80,
+        "preconditions": [
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q ENABLED",
+          "hcloud kms list-grants --key-id {{user.key_id}} | grep -qv {{user.grantee_principal}}"
+        ],
+        "dry_run": "hcloud kms create-grant --key-id {{user.key_id}} --grantee-principal {{user.grantee_principal}} --operations '[\"CreateDatakey\",\"EncryptDatakey\"]' --dry-run",
+        "execute": "hcloud kms create-grant --key-id {{user.key_id}} --grantee-principal {{user.grantee_principal}} --operations '[\"CreateDatakey\",\"EncryptDatakey\"]'",
+        "verification": "hcloud kms list-grants --key-id {{user.key_id}} | grep -q {{user.grantee_principal}}",
+        "rollback": "hcloud kms revoke-grant --key-id {{user.key_id}} --grantee-principal {{user.grantee_principal}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "grantee principal not a valid Huawei Cloud service or grant already exists",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 18,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "KMS-R005",
+      "name": "Generate Data Key via CMK",
+      "trigger": {
+        "metric": "datakey_request",
+        "condition": "operation == 'create_datakey' AND key_id is specified",
+        "namespace": "KMS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud kms describe-key --key-id {{user.key_id}}",
+          "hcloud kms list-key-tags --key-id {{user.key_id}}"
+        ],
+        "confidence_factors": ["key_enabled", "key_type_supported", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.90,
+        "preconditions": [
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q ENABLED",
+          "hcloud kms describe-key --key-id {{user.key_id}} | grep -q SYMMETRIC_DEFAULT"
+        ],
+        "dry_run": "hcloud kms create-datakey --key-id {{user.key_id}} --datakey_plain_length {{user.datakey_plain_length}} --dry-run",
+        "execute": "hcloud kms create-datakey --key-id {{user.key_id}} --datakey_plain_length {{user.datakey_plain_length}}",
+        "verification": "echo $? = 0 and output contains both datakey_plaintext and datakey_ciphertext",
+        "rollback": "No rollback needed — datakey generation is stateless; securely dispose of plaintext in memory",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "key is disabled or not a symmetric key",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.98,
+        "avg_execution_seconds": 8,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

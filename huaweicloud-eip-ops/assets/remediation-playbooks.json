@@ -1,0 +1,166 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-eip-ops",
+  "playbooks": [
+    {
+      "id": "EIP-R001",
+      "name": "Auto-Unbind Idle EIP After Threshold",
+      "trigger": {
+        "metric": "eip_idle_duration",
+        "condition": "idle > 7 days and unbound",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC listPublicIPs --status UNBOUND",
+          "hcloud CES getMetricData --namespace SYS.VPC --metric_name eip_idle_hours --dim public_ip={{output.eip_id}}",
+          "hcloud CES listAlarms --alarm-name \"*idle-eip*\" --status ENABLED"
+        ],
+        "confidence_factors": ["eip_unbound", "idle_exceeds_threshold", "no_recent_traffic"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}} | grep -q UNBOUND",
+          "hcloud CES getMetricData --namespace SYS.VPC --metric_name eip_idle_hours --dim public_ip={{output.eip_id}} | grep -qE '[0-9]+' && test $(echo \"$(hcloud CES getMetricData ... | grep -oE '[0-9]+') > 168\" | bc) -eq 1"
+        ],
+        "dry_run": "hcloud VPC listPublicIPs --status UNBOUND --dry-run",
+        "execute": "hcloud VPC releasePublicIp --public_ip_id {{output.eip_id}}",
+        "verification": "hcloud VPC listPublicIPs --public_ip_id {{output.eip_id}} 2>&1 | grep -q 'not found'",
+        "rollback": "hcloud VPC createPublicIp --type 5_bgp --charge_mode bandwidth --bandwidth_size 1",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "EIP still bound or release fails due to ownership",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "EIP-R002",
+      "name": "Retry EIP Bind After Transient Failure",
+      "trigger": {
+        "metric": "bind_status",
+        "condition": "bind failed with retryable error",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}}",
+          "hcloud VPC showInstance --instance_id {{output.instance_id}}",
+          "hcloud CES listTraces --resource_type publicip --action bind --limit 5"
+        ],
+        "confidence_factors": ["bind_transient_error", "both_resources_exist", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}} | grep -q UNBOUND",
+          "hcloud VPC showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": "hcloud VPC bindPublicIp --public_ip_id {{output.eip_id}} --instance_id {{output.instance_id}} --dry-run",
+        "execute": "hcloud VPC bindPublicIp --public_ip_id {{output.eip_id}} --instance_id {{output.instance_id}}",
+        "verification": "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}} | grep -q BOUND",
+        "rollback": "hcloud VPC unbindPublicIp --public_ip_id {{output.eip_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "bind fails after 3 retries or resource not found",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.89,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "EIP-R003",
+      "name": "Resize Bandwidth After Traffic Spike",
+      "trigger": {
+        "metric": "bandwidth_usage",
+        "condition": "> 90% of quota for 10min",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud VPC showBandwidth --bandwidth_id {{output.bandwidth_id}}",
+          "hcloud CES getMetricData --namespace SYS.VPC --metric_name bandwidth_usage_rate --dim bandwidth={{output.bandwidth_id}}",
+          "hcloud VPC listBandwidths --size 100"
+        ],
+        "confidence_factors": ["bandwidth_sustained_high", "quota_available", "charge_mode_butable"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud VPC showBandwidth --bandwidth_id {{output.bandwidth_id}} | grep -qNORMAL",
+          "hcloud bill quota --region {{env.HW_REGION_ID}} --resource bandwidth | grep -q available"
+        ],
+        "dry_run": "hcloud VPC updateBandwidth --bandwidth_id {{output.bandwidth_id}} --size {{output.new_size}} --dry-run",
+        "execute": "hcloud VPC updateBandwidth --bandwidth_id {{output.bandwidth_id}} --size {{output.new_size}}",
+        "verification": "hcloud VPC showBandwidth --bandwidth_id {{output.bandwidth_id}} | grep -q {{output.new_size}}",
+        "rollback": "hcloud VPC updateBandwidth --bandwidth_id {{output.bandwidth_id}} --size {{output.original_size}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "bandwidth quota exhausted or charge mode incompatible",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "EIP-R004",
+      "name": "Re-Enable DDoS Protection After Auto-Trigger",
+      "trigger": {
+        "metric": "ddos_status",
+        "condition": "status == disabled after DDoS trigger resolved",
+        "namespace": "SYS.VPC"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud Anti-DDoS listTasks --status completed --limit 5",
+          "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}}",
+          "hcloud CES getMetricData --namespace SYS.AntiDDoS --metric_name attack_traffic --dim public_ip={{output.eip_id}}"
+        ],
+        "confidence_factors": ["ddos_attack_resolved", "protection_disabled"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}} | grep -q BOUND",
+          "hcloud Anti-DDoS showTask --task_id {{output.latest_task_id}} | grep -q completed"
+        ],
+        "dry_run": "hcloud Anti-DDoS updateStatus --public_ip {{output.eip_address}} --status enable --dry-run",
+        "execute": "hcloud Anti-DDoS updateStatus --public_ip {{output.eip_address}} --status enable",
+        "verification": "hcloud VPC showPublicIp --public_ip_id {{output.eip_id}} | grep -q PROTECTED",
+        "rollback": "hcloud Anti-DDoS updateStatus --public_ip {{output.eip_address}} --status disable",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "protection re-enable fails or DDoS still active",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

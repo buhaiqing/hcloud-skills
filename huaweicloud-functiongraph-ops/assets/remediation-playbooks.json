@@ -1,0 +1,164 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-functiongraph-ops",
+  "playbooks": [
+    {
+      "id": "FUNC-R001",
+      "name": "Retry Function Invocation After Transient Timeout",
+      "trigger": {
+        "metric": "function_invocation_status",
+        "condition": "invocation_timeout rate > 5% for 5min",
+        "namespace": "SYS.FUNC"
+      },
+      "diagnosis": {
+        "steps": [
+          "huaweicloud functiongraph listFunctionStats --func_urn {{output.func_urn}} --period 300",
+          "huaweicloud functiongraph getFunctionConfig --func_urn {{output.func_urn}}",
+          "huaweicloud LTS listStreams --log_group_id {{output.log_group_id}} --log_stream_name {{output.func_urn}}"
+        ],
+        "confidence_factors": ["timeout_rate_elevated", "function_config_valid", "runtime_responsive"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}} | jq -e '.func_code.state == ACTIVE'",
+          "huaweicloud LTS listStreams --log_group_id {{output.log_group_id}} --log_stream_name {{output.func_urn}} | jq -e '.streams | length > 0'"
+        ],
+        "dry_run": "echo 'Increase timeout and retry invocation'",
+        "execute": "huaweicloud functiongraph updateFunctionConfig --func_urn {{output.func_urn}} --timeout {{output.new_timeout}}",
+        "verification": "huaweicloud functiongraph invokeFunction --func_urn {{output.func_urn}} | jq -e '.statusCode == 200'",
+        "rollback": "huaweicloud functiongraph updateFunctionConfig --func_urn {{output.func_urn}} --timeout {{output.original_timeout}}",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "function still timing out after 3 retries or runtime unreachable",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.87,
+        "avg_execution_seconds": 40,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "FUNC-R002",
+      "name": "Resume Suspended Function After Quota Reset",
+      "trigger": {
+        "metric": "function_state",
+        "condition": "state == SUSPENDED after quota reset",
+        "namespace": "SYS.FUNC"
+      },
+      "diagnosis": {
+        "steps": [
+          "huaweicloud functiongraph listFunctions --func_state SUSPENDED",
+          "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}}",
+          "huaweicloud bill consumption --service functiongraph | jq '.items[] | select(.resource_type == \"invocation\")'"
+        ],
+        "confidence_factors": ["function_suspended", "quota_reset", "no_active_incident"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}} | jq -e '.func_code.state == SUSPENDED'",
+          "huaweicloud functiongraph getFunctionMetrics --func_urn {{output.func_urn}} --period 60 | jq 'max < .quota.used'"
+        ],
+        "dry_run": "echo 'Resume function'",
+        "execute": "huaweicloud functiongraph resumeFunction --func_urn {{output.func_urn}}",
+        "verification": "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}} | jq -e '.func_code.state == ACTIVE'",
+        "rollback": "huaweicloud functiongraph suspendFunction --func_urn {{output.func_urn}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "function still suspended after 60s or quota still exceeded",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "FUNC-R003",
+      "name": "Rotate Trigger After Credential Expiry",
+      "trigger": {
+        "metric": "trigger_status",
+        "condition": "trigger auth failure due to expired credentials",
+        "namespace": "SYS.FUNC"
+      },
+      "diagnosis": {
+        "steps": [
+          "huaweicloud functiongraph listTriggers --func_urn {{output.func_urn}}",
+          "huaweicloud functiongraph getTrigger --func_urn {{output.func_urn}} --trigger_type_code {{output.trigger_type}} --trigger_id {{output.trigger_id}}",
+          "huaweicloud CTS listTraces --resource_type function_trigger --limit 10"
+        ],
+        "confidence_factors": ["trigger_auth_failed", "credentials_expired"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "huaweicloud functiongraph getTrigger --func_urn {{output.func_urn}} --trigger_type_code {{output.trigger_type}} --trigger_id {{output.trigger_id}} | jq -e '.trigger_status == DISABLED'"
+        ],
+        "dry_run": "echo 'Update trigger credentials'",
+        "execute": "huaweicloud functiongraph updateTrigger --func_urn {{output.func_urn}} --trigger_type_code {{output.trigger_type}} --trigger_id {{output.trigger_id}} --event_streams {{output.new_event_stream}}",
+        "verification": "huaweicloud functiongraph getTrigger --func_urn {{output.func_urn}} --trigger_type_code {{output.trigger_type}} --trigger_id {{output.trigger_id}} | jq -e '.trigger_status == ACTIVE'",
+        "rollback": "huaweicloud functiongraph updateTrigger --func_urn {{output.func_urn}} --trigger_type_code {{output.trigger_type}} --trigger_id {{output.trigger_id}} --event_streams {{output.old_event_stream}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "trigger update fails or credentials invalid",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.9,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "FUNC-R004",
+      "name": "Redeploy Function After Code Update Failure",
+      "trigger": {
+        "metric": "deployment_status",
+        "condition": "deploy failed with transient error",
+        "namespace": "SYS.FUNC"
+      },
+      "diagnosis": {
+        "steps": [
+          "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}}",
+          "huaweicloud functiongraph listDeployments --func_urn {{output.func_urn}}",
+          "huaweicloud OBS listObjects --bucket {{output.bucket}} --prefix {{output.func_urn}}/{{output.version}}"
+        ],
+        "confidence_factors": ["deploy_failed_transient", "code_in_obs", "runtime_available"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "huaweicloud OBS listObjects --bucket {{output.bucket}} --prefix {{output.func_urn}}/{{output.version}} | jq -e '.objects | length > 0'"
+        ],
+        "dry_run": "echo 'Redeploy function version'",
+        "execute": "huaweicloud functiongraph createDeployment --func_urn {{output.func_urn}} --deployment_id {{output.deployment_id}}",
+        "verification": "huaweicloud functiongraph getFunction --func_urn {{output.func_urn}} | jq -e '.func_code.state == ACTIVE'",
+        "rollback": "huaweicloud functiongraph updateFunctionConfig --func_urn {{output.func_urn}} --handler {{output.original_handler}}",
+        "timeout_seconds": 180
+      },
+      "escalation": {
+        "condition": "deploy fails after 3 retries or code not found in OBS",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 90,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

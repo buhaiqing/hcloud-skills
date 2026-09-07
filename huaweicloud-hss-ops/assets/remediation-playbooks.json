@@ -1,0 +1,202 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-hss-ops",
+  "playbooks": [
+    {
+      "id": "HSS-R001",
+      "name": "Handle Malware Detection Event",
+      "trigger": {
+        "metric": "alarm_event_type",
+        "condition": "event_type == 'malware' AND handle_status == 'unhandled'",
+        "namespace": "SYS.HSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud HSS ListEvents --event_types '[\"malware\"]' --handle_status unhandled",
+          "hcloud HSS ShowEvent --event_id {{output.event_id}}",
+          "hcloud HSS ListHosts --host_id {{output.host_id}}"
+        ],
+        "confidence_factors": ["event_type_confirmed_malware", "host_protection_active"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud HSS ListEvents --event_id {{user.event_id}} | grep -q malware"
+        ],
+        "dry_run": "hcloud HSS OperateEvent --operate_type preview_isolate --event_id_list '[\"{{user.event_id}}\"]'",
+        "execute": "hcloud HSS OperateEvent --operate_type isolate_and_kill --event_id_list '[\"{{user.event_id}}\"]' --operate_detail_list '[{\"agent_id\":\"{{output.agent_id}}\",\"file_hash\":\"{{output.file_hash}}\",\"file_path\":\"{{output.file_path}}\",\"process_pid\":{{output.process_pid}}}]'",
+        "verification": "hcloud HSS ListEvents --event_id {{user.event_id}} | grep -q handled",
+        "rollback": "hcloud HSS OperateEvent --operate_type restore_file --event_id_list '[\"{{user.event_id}}\"]'",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "event is ransomware or host is domain controller or isolate_and_kill fails",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 45,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "HSS-R002",
+      "name": "Auto-Fix High Severity Vulnerability",
+      "trigger": {
+        "metric": "vulnerability_severity",
+        "condition": "severity == 'high' AND status == 'unhandled' AND vul_type in ['linux','windows']",
+        "namespace": "SYS.HSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud HSS ListVulnerabilities --severity high --status unhandled",
+          "hcloud HSS ShowVulnerability --vulnerability_id {{output.vulnerability_id}}",
+          "hcloud HSS ListVulnerabilityFixJob --vulnerability_id {{output.vulnerability_id}}"
+        ],
+        "confidence_factors": ["high_severity_confirmed", "patch_available", "online_host"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.90,
+        "preconditions": [
+          "hcloud HSS ShowVulnerability --vulnerability_id {{user.vulnerability_id}} | grep -q patch_available"
+        ],
+        "dry_run": "hcloud HSS CreateVulnerabilityFixJob --vulnerability_id {{user.vulnerability_id}} --agent_ids '[\"{{output.agent_id}}\"]' --dry-run",
+        "execute": "hcloud HSS CreateVulnerabilityFixJob --vulnerability_id {{user.vulnerability_id}} --agent_ids '[\"{{output.agent_id}}\"]'",
+        "verification": "hcloud HSS ListVulnerabilityFixJob --vulnerability_id {{user.vulnerability_id}} | grep -q SUCCESS",
+        "rollback": "hcloud HSS ListVulnerabilities --vulnerability_id {{user.vulnerability_id}} | grep -q unhandled",
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "fix job fails or host is critical production server",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 120,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "HSS-R003",
+      "name": "Switch Host to Enterprise Protection",
+      "trigger": {
+        "metric": "host_protection_version",
+        "condition": "host_protected == true AND version == 'hss.version.basic'",
+        "namespace": "SYS.HSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud HSS ListHosts --host_status active",
+          "hcloud HSS ShowHost --host_id {{output.host_id}}",
+          "hcloud HSS ShowHostProtectStatus --host_id {{output.host_id}}"
+        ],
+        "confidence_factors": ["basic_version_confirmed", "host_online", "no_pending_task"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud HSS ShowHost --host_id {{user.host_id}} | grep -q active",
+          "hcloud HSS ShowHostProtectStatus --host_id {{user.host_id}} | grep -q basic"
+        ],
+        "dry_run": "hcloud HSS SwitchHostsProtectStatus --version hss.version.enterprise --charging_mode on_demand --host_id_list '[\"{{user.host_id}}\"]' --dry-run",
+        "execute": "hcloud HSS SwitchHostsProtectStatus --version hss.version.enterprise --charging_mode on_demand --host_id_list '[\"{{user.host_id}}\"]'",
+        "verification": "hcloud HSS ShowHostProtectStatus --host_id {{user.host_id}} | grep -q enterprise",
+        "rollback": "hcloud HSS SwitchHostsProtectStatus --version hss.version.basic --charging_mode on_demand --host_id_list '[\"{{user.host_id}}\"]'",
+        "timeout_seconds": 120
+      },
+      "escalation": {
+        "condition": "version switch fails or billing mode change rejected",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 30,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "HSS-R004",
+      "name": "Block Attacking IP from HSS",
+      "trigger": {
+        "metric": "alarm_event_category",
+        "condition": "category == 'brute_force' AND handle_status == 'unhandled'",
+        "namespace": "SYS.HSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud HSS ListEvents --event_types '[\"brute_force\"]' --handle_status unhandled",
+          "hcloud HSS ShowEvent --event_id {{output.event_id}}",
+          "hcloud HSS ListBlockIp --block_type attack_origin"
+        ],
+        "confidence_factors": ["brute_force_confirmed", "no_whitelisted_ip"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.80,
+        "preconditions": [
+          "hcloud HSS ShowEvent --event_id {{user.event_id}} | grep -q brute_force"
+        ],
+        "dry_run": "hcloud HSS OperateBlockIp --block_type attack_origin --ips '[\"{{output.attack_ip}}\"]' --dry-run",
+        "execute": "hcloud HSS OperateBlockIp --block_type attack_origin --ips '[\"{{output.attack_ip}}\"]' --block_time 3600",
+        "verification": "hcloud HSS ListBlockIp --block_type attack_origin | grep -q {{output.attack_ip}}",
+        "rollback": "hcloud HSS OperateBlockIp --operate_type unblock --block_type attack_origin --ips '[\"{{output.attack_ip}}\"]'",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "IP belongs to partner network or block fails",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "HSS-R005",
+      "name": "Execute Baseline Check on Host",
+      "trigger": {
+        "metric": "baseline_check_status",
+        "condition": "check_status == 'failed' AND rule_category in ['password_policy','security_config']",
+        "namespace": "SYS.HSS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud HSS ListBaselineResults --check_status failed --host_id {{output.host_id}}",
+          "hcloud HSS ShowBaselineResult --baseline_id {{output.baseline_id}} --host_id {{output.host_id}}",
+          "hcloud HSS ListBaselinePolicyRules --policy_id {{output.policy_id}}"
+        ],
+        "confidence_factors": ["baseline_check_failed", "host_online"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.70,
+        "preconditions": [
+          "hcloud HSS ShowBaselineResult --baseline_id {{user.baseline_id}} --host_id {{user.host_id}} | grep -q failed"
+        ],
+        "dry_run": "hcloud HSS ExecuteBaselineCheck --host_id_list '[\"{{user.host_id}}\"]' --policy_id {{user.policy_id}} --dry-run",
+        "execute": "hcloud HSS ExecuteBaselineCheck --host_id_list '[\"{{user.host_id}}\"]' --policy_id {{user.policy_id}}",
+        "verification": "hcloud HSS ListBaselineResults --baseline_id {{user.baseline_id}} --host_id {{user.host_id}} | grep -q passed",
+        "rollback": "hcloud HSS ExecuteBaselineCheck --host_id_list '[\"{{user.host_id}}\"]' --policy_id {{user.policy_id}}",
+        "timeout_seconds": 180
+      },
+      "escalation": {
+        "condition": "baseline check execution fails repeatedly or host is critical",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.85,
+        "avg_execution_seconds": 60,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

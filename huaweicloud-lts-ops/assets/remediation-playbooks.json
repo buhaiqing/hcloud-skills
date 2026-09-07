@@ -1,0 +1,206 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-lts-ops",
+  "playbooks": [
+    {
+      "id": "LTS-R001",
+      "name": "Create Log Group with Standard TTL",
+      "trigger": {
+        "metric": "log_group_request",
+        "condition": "operation == 'create_log_group' AND intent == 'standard_retention'",
+        "namespace": "LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}}",
+          "hcloud LTS ShowResourceQuotas --project_id {{env.HW_PROJECT_ID}}"
+        ],
+        "confidence_factors": ["group_name_unique", "quota_available"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.90,
+        "preconditions": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -qv {{user.log_group_name}}"
+        ],
+        "dry_run": "hcloud LTS CreateLogGroup --project_id {{env.HW_PROJECT_ID}} --log_group_name {{user.log_group_name}} --ttl_in_days {{user.ttl_in_days}} --dry-run",
+        "execute": "hcloud LTS CreateLogGroup --project_id {{env.HW_PROJECT_ID}} --log_group_name {{user.log_group_name}} --ttl_in_days {{user.ttl_in_days}}",
+        "verification": "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -q {{user.log_group_name}}",
+        "rollback": "hcloud LTS DeleteLogGroup --project_id {{env.HW_PROJECT_ID}} --log_group_id {{output.log_group_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "log group quota exceeded or name conflicts",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.95,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "LTS-R002",
+      "name": "Fix Failed Log Transfer to OBS",
+      "trigger": {
+        "metric": "transfer_status",
+        "condition": "transfer_status == 'failed' AND transfer_type == 'obs'",
+        "namespace": "LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS ListTransfers --project_id {{env.HW_PROJECT_ID}}",
+          "hcloud OBS list-buckets --region {{env.HW_REGION_ID}}",
+          "hcloud LTS ShowTransferInfo --transfer_id {{output.transfer_id}}"
+        ],
+        "confidence_factors": ["transfer_configured", "obs_bucket_accessible", "lts_to_obs_connectivity"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud LTS ListTransfers --project_id {{env.HW_PROJECT_ID}} | grep -q {{output.transfer_id}}",
+          "hcloud OBS list-buckets --region {{env.HW_REGION_ID}} | grep -q {{user.bucket_name}}"
+        ],
+        "dry_run": "hcloud LTS UpdateTransfer --transfer_id {{user.transfer_id}} --log_group_id {{user.log_group_id}} --log_stream_id {{user.log_stream_id}} --dry-run",
+        "execute": "hcloud LTS UpdateTransfer --transfer_id {{user.transfer_id}} --log_group_id {{user.log_group_id}} --log_stream_id {{user.log_stream_id}} --obs_configuration '{\"bucket_name\":\"{{user.bucket_name}}\",\"file_prefix\":\"{{user.file_prefix}}\"}'",
+        "verification": "hcloud LTS ListTransfers --project_id {{env.HW_PROJECT_ID}} | grep -q {{output.transfer_id}}",
+        "rollback": "hcloud LTS DeleteTransfer --transfer_id {{user.transfer_id}}",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "OBS bucket not accessible or transfer configuration is invalid",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.88,
+        "avg_execution_seconds": 40,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "LTS-R003",
+      "name": "Create Log Stream Within Group",
+      "trigger": {
+        "metric": "log_stream_request",
+        "condition": "operation == 'create_log_stream' AND log_group_id is specified",
+        "namespace": "LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}}",
+          "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}}",
+          "hcloud LTS ShowResourceQuotas --project_id {{env.HW_PROJECT_ID}}"
+        ],
+        "confidence_factors": ["group_exists", "stream_name_unique", "stream_quota_available"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.92,
+        "preconditions": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -q {{user.log_group_id}}",
+          "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} | grep -qv {{user.log_stream_name}}"
+        ],
+        "dry_run": "hcloud LTS CreateLogStream --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_name {{user.log_stream_name}} --dry-run",
+        "execute": "hcloud LTS CreateLogStream --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_name {{user.log_stream_name}}",
+        "verification": "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} | grep -q {{user.log_stream_name}}",
+        "rollback": "hcloud LTS DeleteLogStream --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_id {{output.log_stream_id}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "log group not found or stream quota (200 per group) exceeded",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.97,
+        "avg_execution_seconds": 10,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "LTS-R004",
+      "name": "Search Logs with Keyword Filter",
+      "trigger": {
+        "metric": "log_search_request",
+        "condition": "operation == 'search_logs' AND keywords is specified AND time_range is valid",
+        "namespace": "LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}}",
+          "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}}",
+          "hcloud LTS ListLogs --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_id {{user.log_stream_id}} --start_time {{user.start_time}} --end_time {{user.end_time}} --keywords '{{user.keywords}}' --limit 100"
+        ],
+        "confidence_factors": ["group_exists", "stream_exists", "time_range_valid"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.95,
+        "preconditions": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -q {{user.log_group_id}}",
+          "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} | grep -q {{user.log_stream_id}}",
+          "test {{user.end_time}} -gt {{user.start_time}}"
+        ],
+        "dry_run": "hcloud LTS ListLogs --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_id {{user.log_stream_id}} --start_time {{user.start_time}} --end_time {{user.end_time}} --limit 10 --dry-run",
+        "execute": "hcloud LTS ListLogs --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --log_stream_id {{user.log_stream_id}} --start_time {{user.start_time}} --end_time {{user.end_time}} --keywords '{{user.keywords}}' --limit 100",
+        "verification": "exit_code = 0 and stdout contains log entries",
+        "rollback": "No rollback needed — log search is read-only",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "log group or stream not found or time range exceeds 7 days",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.99,
+        "avg_execution_seconds": 5,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "LTS-R005",
+      "name": "Delete Log Group After Confirmation",
+      "trigger": {
+        "metric": "log_group_deletion_request",
+        "condition": "operation == 'delete_log_group' AND intent == 'remove_idle_group'",
+        "namespace": "LTS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}}",
+          "hcloud LTS ListLogStreams --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}}",
+          "hcloud LTS ListTransfers --project_id {{env.HW_PROJECT_ID}}"
+        ],
+        "confidence_factors": ["group_exists", "no_active_transfer", "logs_backed_up"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.0,
+        "preconditions": [
+          "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -q {{user.log_group_id}}",
+          "hcloud LTS ListTransfers --project_id {{env.HW_PROJECT_ID}} | grep -qv {{user.log_group_id}}",
+          "Confirm with user: Deleting log group {{user.log_group_name}} ({{user.log_group_id}}) will permanently delete all streams and logs within. This cannot be undone. Are you sure? [yes/NO]"
+        ],
+        "dry_run": "hcloud LTS DeleteLogGroup --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}} --dry-run",
+        "execute": "hcloud LTS DeleteLogGroup --project_id {{env.HW_PROJECT_ID}} --log_group_id {{user.log_group_id}}",
+        "verification": "hcloud LTS ListLogGroups --project_id {{env.HW_PROJECT_ID}} | grep -qv {{user.log_group_id}}",
+        "rollback": "No rollback possible — deletion is permanent; recreate group and reconfigure streams if needed",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "group has active transfer rules, user does not confirm, or group is production",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 1.0,
+        "avg_execution_seconds": 8,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

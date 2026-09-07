@@ -1,0 +1,163 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-dcs-ops",
+  "playbooks": [
+    {
+      "id": "DCS-R001",
+      "name": "Master-Slave Switchover Recovery",
+      "trigger": {
+        "metric": "instance_role",
+        "condition": "role == slave for 5min after high_latency detected",
+        "namespace": "SYS.DCS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DCS showInstance --instance_id {{output.instance_id}}",
+          "hcloud DCS listInstances --instance_id {{output.instance_id}}",
+          "hcloud DCS listBackups --instance_id {{output.instance_id}} --limit 3"
+        ],
+        "confidence_factors": ["instance_in_master_slave_mode", "high_latency_reported", "recent_switchover_event"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.6,
+        "preconditions": [
+          "hcloud DCS showInstance --instance_id {{output.instance_id}} | grep -q Master"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DCS restartInstance --instance_id {{output.instance_id}}",
+        "verification": "hcloud DCS showInstance --instance_id {{output.instance_id}} | grep -q status ACTIVE",
+        "rollback": null,
+        "timeout_seconds": 180
+      },
+      "escalation": {
+        "condition": "instance stays unhealthy after restart or data loss detected",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.87,
+        "avg_execution_seconds": 120,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DCS-R002",
+      "name": "High Memory Usage Scale-Up",
+      "trigger": {
+        "metric": "memory_usage",
+        "condition": "> 85 for 5min",
+        "namespace": "SYS.DCS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DCS showInstance --instance_id {{output.instance_id}}",
+          "hcloud DCS listInstanceKeyStatistics --instance_id {{output.instance_id}} --top 20",
+          "hcloud CES getMetricData --namespace SYS.DCS --metric_name memory_usage --dim instance_id={{output.instance_id}} --period 60"
+        ],
+        "confidence_factors": ["memory_sustained_high", "instance_resizable", "no_oom_yet"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.5,
+        "preconditions": [
+          "hcloud DCS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE",
+          "hcloud DCS listInstanceFlavors --region {{env.HW_REGION_ID}} | grep -q available"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DCS resizeInstance --instance_id {{output.instance_id}} --new_capacity {{output.new_capacity}}",
+        "verification": "hcloud DCS showInstance --instance_id {{output.instance_id}} | grep -q status ACTIVE",
+        "rollback": null,
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "resize fails or instance enters error state after resize",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.80,
+        "avg_execution_seconds": 480,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DCS-R003",
+      "name": "Connection Refused — Whitelist Misconfiguration",
+      "trigger": {
+        "metric": "connection_status",
+        "condition": "error_code == ConnectionRefused for 3min",
+        "namespace": "SYS.DCS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DCS showWhitelist --instance_id {{output.instance_id}}",
+          "hcloud VPC listSubnets --vpc_id {{output.vpc_id}}",
+          "hcloud ECS listInstances --vpc_id {{output.vpc_id}}"
+        ],
+        "confidence_factors": ["connection_refused", "whitelist_enabled", "client_ip_not_in_whitelist"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.7,
+        "preconditions": [
+          "hcloud DCS showWhitelist --instance_id {{output.instance_id}} | grep -q whitelist"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DCS updateWhitelist --instance_id {{output.instance_id}} --whitelist \"{{output.client_ip}},{{output.existing_whitelist}}\"",
+        "verification": "hcloud DCS showWhitelist --instance_id {{output.instance_id}} | grep -q {{output.client_ip}}",
+        "rollback": "hcloud DCS updateWhitelist --instance_id {{output.instance_id}} --whitelist {{output.existing_whitelist}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "whitelist update fails or whitelist feature is disabled",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "DCS-R004",
+      "name": "Cache Eviction Storm — Key Expiry Fix",
+      "trigger": {
+        "metric": "evicted_keys_rate",
+        "condition": "> 10000 evicted_keys/min for 5min",
+        "namespace": "SYS.DCS"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud DCS listInstanceKeyStatistics --instance_id {{output.instance_id}} --top 50",
+          "hcloud DCS showInstance --instance_id {{output.instance_id}}",
+          "hcloud CES getMetricData --namespace SYS.DCS --metric_name used_memory --dim instance_id={{output.instance_id}} --period 60"
+        ],
+        "confidence_factors": ["high_eviction_rate", "memory_near_limit", "ttl_keys_present"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.55,
+        "preconditions": [
+          "hcloud DCS showInstance --instance_id {{output.instance_id}} | grep -q ACTIVE"
+        ],
+        "dry_run": null,
+        "execute": "hcloud DCS resizeInstance --instance_id {{output.instance_id}} --new_capacity {{output.new_capacity}}",
+        "verification": "hcloud CES getMetricData --namespace SYS.DCS --metric_name evicted_keys_rate --dim instance_id={{output.instance_id}} --period 60 --filter avg | python3 -c \"import sys,json; d=json.load(sys.stdin); sys.exit(0 if d[-1]['average']<10000 else 1)\"",
+        "rollback": null,
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "eviction continues after resize or instance enters error state",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.82,
+        "avg_execution_seconds": 450,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

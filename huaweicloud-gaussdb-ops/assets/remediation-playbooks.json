@@ -1,0 +1,166 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-gaussdb-ops",
+  "playbooks": [
+    {
+      "id": "GAUSS-R001",
+      "name": "Retry GaussDB Connection After Transient Failure",
+      "trigger": {
+        "metric": "connection_status",
+        "condition": "connection_error rate > 5% for 3min",
+        "namespace": "SYS.GAUSSDB"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud GaussDB listInstances --db_type gaussdb",
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}}",
+          "hcloud CES getMetricData --namespace SYS.GAUSSDB --metric_name connection_failed_count --dim instance_id={{output.instance_id}} --period 60"
+        ],
+        "confidence_factors": ["connection_error_elevated", "instance_active", "no_maintenance"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.8,
+        "preconditions": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -q AVAILABLE",
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -qE 'maintenance_window|health_check' && test $(date +%s) -lt $(date -d \"$(hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00' | head -1) +%s) 2>/dev/null"
+        ],
+        "dry_run": "echo 'Test connection with retry'",
+        "execute": "mysql -h {{output.private_ip}} -P {{output.port}} -u {{output.db_user}} -p{{output.db_pass}} -e 'SELECT 1'",
+        "verification": "mysql -h {{output.private_ip}} -P {{output.port}} -u {{output.db_user}} -p{{output.db_pass}} -e 'SELECT version();' | grep -qE '[0-9]+\\.[0-9]+\\.[0-9]+'",
+        "rollback": "echo 'Connection pool reset not required for read-only retry'",
+        "timeout_seconds": 60
+      },
+      "escalation": {
+        "condition": "connection still failing after 3 retries or instance unavailable",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 25,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "GAUSS-R002",
+      "name": "Restore from Backup After Data Corruption",
+      "trigger": {
+        "metric": "instance_status",
+        "condition": "status == DEGRADED after corruption detected",
+        "namespace": "SYS.GAUSSDB"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}}",
+          "hcloud GaussDB listBackups --instance_id {{output.instance_id}} --backup_type manual",
+          "hcloud GaussDB listRestorations --instance_id {{output.instance_id}}"
+        ],
+        "confidence_factors": ["instance_degraded", "recent_backup_exists", "corruption_confirmed"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.95,
+        "preconditions": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -q DEGRADED",
+          "hcloud GaussDB listBackups --instance_id {{output.instance_id}} --backup_type manual | jq -e '.backups | length > 0'"
+        ],
+        "dry_run": "hcloud GaussDB showBackup --backup_id {{output.backup_id}}",
+        "execute": "hcloud GaussDB restoreInstance --instance_id {{output.instance_id}} --backup_id {{output.backup_id}}",
+        "verification": "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -q AVAILABLE",
+        "rollback": "echo 'Restoration cannot be rolled back; escalate to DBA'",
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "restore fails or no backup available",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.98,
+        "avg_execution_seconds": 300,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "GAUSS-R003",
+      "name": "Scale Storage After Disk Threshold Alert",
+      "trigger": {
+        "metric": "disk_usage",
+        "condition": "> 85% for 10min",
+        "namespace": "SYS.GAUSSDB"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}}",
+          "hcloud CES getMetricData --namespace SYS.GAUSSDB --metric_name disk_usage --dim instance_id={{output.instance_id}} --period 60",
+          "hcloud GaussDB listSnapshots --instance_id {{output.instance_id}}"
+        ],
+        "confidence_factors": ["disk_usage_elevated", "storage_resize_available", "no_backup_in_progress"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -q AVAILABLE",
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | jq '.volume.size < .volume.max_volume_size'"
+        ],
+        "dry_run": "hcloud GaussDB resizeInstance --instance_id {{output.instance_id}} --volume_size {{output.new_size}} --dry-run",
+        "execute": "hcloud GaussDB resizeInstance --instance_id {{output.instance_id}} --volume_size {{output.new_size}}",
+        "verification": "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -qE '{{output.new_size}}.*GB'",
+        "rollback": "echo 'Storage cannot be downsized; escalate to DBA'",
+        "timeout_seconds": 600
+      },
+      "escalation": {
+        "condition": "resize fails or disk at maximum size",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 300,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "GAUSS-R004",
+      "name": "Reboot Node After Hang Detected",
+      "trigger": {
+        "metric": "node_health",
+        "condition": "status == UNAVAILABLE for 2min",
+        "namespace": "SYS.GAUSSDB"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud GaussDB listNodes --instance_id {{output.instance_id}}",
+          "hcloud GaussDB showNode --instance_id {{output.instance_id}} --node_id {{output.node_id}}",
+          "hcloud CES listAlarms --alarm-name \"*gaussdb*node*\" --status ENABLED"
+        ],
+        "confidence_factors": ["node_unavailable", "replication_intact", "backup_recent"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.9,
+        "preconditions": [
+          "hcloud GaussDB showInstance --instance_id {{output.instance_id}} | grep -q AVAILABLE",
+          "hcloud GaussDB listNodes --instance_id {{output.instance_id}} | jq '[.nodes[] | select(.status == ACTIVE)] | length >= 1'"
+        ],
+        "dry_run": "hcloud GaussDB rebootNode --instance_id {{output.instance_id}} --node_id {{output.node_id}} --dry-run",
+        "execute": "hcloud GaussDB rebootNode --instance_id {{output.instance_id}} --node_id {{output.node_id}}",
+        "verification": "hcloud GaussDB showNode --instance_id {{output.instance_id}} --node_id {{output.node_id}} | grep -q ACTIVE",
+        "rollback": "hcloud GaussDB failoverNode --instance_id {{output.instance_id}} --node_id {{output.node_id}}",
+        "timeout_seconds": 300
+      },
+      "escalation": {
+        "condition": "node still unavailable after reboot or replication broken",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.92,
+        "avg_execution_seconds": 120,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

@@ -51,7 +51,7 @@ metadata:
     changelog:
       - version: "1.2.0"
         date: "2026-09-08"
-        change: "SKILL.md split: Well-Architected Framework table moved to references/well-architected-assessment.md (TE-7 token efficiency, professional content layered in references/).
+        change: "SKILL.md split: Well-Architected Framework table moved to references/well-architected-assessment.md (TE-7 token efficiency, professional content layered in references/)."
       - version: "1.1.0"
         date: "2026-06-04"
         change: "GCL Phase 2 rollout: added references/rubric.md (v1, 5-dim, S1–S17 CCE/Kubernetes-specific Safety rules, including drain-before-delete, PDB guard, StatefulSet scale, privileged manifest, master cordon) and references/prompt-templates.md (Generator + Critic + Orchestrator). SKILL.md gains 'Quality Gate (GCL)' chapter."

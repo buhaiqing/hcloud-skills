@@ -1,0 +1,205 @@
+{
+  "$schema": "remediation-playbooks/v1",
+  "skill_id": "huaweicloud-iam-ops",
+  "playbooks": [
+    {
+      "id": "IAM-R001",
+      "name": "Create IAM User with Default Policy",
+      "trigger": {
+        "metric": "user_provisioning_request",
+        "condition": "request_type == 'create_user' AND policy_name is specified",
+        "namespace": "IAM"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud iam list-users --domain-id {{env.HW_DOMAIN_ID}}",
+          "hcloud iam show-user --user-name {{user.user_name}}",
+          "hcloud iam list-policies --scope domain --name {{user.policy_name}}"
+        ],
+        "confidence_factors": ["user_not_exists", "policy_exists"]
+      },
+      "remediation": {
+        "risk_level": "low",
+        "auto_execute_threshold": 0.90,
+        "preconditions": [
+          "hcloud iam show-user --user-name {{user.user_name}} 2>&1 | grep -q 'not exist'",
+          "hcloud iam list-policies --scope domain --name {{user.policy_name}} | grep -q {{user.policy_name}}"
+        ],
+        "dry_run": "hcloud iam create-user --domain-id {{env.HW_DOMAIN_ID}} --name {{user.user_name}} --description '{{user.description}}' --dry-run",
+        "execute": "hcloud iam create-user --domain-id {{env.HW_DOMAIN_ID}} --name {{user.user_name}} --description '{{user.description}}' --email {{user.email}} --phone {{user.phone}}",
+        "verification": "hcloud iam show-user --user-name {{user.user_name}} | grep -q active",
+        "rollback": "hcloud iam delete-user --user-name {{user.user_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "user creation fails or policy does not exist",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.96,
+        "avg_execution_seconds": 12,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "IAM-R002",
+      "name": "Attach Policy to User Group",
+      "trigger": {
+        "metric": "policy_assignment_request",
+        "condition": "operation == 'attach_policy' AND target_type == 'group'",
+        "namespace": "IAM"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud iam list-groups-for-user --user-name {{user.user_name}}",
+          "hcloud iam show-group --group-name {{user.group_name}}",
+          "hcloud iam list-policies --scope domain --name {{user.policy_name}}"
+        ],
+        "confidence_factors": ["user_exists", "group_exists", "policy_exists", "not_already_attached"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.85,
+        "preconditions": [
+          "hcloud iam show-group --group-name {{user.group_name}} | grep -q {{user.group_name}}",
+          "hcloud iam list-attached-group-policies --group-name {{user.group_name}} | grep -qv {{user.policy_name}}"
+        ],
+        "dry_run": "hcloud iam attach-policy-to-group --policy-name {{user.policy_name}} --policy_scope domain --group-name {{user.group_name}} --dry-run",
+        "execute": "hcloud iam attach-policy-to-group --policy-name {{user.policy_name}} --policy-scope domain --group-name {{user.group_name}}",
+        "verification": "hcloud iam list-attached-group-policies --group-name {{user.group_name}} | grep -q {{user.policy_name}}",
+        "rollback": "hcloud iam detach-policy-from-group --policy-name {{user.policy_name}} --policy-scope domain --group-name {{user.group_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "policy already attached with same name or group/user not found",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.94,
+        "avg_execution_seconds": 15,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "IAM-R003",
+      "name": "Rotate Access Key After Suspicious Activity",
+      "trigger": {
+        "metric": "access_key_age",
+        "condition": "access_key_created_days > 90 AND security_event == 'suspicious'",
+        "namespace": "IAM"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud iam list-access-keys --user-name {{user.user_name}}",
+          "hcloud iam show-access-key --access-key-id {{output.access_key_id}} --user-name {{user.user_name}}",
+          "hcloud iam list-access-keys-last-used --access-key-id {{output.access_key_id}} --user-name {{user.user_name}}"
+        ],
+        "confidence_factors": ["key_age_over_90_days", "no_recent_usage_or_suspicious_activity"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.60,
+        "preconditions": [
+          "hcloud iam list-access-keys --user-name {{user.user_name}} | grep -q {{user.access_key_id}}",
+          "Confirm with user: key rotation will invalidate the old key immediately. Proceed? [yes/NO]"
+        ],
+        "dry_run": "hcloud iam create-access-key --user-name {{user.user_name}} --dry-run",
+        "execute": "hcloud iam create-access-key --user-name {{user.user_name}}",
+        "verification": "hcloud iam list-access-keys --user-name {{user.user_name}} | grep -c access_key_id | xargs -I{} test {} -ge 1",
+        "rollback": "hcloud iam delete-access-key --access-key-id {{output.new_access_key_id}} --user-name {{user.user_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "user does not confirm or old key is actively in use",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.89,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "IAM-R004",
+      "name": "Create Agency for Cross-Account Delegation",
+      "trigger": {
+        "metric": "agency_creation_request",
+        "condition": "operation == 'create_agency' AND delegated_domain is specified",
+        "namespace": "IAM"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud iam list-agencies --domain-id {{env.HW_DOMAIN_ID}}",
+          "hcloud iam show-domain --domain-id {{user.delegated_domain_id}}",
+          "hcloud iam list-projects --domain-id {{env.HW_DOMAIN_ID}}"
+        ],
+        "confidence_factors": ["agency_not_exists", "delegated_domain_valid", "project_scope_confirmed"]
+      },
+      "remediation": {
+        "risk_level": "high",
+        "auto_execute_threshold": 0.75,
+        "preconditions": [
+          "hcloud iam list-agencies --domain-id {{env.HW_DOMAIN_ID}} | grep -qv {{user.agency_name}}",
+          "hcloud iam show-domain --domain-id {{user.delegated_domain_id}} | grep -q active"
+        ],
+        "dry_run": "hcloud iam create-agency --domain-id {{env.HW_DOMAIN_ID}} --name {{user.agency_name}} --delegated_domain_id {{user.delegated_domain_id}} --policy_role '{{user.policy_role}}' --dry-run",
+        "execute": "hcloud iam create-agency --domain-id {{env.HW_DOMAIN_ID}} --name {{user.agency_name}} --delegated_domain_id {{user.delegated_domain_id}} --policy-role '{{user.policy_role}}'",
+        "verification": "hcloud iam show-agency --agency-name {{user.agency_name}} | grep -q {{user.delegated_domain_id}}",
+        "rollback": "hcloud iam delete-agency --agency-name {{user.agency_name}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "agency name conflicts or delegated domain is not a valid Huawei Cloud account",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.91,
+        "avg_execution_seconds": 18,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    },
+    {
+      "id": "IAM-R005",
+      "name": "Enable MFA for IAM User",
+      "trigger": {
+        "metric": "mfa_status",
+        "condition": "mfa_enabled == false AND user_name is specified",
+        "namespace": "IAM"
+      },
+      "diagnosis": {
+        "steps": [
+          "hcloud iam show-user --user-name {{user.user_name}}",
+          "hcloud iam list-users --domain-id {{env.HW_DOMAIN_ID}}",
+          "hcloud iam list-mfa-devices --user-name {{user.user_name}}"
+        ],
+        "confidence_factors": ["user_exists", "mfa_not_enabled"]
+      },
+      "remediation": {
+        "risk_level": "medium",
+        "auto_execute_threshold": 0.80,
+        "preconditions": [
+          "hcloud iam show-user --user-name {{user.user_name}} | grep -q enabled"
+        ],
+        "dry_run": "hcloud iam update-user --user-name {{user.user_name}} --password-expires_at 0 --dry-run",
+        "execute": "hcloud iam update-user --user-name {{user.user_name}} --password-expires-at 0",
+        "verification": "hcloud iam list-mfa-devices --user-name {{user.user_name}} | grep -q MFADevice",
+        "rollback": "hcloud iam delete-mfa-device --user-name {{user.user_name}} --serial-number {{output.mfa_serial}}",
+        "timeout_seconds": 30
+      },
+      "escalation": {
+        "condition": "user not found or MFA device already associated",
+        "channel": "notification"
+      },
+      "metadata": {
+        "success_rate": 0.93,
+        "avg_execution_seconds": 20,
+        "last_updated": "2026-09-08T00:00:00Z",
+        "learned_from": []
+      }
+    }
+  ]
+}

@@ -20,8 +20,8 @@ compatibility: >-
   `references/user-experience-spec.md` (mandatory UX requirements for generated skills),
   `references/execution-environment.md` (CLI + Go SDK setup details),
   `references/cli-behavior.md` (verified huawei CLI behavioral notes),
-   (generated skill quality checklist — P0/P1 criteria);
-   (five-pillar assessment template);
+  `references/p0-p1-checklist.md` (generated skill quality checklist — P0/P1 criteria),
+  `references/well-architected-assessment.md` (five-pillar assessment template),
   and agentskills.io frontmatter conventions.
 metadata:
   author: huaweicloud
@@ -35,7 +35,7 @@ metadata:
   changelog:
     - version: "1.1.0"
       date: "2026-09-08"
-      change: "SKILL.md split: P0/P1 checklist moved to references/p0-p1-checklist.md (86 lines, TE-7 token efficiency). Compatibility section updated with new reference files.
+      change: "SKILL.md split: P0/P1 checklist moved to references/p0-p1-checklist.md (86 lines, TE-7 token efficiency). Compatibility section updated with new reference files."
     - version: "1.0.0"
       date: "2026-05-20"
       change: "Initial skill release."
@@ -477,11 +477,15 @@ Every generated skill MUST integrate FinOps, SecOps, and AIOps best practices in
 ## P0/P1 Checklist
 
 See [references/p0-p1-checklist.md](references/p0-p1-checklist.md) for the complete checklist with all P0 MUST-PASS and P1 SHOULD-PASS items.
+| Tier | Count | Scope |
+|------|-------|-------|
+| **P0** | 27 items | Trigger/Variables/Flows/Failure/API-CLI fidelity/Safety/Timeouts/Self-Healing/UX Onboarding/UX Interaction/UX Errors/Description/Eval Queries/FinOps (4)/SecOps (2)/AIOps (4)/Five Pillars/Well-Architected Reference/Maturity/Cross-Pillar |
+| **P1** | 27 items | Chaining/Naming/SDK pin/Idempotency/Adversarial/FinOps (4)/SecOps (6)/AIOps (5)/Five Pillars (3)/Efficiency/ADR/Self-Reflection |
+---
 
 | Tier | Count | Scope |
 |------|-------|-------|
 | **P0** | 27 items | Trigger/Variables/Flows/Failure/API-CLI fidelity/Safety/Timeouts/Self-Healing/UX Onboarding/UX Interaction/UX Errors/Description/Eval Queries/FinOps (4)/SecOps (2)/AIOps (4)/Five Pillars/Well-Architected Reference/Maturity/Cross-Pillar |
 | **P1** | 27 items | Chaining/Naming/SDK pin/Idempotency/Adversarial/FinOps (4)/SecOps (6)/AIOps (5)/Five Pillars (3)/Efficiency/ADR/Self-Reflection |
-
 ---
 
