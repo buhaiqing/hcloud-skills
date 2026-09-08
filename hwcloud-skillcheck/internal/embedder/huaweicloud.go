@@ -60,22 +60,6 @@ const (
 	authAKSK
 )
 
-func newHuaweiCloud(cfg ProviderConfig) (*HuaweiCloud, error) {
-	if cfg.Dim == 0 {
-		cfg.Dim = DefaultDim
-	}
-	if cfg.Dim < MinDim || cfg.Dim > MaxDim {
-		return nil, fmt.Errorf("huaweicloud-modelarts dim=%d is outside [%d, %d]. Fix: set embedding.dim to a value in [%d, %d]", cfg.Dim, MinDim, MaxDim, MinDim, MaxDim)
-	}
-	return &HuaweiCloud{
-		endpoint:  cfg.Endpoint,
-		projectID: cfg.ProjectID,
-		modelID:   cfg.Extra["model_id"],
-		dim:       cfg.Dim,
-		timeout:   time.Duration(cfg.TimeoutMs) * time.Millisecond,
-	}, nil
-}
-
 // Name returns the canonical provider identifier.
 func (h *HuaweiCloud) Name() string { return "huaweicloud-modelarts" }
 

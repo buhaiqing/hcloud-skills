@@ -32,20 +32,6 @@ type LocalFasttext struct {
 // RateBudget violations or a runaway loop.
 const MaxLocalFasttextQPS = 5000
 
-func newLocalFasttext(cfg ProviderConfig) (*LocalFasttext, error) {
-	if cfg.Dim == 0 {
-		cfg.Dim = DefaultDim
-	}
-	if cfg.Dim < MinDim || cfg.Dim > MaxDim {
-		return nil, fmt.Errorf("local-fasttext dim=%d is outside [%d, %d]. Fix: change embedding.dim in capability-registry.json, or remove the field (default is %d)", cfg.Dim, MinDim, MaxDim, DefaultDim)
-	}
-	return &LocalFasttext{
-		dim:      cfg.Dim,
-		maxBytes: MaxInputBytes,
-		maxQPS:   MaxLocalFasttextQPS,
-	}, nil
-}
-
 // Name returns the canonical provider identifier.
 func (e *LocalFasttext) Name() string { return "local-fasttext" }
 
