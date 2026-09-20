@@ -178,6 +178,152 @@ func TestAggregate_WritesUpdatedPatterns(t *testing.T) {
 	}
 }
 
+// TestIsSmokeTrace pins the smoke contract shared by this package and
+// cmd/aggregate.go: a trace with no `final` block, a smoke request/fault, or
+// zero executed steps carries no verifiable signal.
+func TestIsSmokeTrace(t *testing.T) {
+	final := map[string]any{"status": "PASS"}
+	iter := map[string]any{"iter": float64(1)}
+	cases := []struct {
+		name  string
+		trace map[string]any
+		want  bool
+	}{
+		{"nil trace", nil, true},
+		{"no final block (pre-fix orchestrator trace)", map[string]any{"skill": "s", "request": "RDS timeout"}, true},
+		{"gcl smoke request", map[string]any{"final": final, "request": "smoke", "iterations": []any{iter}}, true},
+		{"l4 smoke fault", map[string]any{"final": final, "fault": "SMOKE", "orchestration": map[string]any{"step_count": float64(3)}}, true},
+		{"zero top-level step_count", map[string]any{"final": final, "step_count": float64(0), "iterations": []any{iter}}, true},
+		{"zero orchestration step_count", map[string]any{"final": final, "orchestration": map[string]any{"step_count": float64(0)}}, true},
+		{"empty iterations is a budget failure, not smoke", map[string]any{"final": final, "iterations": []any{}}, false},
+		{"budget failure with zero iterations still counts", map[string]any{
+			"final": map[string]any{"status": "SAFETY_FAIL"}, "iterations": []any{}, "request": "list servers",
+		}, false},
+		{"fault merely mentioning smoke", map[string]any{"final": final, "request": "smoke detected in rack 3", "iterations": []any{iter}}, false},
+		{"healthy gcl trace", map[string]any{"final": final, "request": "list servers", "iterations": []any{iter}}, false},
+		{"healthy l4 trace", map[string]any{"final": final, "fault": "RDS timeout", "orchestration": map[string]any{"step_count": float64(2)}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsSmokeTrace(tc.trace); got != tc.want {
+				t.Errorf("IsSmokeTrace=%v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestScanTraces_IncludesOrchestratorTraces asserts both writers' traces are
+// scanned. The L4 loop's orchestrator-trace-*.json files were previously
+// invisible to the learner, which left every failure_patterns.json at
+// source_traces_analyzed=0.
+func TestScanTraces_IncludesOrchestratorTraces(t *testing.T) {
+	root := t.TempDir()
+	audit := filepath.Join(root, "audit-results")
+	mustMkdir(t, audit)
+	writeTrace(t, filepath.Join(audit, "gcl-trace-1.json"), "huaweicloud-ecs-ops")
+	writeTrace(t, filepath.Join(audit, "orchestrator-trace-abc123.json"), "huaweicloud-ecs-ops")
+	// A sibling audit-results artifact that is not a trace must stay out.
+	if err := writeJSON(filepath.Join(audit, "gcl-quality-summary-20260701.json"), map[string]any{
+		"skill": "huaweicloud-ecs-ops",
+	}); err != nil {
+		t.Fatalf("write summary fixture: %v", err)
+	}
+
+	got := ScanTraces(root, "huaweicloud-ecs-ops", nil)
+	if len(got) != 2 {
+		t.Fatalf("ScanTraces returned %d traces, want 2 (gcl + orchestrator)", len(got))
+	}
+	if filepath.Base(got[0].Path) != "gcl-trace-1.json" || filepath.Base(got[1].Path) != "orchestrator-trace-abc123.json" {
+		t.Errorf("unexpected scan order: %s, %s", got[0].Path, got[1].Path)
+	}
+}
+
+// TestAggregate_SmokeTracesExcluded asserts smoke traces never reach
+// failure_patterns.json nor the source_traces_analyzed counter, even when they
+// carry a failure_pattern block, while a real trace still merges.
+func TestAggregate_SmokeTracesExcluded(t *testing.T) {
+	root := t.TempDir()
+	audit := filepath.Join(root, "audit-results")
+	mustMkdir(t, audit)
+
+	const skill = "huaweicloud-ecs-ops"
+	writeTraceWithFailure(t, filepath.Join(audit, "gcl-trace-real.json"),
+		skill, "runtime", "OOMKilled", "hcloud ecs list-servers")
+
+	smokePattern := func() map[string]any {
+		return map[string]any{
+			"category": "runtime",
+			"skill":    skill,
+			"command":  "hcloud ecs reboot-server",
+			"error":    "structural critic verdict: MAX_ITER",
+			"fix":      "review the planned command",
+		}
+	}
+	// Smoke by fault token, despite having run steps.
+	if err := writeJSON(filepath.Join(audit, "orchestrator-trace-smokefault.json"), map[string]any{
+		"skill": skill, "source": "l4", "fault": "smoke",
+		"orchestration": map[string]any{"step_count": float64(2)},
+		"final":         map[string]any{"status": "MAX_ITER", "failure_pattern": smokePattern()},
+	}); err != nil {
+		t.Fatalf("write smoke-fault trace: %v", err)
+	}
+	// Smoke by zero steps.
+	if err := writeJSON(filepath.Join(audit, "orchestrator-trace-nostep.json"), map[string]any{
+		"skill": skill, "source": "l4", "fault": "RDS slow queries",
+		"orchestration": map[string]any{"step_count": float64(0)},
+		"final":         map[string]any{"status": "MAX_ITER", "failure_pattern": smokePattern()},
+	}); err != nil {
+		t.Fatalf("write zero-step trace: %v", err)
+	}
+	// The pre-fix orchestrator shape: no `final` block at all.
+	if err := writeJSON(filepath.Join(audit, "orchestrator-trace-legacy.json"), map[string]any{
+		"skill": skill, "source": "l4", "request": "RDS connection timeout",
+		"orchestration": map[string]any{"step_count": float64(5)},
+	}); err != nil {
+		t.Fatalf("write legacy trace: %v", err)
+	}
+
+	mustMkdir(t, filepath.Join(root, skill, "assets"))
+	if err := writeJSON(filepath.Join(root, skill, "assets", "failure_patterns.json"), map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}); err != nil {
+		t.Fatalf("seed failure_patterns.json: %v", err)
+	}
+
+	res, err := Aggregate(root, skill, nil, false)
+	if err != nil {
+		t.Fatalf("Aggregate error: %v", err)
+	}
+	if res.Scanned != 1 {
+		t.Errorf("Scanned=%d, want 1 (only the trace with verifiable signal)", res.Scanned)
+	}
+	if res.SkippedSmoke != 3 {
+		t.Errorf("SkippedSmoke=%d, want 3 (smoke fault, zero steps, missing final)", res.SkippedSmoke)
+	}
+	if res.NewCount != 1 || res.UpdatedCount != 0 {
+		t.Errorf("NewCount=%d UpdatedCount=%d, want 1/0", res.NewCount, res.UpdatedCount)
+	}
+
+	data := LoadFailurePatterns(root, skill)
+	patterns, _ := data["patterns"].([]any)
+	if len(patterns) != 1 {
+		t.Fatalf("patterns=%d, want 1 (smoke traces must not add patterns)", len(patterns))
+	}
+	pm, _ := patterns[0].(map[string]any)
+	if got, _ := pm["signature"].(map[string]any); got != nil {
+		if got["error_message_regex"] != "OOMKilled" {
+			t.Errorf("merged pattern error=%v, want the real trace's OOMKilled", got["error_message_regex"])
+		}
+	}
+	meta, _ := data["meta"].(map[string]any)
+	if got := toFloat(meta["source_traces_analyzed"]); got != 1 {
+		t.Errorf("source_traces_analyzed=%v, want 1 (smoke traces excluded)", got)
+	}
+}
+
 // --- Test helpers (these will be replaced by the package's own test helpers) ---
 
 func mustMkdir(t *testing.T, p string) {

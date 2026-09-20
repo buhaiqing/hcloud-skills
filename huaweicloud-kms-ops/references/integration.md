@@ -6,7 +6,7 @@
 |---|---|---|
 | OBS object encryption | `huaweicloud-obs-ops` | After `create-key`, user wants to encrypt OBS bucket |
 | RDS TDE enablement | `huaweicloud-rds-ops` | After `create-key`, user wants to enable RDS TDE |
-| EVS disk encryption | EVS skill (when present) | After `create-key`, user wants to encrypt EVS volume |
+| EVS disk encryption | EVS skill | After `create-key`, user wants to encrypt EVS volume |
 | IAM permission issue | `huaweicloud-iam-ops` | `CMKAccessDenied` error |
 | Key cost tracking | `huaweicloud-billing-ops` | Monthly cost analysis, quota budget alerts |
 | Cross-region key copy | `huaweicloud-cts-ops` | Audit log for key operations |

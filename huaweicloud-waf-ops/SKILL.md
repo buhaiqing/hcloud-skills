@@ -1,14 +1,12 @@
 ---
 name: huaweicloud-waf-ops
 delegates_to:
-  - huaweicloud-antiddos-ops
   - huaweicloud-billing-ops
   - huaweicloud-ces-ops
   - huaweicloud-ecs-ops
   - huaweicloud-elb-ops
   - huaweicloud-hss-ops
   - huaweicloud-iam-ops
-  - huaweicloud-scm-ops
   - huaweicloud-vpc-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
@@ -117,9 +115,7 @@ Web Application Firewall (WAF) protects web applications from common web exploit
 
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about VPC/subnet/security group → delegate to: `huaweicloud-vpc-ops`
-- Task is about SSL certificate from SCM → delegate to: `huaweicloud-scm-ops` (when present)
 - Task is about monitoring/alarm rules → delegate to: `huaweicloud-ces-ops`
-- Task is about DDoS protection (Anti-DDoS) → delegate to: `huaweicloud-antiddos-ops` (when present)
 
 ### Delegation Rules
 

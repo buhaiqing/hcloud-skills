@@ -6,12 +6,130 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// Trace sources. Every trace reader (this package's Aggregate/ScanTraces and
+// cmd/aggregate.go) must accept both writers' output; an absent top-level
+// "source" field means TraceSourceGCL (the ~100 legacy gcl traces written
+// before the field existed).
+const (
+	TraceSourceGCL = "gcl"
+	TraceSourceL4  = "l4"
+)
+
+// TraceFilePatterns are the audit-results/ filenames that carry traces:
+//   - gcl-trace-<timestamp>-<hex>.json      (internal/gcl.PersistTrace)
+//   - orchestrator-trace-<faultID>.json     (internal/l4.HandleFault)
+var TraceFilePatterns = []string{"gcl-trace-*.json", "orchestrator-trace-*.json"}
+
+// IsTraceFileName reports whether an audit-results/ entry name is a trace
+// file produced by either writer.
+func IsTraceFileName(name string) bool {
+	for _, pat := range TraceFilePatterns {
+		if ok, err := path.Match(pat, name); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// TraceSource returns the writer that produced a trace: TraceSourceL4 for
+// orchestrator traces, TraceSourceGCL otherwise (including legacy gcl traces
+// that predate the field).
+func TraceSource(trace map[string]any) string {
+	if s, ok := trace["source"].(string); ok && s != "" {
+		return s
+	}
+	return TraceSourceGCL
+}
+
+// IsSmokeTrace reports whether a trace carries no verifiable signal and must
+// therefore stay out of pass-rate math, failure-pattern merging, and knowledge
+// extraction. A trace is smoke when any of these hold:
+//
+//   - it has no `final` block — nothing terminal was recorded. This is how the
+//     ~100 orchestrator traces written before the P0 fix are classified; they
+//     were never consumable at all.
+//   - its request or fault is the literal "smoke" (the pre-commit smoke gate
+//     runs `l4 handle --fault smoke`).
+//   - its recorded step count is 0: no step executed, so nothing was verified.
+//     L4 traces always carry orchestration.step_count; gcl traces carry no step
+//     count at all, and "absent" is not "zero" — an empty-iteration gcl trace
+//     is a budget/SAFETY_FAIL run, which is real signal that must keep counting
+//     against the pass rate.
+func IsSmokeTrace(trace map[string]any) bool {
+	if trace == nil {
+		return true
+	}
+	if _, ok := trace["final"].(map[string]any); !ok {
+		return true
+	}
+	if isSmokeToken(trace["request"]) || isSmokeToken(trace["fault"]) {
+		return true
+	}
+	if n, ok := traceStepCount(trace); ok && n == 0 {
+		return true
+	}
+	return false
+}
+
+// isSmokeToken reports whether a request/fault value is the smoke marker.
+// Values are matched case-insensitively on the trimmed whole string so a real
+// fault that merely mentions smoke ("smoke detected in rack 3") is not
+// misclassified.
+func isSmokeToken(v any) bool {
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(s), "smoke")
+}
+
+// traceStepCount returns the step count explicitly recorded on a trace and
+// whether the trace carries one at all. L4 traces use
+// orchestration.step_count; a top-level step_count is honored too. JSON
+// numbers decode as float64; a string count is tolerated for hand-written
+// traces. gcl traces record neither (they record iterations instead, which is
+// not a step count — see IsSmokeTrace).
+func traceStepCount(trace map[string]any) (int, bool) {
+	if n, ok := asInt(trace["step_count"]); ok {
+		return n, true
+	}
+	if orch, ok := trace["orchestration"].(map[string]any); ok {
+		if n, ok := asInt(orch["step_count"]); ok {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// asInt normalizes a JSON number (or numeric string) to int.
+func asInt(v any) (int, bool) {
+	switch x := v.(type) {
+	case float64:
+		return int(x), true
+	case int:
+		return x, true
+	case int64:
+		return int(x), true
+	case json.Number:
+		if n, err := x.Int64(); err == nil {
+			return int(n), true
+		}
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
+}
 
 // ValidCategories is the set of failure-pattern categories (mirrors Python).
 var ValidCategories = map[string]struct{}{
@@ -277,8 +395,9 @@ func toFloat(v any) float64 {
 	return 0
 }
 
-// ScanTraces returns all gcl-trace-*.json files for a skill, optionally
-// filtered by mtime.
+// ScanTraces returns all trace files for a skill (gcl-trace-*.json from the
+// GCL runner and orchestrator-trace-*.json from the L4 orchestrator),
+// optionally filtered by mtime.
 type TraceFile struct {
 	Path string
 	Data map[string]any
@@ -293,7 +412,7 @@ func ScanTraces(root, skill string, sinceHours *int) []TraceFile {
 	var out []TraceFile
 	now := time.Now().UTC()
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), "gcl-trace-") || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !IsTraceFileName(e.Name()) {
 			continue
 		}
 		fp := filepath.Join(tracesDir, e.Name())
@@ -329,18 +448,23 @@ type AggregateResult struct {
 	NewCount     int
 	UpdatedCount int
 	SkippedCount int
+	// SkippedSmoke counts traces rejected as smoke (no `final` block, a smoke
+	// request/fault, or zero executed steps). They are excluded from Scanned
+	// and therefore from meta.source_traces_analyzed — a smoke trace proves
+	// nothing about the skill, so counting it would fake loop health.
+	SkippedSmoke int
 	WrittenTo    string
 }
 
 // Aggregate runs the loop: scan → extract → dedup → merge → write.
 //
-// Stream implementation: each gcl-trace-*.json is read, parsed, and
-// consumed one at a time. The full trace map and its raw JSON go out
-// of scope after we've extracted the failure_pattern block — peak
-// memory is O(1 trace) rather than O(N traces × ~50 KB). For
-// ScanTraces callers (test fixtures, ad-hoc tools) the full slice is
-// still available; production aggregate traffic goes through this
-// function only.
+// Stream implementation: each trace file (gcl-trace-*.json or
+// orchestrator-trace-*.json) is read, parsed, and consumed one at a time. The
+// full trace map and its raw JSON go out of scope after we've extracted the
+// failure_pattern block — peak memory is O(1 trace) rather than
+// O(N traces × ~50 KB). For ScanTraces callers (test fixtures, ad-hoc tools)
+// the full slice is still available; production aggregate traffic goes through
+// this function only.
 func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResult, error) {
 	data := LoadFailurePatterns(root, skill)
 	patterns, _ := data["patterns"].([]any)
@@ -380,7 +504,7 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		// same sequence.
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasPrefix(e.Name(), "gcl-trace-") || !strings.HasSuffix(e.Name(), ".json") {
+			if e.IsDir() || !IsTraceFileName(e.Name()) {
 				continue
 			}
 			fp := filepath.Join(tracesDir, e.Name())
@@ -404,6 +528,13 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 			// Drop the raw bytes now — they were only needed for Unmarshal.
 			raw = nil
 			if trace["skill"] != skill {
+				continue
+			}
+			// Smoke traces prove nothing (no `final`, smoke request/fault,
+			// or zero steps): keep them out of source_traces_analyzed and
+			// out of failure_patterns entirely.
+			if IsSmokeTrace(trace) {
+				res.SkippedSmoke++
 				continue
 			}
 			res.Scanned++

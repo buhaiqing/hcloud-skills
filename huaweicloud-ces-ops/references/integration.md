@@ -80,19 +80,18 @@ func main() {
 |-----------|-----------|---------------|-----------------|------------------|
 | CPU高 | SYS.ECS > cpu_util | huaweicloud-ecs-ops | huaweicloud-cce-ops (if container) | Recommended |
 | 内存泄漏 | AGT.ECS > memory_util | huaweicloud-ecs-ops | — | Required |
-| 磁盘满 | AGT.ECS > disk_util | huaweicloud-ecs-ops | huaweicloud-evs-ops (I/O) | Recommended |
+| 磁盘满 | AGT.ECS > disk_util | huaweicloud-ecs-ops | — | Recommended |
 | 数据库连接耗尽 | SYS.RDS > rds003_conn_usage | huaweicloud-rds-ops | — | Required |
 | 带宽饱和 | SYS.VPC > bandwidth_util | huaweicloud-vpc-ops | huaweicloud-ces-ops | Recommended |
 | ELB错误率 | SYS.ELB > 5xx_error_count | huaweicloud-elb-ops | huaweicloud-ecs-ops (backend health) | Recommended |
 | 安全告警 | SYS.HSS events | huaweicloud-hss-ops | huaweicloud-ecs-ops (isolation) | Required |
-| SMN投递失败 | CES alarm_actions | huaweicloud-smn-ops | — | Optional |
+| SMN投递失败 | CES alarm_actions | huaweicloud-ces-ops | — | Optional |
 
 | Scenario | Delegating Skill | Target Skill | Delegation Type |
 |----------|-----------------|--------------|-----------------|
 | Alarm for ECS CPU > 90% | huaweicloud-ces-ops | huaweicloud-ecs-ops | Resource verification |
 | Alarm for RDS connection pool | huaweicloud-ces-ops | huaweicloud-rds-ops | Resource verification |
-| SMN topic creation for alarms | huaweicloud-ces-ops | huaweicloud-smn-ops (when present) | Notification setup |
-| Cost analysis of monitoring | huaweicloud-ces-ops | huaweicloud-billing-ops (when present) | FinOps query |
+| Cost analysis of monitoring | huaweicloud-ces-ops | huaweicloud-billing-ops | FinOps query |
 | Permission setup for CES access | huaweicloud-ces-ops | huaweicloud-iam-ops | IAM configuration |
 
 ## Environment Variables Reference

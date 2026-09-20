@@ -67,6 +67,11 @@ func NewExternalCritic(path string, args ...string) *ExternalCritic {
 	return &ExternalCritic{Path: path, Args: args}
 }
 
+// CriticKind reports the trace discriminator for this critic (see
+// criticTypeOf). Value receiver: a *ExternalCritic, an ExternalCritic, and any
+// type embedding either all report "external".
+func (ExternalCritic) CriticKind() string { return "external" }
+
 // Score implements Critic.
 func (e ExternalCritic) Score(ctx context.Context, gen GeneratorOutput) CriticResult {
 	defaultResult := CriticResult{

@@ -91,8 +91,8 @@ func runTraceAggregate(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n",
-		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount)
+	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n  Skipped (smoke, no verification signal): %d\n",
+		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount, res.SkippedSmoke)
 	if res.WrittenTo != "" {
 		fmt.Printf("\nWritten: %s\n", res.WrittenTo)
 	}

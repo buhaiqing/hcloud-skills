@@ -1,7 +1,6 @@
 ---
 name: huaweicloud-cts-ops
 delegates_to:
-  - huaweicloud-apig-ops
   - huaweicloud-billing-ops
   - huaweicloud-ces-ops
   - huaweicloud-ecs-ops
@@ -9,7 +8,6 @@ delegates_to:
   - huaweicloud-lts-ops
   - huaweicloud-obs-ops
   - huaweicloud-rds-ops
-  - huaweicloud-smn-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud CTS (Cloud Trace Service) — audit trail lifecycle, event collection,
@@ -99,9 +97,8 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 ### SHOULD NOT Use This Skill When
 
 - Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops`
-- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops` (when present)
-- Task is OBS bucket/object management → delegate to: `huaweicloud-obs-ops` (when present)
-- Task is API Gateway configuration → delegate to: `huaweicloud-apig-ops` (when present)
+- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops`
+- Task is OBS bucket/object management → delegate to: `huaweicloud-obs-ops`
 - Task is real-time application performance monitoring → delegate to: `huaweicloud-ces-ops`
 
 ### Delegation Rules

@@ -31,6 +31,11 @@ type L2Result struct {
 	Blocked bool    `json:"blocked"`
 	Errors  []L2Err `json:"errors,omitempty"`
 	Details string  `json:"details,omitempty"`
+	// Outcome is the machine-readable L2Status value ("pass", "violation",
+	// "skipped_no_schema", ...). It is persisted so a skipped check is
+	// distinguishable from a passing one in the trace and in the aggregated
+	// quality summary — see (*L2Result).Status.
+	Outcome string `json:"status,omitempty"`
 }
 
 type L2Err struct {

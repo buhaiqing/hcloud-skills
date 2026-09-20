@@ -67,7 +67,7 @@ hcloud ces show-metric --metric-name cpu_util
 | Scenario | Delegate To | Escalation Trigger |
 |----------|-------------|-------------------|
 | 指标采集/告警异常 | `huaweicloud-ces-ops` | 指标缺失 |
-| 应用性能/日志 | `huaweicloud-aom-ops` | AOM 看板异常 |
+| 应用性能/日志 | `huaweicloud-ces-ops` | 指标看板异常 |
 | 主机安全/入侵 | `huaweicloud-hss-ops` | 暴力破解告警 |
 | 上游流量/504 | `huaweicloud-elb-ops` | 连接数持续下降 |
 | Web 攻击导致风暴 | `huaweicloud-waf-ops` | CC 攻击 |

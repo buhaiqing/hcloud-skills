@@ -46,6 +46,6 @@
 | 场景 | 委托 | 触发 |
 |------|------|------|
 | 下游依赖异常 | `huaweicloud-*-ops`（对应产品） | 依赖错误率上升 |
-| 触发器故障 | `huaweicloud-apig-ops` / `huaweicloud-dms-ops` | 调用源中断 |
+| 触发器故障 | `huaweicloud-dms-ops` | 调用源中断 |
 | 权限失效 | `huaweicloud-iam-ops` | AccessDenied |
 | 指标缺失 | `huaweicloud-ces-ops` / AOM | 无数据 > 5 min |

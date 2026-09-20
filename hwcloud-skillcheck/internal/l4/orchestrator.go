@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
@@ -256,6 +257,11 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	}
 	patternCache := preFetchFailurePatterns(root, skills)
 
+	// Real structural-critic results, one per planned step. Folded into the
+	// persisted trace's critic scores below (the trace previously carried
+	// hardcoded literals instead — see the P0 audit finding).
+	critics := make([]gcl.CriticResult, 0, len(plan.Steps))
+
 	for _, step := range plan.Steps {
 		short := step.SkillShort
 		if short == "" {
@@ -281,6 +287,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			PreExecutionRisk: preRisk,
 		}
 		gclRes.Decisions = append(gclRes.Decisions, GCLDecision{Step: step.Step, GCL: body})
+		critics = append(critics, crit)
 		if crit.Scores["safety"] == 0.0 {
 			gclRes.OverallSafety = false
 		}
@@ -347,10 +354,44 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		{Stage: "verify", Done: executed},
 		{Stage: "learn", Done: true},
 	}
+
+	// The persisted critic block is the REAL structural-critic output folded
+	// from step 4 — the P0 audit finding was that this site wrote hardcoded
+	// literals (0.9/0.85/0.95/0.8) and no `final` block, so every
+	// orchestrator trace was unreadable by cmd/aggregate.go and
+	// internal/learning (both require `final`).
+	traceCritic := traceCriticResult(critics, primaryCmd)
+	finalStatus := gclFinalStatus(traceCritic.Scores, gclRes.OverallSafety, len(gclRes.Decisions))
+
+	// The dry-run pipeline makes exactly one pass over the plan, so the
+	// folded critic result is recorded as iteration 1 (the gcl.Iteration
+	// shape: iter/generator/critic/decision). Traces with no planned steps
+	// carry an empty iterations array — there was nothing to iterate on.
+	iterations := []any{}
+	if len(gclRes.Decisions) > 0 {
+		iterations = append(iterations, map[string]any{
+			"iter": 1,
+			"generator": map[string]any{
+				"command":        primaryCmd,
+				"exit_code":      0,
+				"result_excerpt": "dry-run",
+			},
+			"critic":   traceCritic,
+			"decision": gcl.Decide(traceCritic.Scores),
+		})
+	}
+
+	auditRoot := filepath.Join(root, "audit-results")
+	_ = os.MkdirAll(auditRoot, 0o700)
+	tracePath := filepath.Join(auditRoot, fmt.Sprintf("orchestrator-trace-%s.json", faultID))
+	learning.TracePersisted = tracePath
+
 	trace := map[string]any{
 		"trace_id":         faultID,
 		"skill":            primary,
 		"request":          in.Fault,
+		"fault":            in.Fault, // smoke marker for l4 traces (learning.IsSmokeTrace)
+		"source":           "l4",     // readers treat an absent source as "gcl"
 		"command":          primaryCmd,
 		"started_at":       startedAt,
 		"finished_at":      NowISO(),
@@ -363,12 +404,16 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		"decision":         "pass",
 		"resource_scope":   map[string]any{"resource_id": resource, "type": strings.SplitN(resource, ":", 2)[0]},
 		"operation_intent": map[string]any{"goal": in.Fault, "risk_class": risk},
-		"critic_scores": map[string]float64{
-			"safety":      boolToFloat(gclRes.OverallSafety),
-			"correctness": 0.9,
-			"idempotency": 0.85,
-			"secops":      0.95,
-			"finops":      0.8,
+		"critic_scores":    traceCritic.Scores,
+		"iterations":       iterations,
+		"final": map[string]any{
+			"status":          finalStatus, // PASS | SAFETY_FAIL | MAX_ITER
+			"iter":            1,
+			"output":          primaryCmd,
+			"dimensions":      traceCritic.Scores,
+			"overall":         meanCriticScore(traceCritic.Scores),
+			"critic_type":     "structural", // the l4 plan critic is the structural dry-run critic
+			"failure_pattern": l4FailurePattern(finalStatus, primary, primaryCmd, traceCritic),
 		},
 		"trust":         trustRes,
 		"topology":      topo,
@@ -378,17 +423,13 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		"learning":      learning,
 		"stages":        stages,
 	}
-	if !gclRes.OverallSafety {
+	if finalStatus != "PASS" {
 		trace["status"] = "fail"
 		trace["exit_code"] = 1
 		trace["decision"] = "halt"
 	}
-	auditRoot := filepath.Join(root, "audit-results")
-	_ = os.MkdirAll(auditRoot, 0o700)
-	tracePath := filepath.Join(auditRoot, fmt.Sprintf("orchestrator-trace-%s.json", faultID))
 	raw, _ := json.MarshalIndent(trace, "", "  ")
 	_ = os.WriteFile(tracePath, append(raw, '\n'), 0o600)
-	learning.TracePersisted = tracePath
 
 	decision := "human_review_required"
 	executionTask := (*TaskState)(nil)
@@ -504,11 +545,151 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	}
 }
 
-func boolToFloat(b bool) float64 {
-	if b {
-		return 1.0
+// traceCriticResult folds the per-step structural-critic results into the
+// single gcl.CriticResult persisted on the trace. `safety` is the AND across
+// steps (one unsafe step fails the whole run, matching
+// GCLResult.OverallSafety); every other dimension is the arithmetic mean.
+// Suggestions are carried up (capped at 3, mirroring gcl.StructuralCritic) so
+// a blocked run stays actionable.
+//
+// A run whose plan had no steps (e.g. a fault matching no skill) is scored by
+// gcl.StructuralCritic on the empty dry-run payload, so the persisted scores
+// are always real critic output — never invented literals.
+func traceCriticResult(critics []gcl.CriticResult, fallbackCommand string) gcl.CriticResult {
+	if len(critics) == 0 {
+		return gcl.StructuralCritic(gcl.GeneratorOutput{
+			Command:       fallbackCommand,
+			ExitCode:      0,
+			ResultExcerpt: "dry-run",
+		})
 	}
-	return 0.0
+	out := gcl.CriticResult{
+		Scores: foldCriticScores(critics),
+		Mode:   "structural-only",
+		Model:  "structural-only",
+	}
+	for _, c := range critics {
+		out.Suggestions = append(out.Suggestions, c.Suggestions...)
+		if c.Blocking {
+			out.Blocking = true
+		}
+	}
+	if len(out.Suggestions) > 3 {
+		out.Suggestions = out.Suggestions[:3]
+	}
+	return out
+}
+
+// foldCriticScores reduces per-step critic scores to one dimension vector.
+// Keys are the union of the steps' dimensions, iterated in sorted order so
+// the persisted numbers are deterministic.
+func foldCriticScores(critics []gcl.CriticResult) map[string]float64 {
+	seen := map[string]bool{}
+	keys := make([]string, 0, len(critics))
+	for _, c := range critics {
+		for k := range c.Scores {
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+	sort.Strings(keys)
+
+	out := make(map[string]float64, len(keys))
+	for _, k := range keys {
+		if k == "safety" {
+			min := 1.0
+			for _, c := range critics {
+				if v, ok := c.Scores[k]; ok && v < min {
+					min = v
+				}
+			}
+			out[k] = min
+			continue
+		}
+		sum, n := 0.0, 0
+		for _, c := range critics {
+			if v, ok := c.Scores[k]; ok {
+				sum += v
+				n++
+			}
+		}
+		if n > 0 {
+			out[k] = sum / float64(n)
+		}
+	}
+	return out
+}
+
+// meanCriticScore is the arithmetic mean of a dimension vector, reported as
+// final.overall. Pass/fail is decided by gcl.Decide (rubric thresholds), not
+// by this number — see gclFinalStatus.
+func meanCriticScore(scores map[string]float64) float64 {
+	if len(scores) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, v := range scores {
+		sum += v
+	}
+	return sum / float64(len(scores))
+}
+
+// gclFinalStatus maps the folded structural-critic verdict onto the GCL trace
+// status enum (PASS | SAFETY_FAIL | MAX_ITER — internal/embed/schemas/
+// trace.schema.json) so cmd/aggregate.go and internal/learning can bucket
+// orchestrator traces exactly like gcl-trace files.
+//
+// A RETRY verdict is reported as MAX_ITER: this dry-run pipeline never re-runs
+// a step, so "the loop exhausted without a PASS" is the accurate terminal
+// state. Likewise a run with no planned steps verified nothing and is MAX_ITER
+// even though no dimension scored low.
+func gclFinalStatus(scores map[string]float64, overallSafety bool, steps int) string {
+	if !overallSafety {
+		return "SAFETY_FAIL"
+	}
+	if steps == 0 {
+		return "MAX_ITER"
+	}
+	switch gcl.Decide(scores) {
+	case "PASS":
+		return "PASS"
+	case "SAFETY_FAIL":
+		return "SAFETY_FAIL"
+	default:
+		return "MAX_ITER"
+	}
+}
+
+// l4FailurePattern builds the `final.failure_pattern` block for a non-PASS run
+// so internal/learning can merge it into the skill's failure_patterns.json.
+// The block is grounded in the critic's own output — the remediation text is
+// the critic's suggestions, and the error string is the stable verdict (a
+// stable string is what makes repeated occurrences merge into one pattern).
+// PASS runs carry nil: the key must still be present because the canonical
+// trace schema requires it.
+func l4FailurePattern(status, skill, command string, critic gcl.CriticResult) any {
+	if status == "PASS" {
+		return nil
+	}
+	fix := "review the planned command and re-run the dry-run critic"
+	if len(critic.Suggestions) > 0 {
+		fix = strings.Join(critic.Suggestions, "; ")
+	}
+	category := "runtime"
+	if status == "SAFETY_FAIL" {
+		category = "permission" // credential leak / unsafe destructive command
+	}
+	return map[string]any{
+		"category": category,
+		"skill":    skill,
+		"command":  command,
+		"error":    "structural critic verdict: " + status,
+		"fix":      fix,
+		"count":    1,
+		"reusable": true,
+	}
 }
 
 // matchPreExecutionRisk is a structural-critic pre-execution risk check. It

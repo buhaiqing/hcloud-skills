@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/learning"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -35,12 +37,16 @@ const (
 	finalStatuses = "PASS,SAFETY_FAIL,MAX_ITER"
 )
 
-// runAggregateTrace aggregates audit-results/gcl-trace-*.json into a quality
-// summary, mirroring scripts/gcl_trace_aggregate.py. When no trace files exist
-// it WARNs and returns nil (exit 0) per Spec §4 by default — trace files are
-// produced by the runtime runner, so an external user may legitimately have
-// none. Pass --require-traces to fail (non-zero exit) instead; pre-commit and
-// CI set this so the gate cannot silently pass on a fresh checkout.
+// runAggregateTrace aggregates audit-results traces into a quality summary,
+// mirroring scripts/gcl_trace_aggregate.py. Both writers' output is read:
+// gcl-trace-*.json (internal/gcl.PersistTrace) and orchestrator-trace-*.json
+// (internal/l4.HandleFault) — see learning.TraceFilePatterns. Smoke traces are
+// counted in skipped_smoke and kept out of every quality metric. When no trace
+// files exist it WARNs and returns nil (exit 0) per Spec §4 by default — trace
+// files are produced by the runtime runner, so an external user may
+// legitimately have none. Pass --require-traces to fail (non-zero exit)
+// instead; pre-commit and CI set this so the gate cannot silently pass on a
+// fresh checkout.
 func runAggregateTrace(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck aggregate trace")
 	root := fs.String("root", ".", "skill repository root")
@@ -63,8 +69,12 @@ func runAggregateTrace(args []string) error {
 
 	auditDir := filepath.Join(rootDir, "audit-results")
 	var paths []string
-	if entries, gErr := filepath.Glob(filepath.Join(auditDir, "gcl-trace-*.json")); gErr == nil {
-		paths = entries
+	for _, pat := range learning.TraceFilePatterns {
+		entries, gErr := filepath.Glob(filepath.Join(auditDir, pat))
+		if gErr != nil {
+			continue
+		}
+		paths = append(paths, entries...)
 	}
 	sort.Strings(paths)
 
@@ -89,10 +99,10 @@ func runAggregateTrace(args []string) error {
 		// CI checkout from failing the gate while still guaranteeing the
 		// binary's aggregate code is run end-to-end on every pre-commit / CI.
 		if *requireTraces {
-			fmt.Fprintf(os.Stderr, "INFO: no gcl-trace files under %s (--require-traces set; falling back to embedded fixture self-check)\n", auditDir)
+			fmt.Fprintf(os.Stderr, "INFO: no trace files under %s (--require-traces set; falling back to embedded fixture self-check)\n", auditDir)
 			return runAggregateSelfCheck(*output)
 		}
-		fmt.Fprintln(os.Stderr, "WARN: no gcl-trace files found; skipping aggregate (trace files are produced by the runtime runner)")
+		fmt.Fprintln(os.Stderr, "WARN: no trace files found; skipping aggregate (trace files are produced by the runtime runner)")
 		return nil
 	}
 
@@ -169,8 +179,8 @@ func runAggregateTrace(args []string) error {
 		if wErr := os.WriteFile(outPath, out, 0o644); wErr != nil {
 			return wErr
 		}
-		fmt.Printf("Wrote quality summary to %s (total_runs=%d, pass_rate=%.4f)\n",
-			outPath, intOf(summary["totals"].(map[string]any)["total_runs"]), summary["pass_rate"].(float64))
+		fmt.Printf("Wrote quality summary to %s (total_runs=%d, pass_rate=%.4f, skipped_smoke=%d, l2_skipped_no_schema=%d)\n",
+			outPath, intOf(summary["totals"].(map[string]any)["total_runs"]), summary["pass_rate"].(float64), summary["skipped_smoke"].(int), summary["l2_skipped_no_schema"].(int))
 		return nil
 	}
 	os.Stdout.Write(out)
@@ -215,6 +225,12 @@ func runAggregateSelfCheck(output string) error {
 	return nil
 }
 
+// parseAggregateTrace decodes one trace file. Only `skill` is required: a
+// trace without it cannot be bucketed at all. A missing `final` block is NOT a
+// parse error — the aggregator classifies such traces as smoke and reports
+// them under skipped_smoke, so legacy orchestrator traces (written before the
+// P0 fix) surface as an observable count instead of an indistinguishable
+// "skip" warning.
 func parseAggregateTrace(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -227,14 +243,18 @@ func parseAggregateTrace(path string) (map[string]any, error) {
 	if _, ok := trace["skill"]; !ok {
 		return nil, fmt.Errorf("missing skill")
 	}
-	if _, ok := trace["final"]; !ok {
-		return nil, fmt.Errorf("missing final")
-	}
 	return trace, nil
 }
 
 // aggregateTraces reduces a set of traces into a quality summary with totals,
 // pass_rate, per-dimension average scores, and per-skill buckets.
+//
+// Smoke traces (see learning.IsSmokeTrace) are counted separately in
+// skipped_smoke and excluded from every quality metric: they carry no
+// verification signal, so folding them in would either fake a pass rate or
+// tank it with unverified dry runs. `by_source` counts the traces that did
+// contribute, split by writer (gcl vs l4) — this is the observability hook for
+// "is the L4 loop actually feeding the aggregator?".
 func aggregateTraces(traces []map[string]any) map[string]any {
 	dims := splitOnComma(rubricDims)
 	statuses := splitOnComma(finalStatuses)
@@ -246,13 +266,29 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 	totals["total_runs"] = 0
 
 	bySkill := map[string]any{}
+	bySource := map[string]int{learning.TraceSourceGCL: 0, learning.TraceSourceL4: 0}
 	scoreSums := map[string]float64{}
 	scoreCount := 0
+	skippedSmoke := 0
+	l2SkippedNoSchema := 0
 	for _, d := range dims {
 		scoreSums[d] = 0
 	}
 
 	for _, trace := range traces {
+		if learning.IsSmokeTrace(trace) {
+			skippedSmoke++
+			continue
+		}
+		// "source" is absent on traces written before the field existed; those
+		// are gcl traces, per learning.TraceSource.
+		src := learning.TraceSource(trace)
+		bySource[src]++
+
+		if l2StatusOf(trace) == "skipped_no_schema" {
+			l2SkippedNoSchema++
+		}
+
 		skill, _ := trace["skill"].(string)
 		if skill == "" {
 			skill = "unknown"
@@ -266,9 +302,14 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 		}
 		if _, ok := totals[status]; ok {
 			totals[status] = intOf(totals[status]) + 1
+		} else {
+			// A status the aggregator does not know (e.g. a new trace schema
+			// value) must stay visible: it counts in total_runs, so leaving it
+			// out of every bucket would depress pass_rate with nothing to
+			// explain it.
+			totals["UNKNOWN"] = intOf(totals["UNKNOWN"]) + 1
 		}
 		totals["total_runs"] = intOf(totals["total_runs"]) + 1
-
 		bucket, _ := bySkill[skill].(map[string]any)
 		if bucket == nil {
 			bucket = map[string]any{
@@ -279,6 +320,8 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 		bucket["total"] = intOf(bucket["total"]) + 1
 		if _, ok := bucket[status]; ok {
 			bucket[status] = intOf(bucket[status]) + 1
+		} else {
+			bucket["UNKNOWN"] = intOf(bucket["UNKNOWN"]) + 1
 		}
 		iterCount := lenOfList(trace["iterations"])
 		prevAvg := floatOf(bucket["avg_iterations"])
@@ -316,17 +359,43 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 	}
 
 	return map[string]any{
-		"version":           "1.0",
-		"generated_at":      time.Now().UTC().Format(time.RFC3339),
-		"cloud":             "huaweicloud",
-		"metric_namespace":  "CUSTOM.GCL",
-		"window":            map[string]any{"trace_count": totalRuns},
-		"totals":            totals,
-		"pass_rate":         round4(passRate),
-		"avg_rubric_scores": avgScores,
-		"by_skill":          bySkill,
-		"trace_files":       traceFiles,
+		"version":              "1.0",
+		"generated_at":         time.Now().UTC().Format(time.RFC3339),
+		"cloud":                "huaweicloud",
+		"metric_namespace":     "CUSTOM.GCL",
+		"window":               map[string]any{"trace_count": totalRuns},
+		"totals":               totals,
+		"pass_rate":            round4(passRate),
+		"avg_rubric_scores":    avgScores,
+		"by_skill":             bySkill,
+		"by_source":            bySource,
+		"skipped_smoke":        skippedSmoke,
+		"l2_skipped_no_schema": l2SkippedNoSchema,
+		"trace_files":          traceFiles,
 	}
+}
+
+// l2StatusOf returns the L2 hallucination-check outcome recorded on a trace
+// (L2Result.Outcome, JSON field "status"), or "" when the trace carries none.
+// Traces written before that field existed encode the status as the
+// "<status>: <detail>" prefix of l2.details, which is parsed here as a fallback.
+func l2StatusOf(trace map[string]any) string {
+	hd, _ := trace["hallucination_detection"].(map[string]any)
+	if hd == nil {
+		return ""
+	}
+	l2, _ := hd["l2"].(map[string]any)
+	if l2 == nil {
+		return ""
+	}
+	if s, ok := l2["status"].(string); ok {
+		return s
+	}
+	details, _ := l2["details"].(string)
+	if token, _, ok := strings.Cut(details, ": "); ok {
+		return token
+	}
+	return ""
 }
 
 // lastCriticScores returns the critic scores from the final iteration.

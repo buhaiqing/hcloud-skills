@@ -30,10 +30,10 @@ fi
 
 ## Cross-Skill Delegation Matrix
 
-| Alarm/Event Type | Metric | Primary Skill | Secondary Skill | HSS/AOM Deleg. |
+| Alarm/Event Type | Metric | Primary Skill | Secondary Skill | HSS/CES Deleg. |
 |-----------------|--------|--------------|----------------|---------------|
 | ECS CPU High | `cpu_util` > 90% | huaweicloud-ecs-ops | huaweicloud-ces-ops | Optional |
-| ECS Memory Leak | `mem_usedPercent` trend ↑ | huaweicloud-ecs-ops | huaweicloud-aom-ops | Recommended |
+| ECS Memory Leak | `mem_usedPercent` trend ↑ | huaweicloud-ecs-ops | huaweicloud-ces-ops (agent metrics; no APM/AOM skill in this repo) | Recommended |
 | Disk Full | `diskUsage_percent` > 90% | huaweicloud-ecs-ops | huaweicloud-ces-ops | — |
 | SSH Brute Force | HSS event | huaweicloud-hss-ops | huaweicloud-ecs-ops | Required |
 | Network DDoS | ELB dropped packets | huaweicloud-elb-ops | huaweicloud-waf-ops | Recommended |

@@ -4,9 +4,8 @@
 
 - **IAM**: `huaweicloud-iam-ops` should manage service roles and permissions for CTS to write to OBS/SMN/LTS.
 - **OBS**: `huaweicloud-obs-ops` should provision buckets and validate bucket policies for audit delivery.
-- **SMN**: `huaweicloud-smn-ops` should manage topics and subscriptions when CTS sends notifications.
+- **CES**: `huaweicloud-ces-ops` monitors CTS trace ingestion and alerts on delivery problems. Notification topics/subscriptions themselves have no skill in this repo (SMN is console/API); CES owns only the alarm-side wiring.
 - **LTS**: `huaweicloud-lts-ops` should manage log group sinks and retention.
-- **CES**: `huaweicloud-ces-ops` should monitor delivery health and alert on trace ingestion issues.
 
 ## CTS and Compliance Workflow
 

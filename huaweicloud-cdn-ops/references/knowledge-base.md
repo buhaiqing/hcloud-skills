@@ -23,7 +23,7 @@
 
 - **回源 5xx** → 源站侧问题,优先排查源站应用健康,而非 CDN 节点。
 - **命中率骤降** → 多为缓存规则变更或大规模 purge,核对近期配置变更。
-- **带宽尖峰 + p99≫p50** → 高度疑似 DDoS,联动 `huaweicloud-antiddos-ops` 与 WAF。
+- **带宽尖峰 + p99≫p50** → 高度疑似 DDoS。本仓库无 Anti-DDoS skill(流量清洗需控制台/API 处理);L7 限速可参考 `huaweicloud-waf-ops`。
 - **源站不可达** → 检查 EIP/WAF 回源白名单与源站安全组。
 
 ---
@@ -34,7 +34,7 @@
 |---|---|---|
 | 源站不可达 / 回源异常 | `huaweicloud-eip-ops` / `huaweicloud-waf-ops` | 排查回源链路与白名单 |
 | 源站为 OBS | `huaweicloud-obs-ops` | 检查桶可用性与带宽 |
-| DDoS / 带宽超阈 | `huaweicloud-antiddos-ops`(若启用) | 攻击清洗 |
+| DDoS / 带宽超阈 | 无 Anti-DDoS skill(控制台/API 清洗) | 攻击清洗需人工升级 |
 | 费用突增 | `huaweicloud-billing-ops` | 带宽计费与预算告警 |
 | 指标监控 | `huaweicloud-ces-ops` | 配置/查看 CDN 监控指标 |
 | 源站为 ECS | `huaweicloud-ecs-ops` | 检查源站实例状态 |

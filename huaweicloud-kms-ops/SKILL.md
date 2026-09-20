@@ -3,6 +3,7 @@ name: huaweicloud-kms-ops
 delegates_to:
   - huaweicloud-billing-ops
   - huaweicloud-cts-ops
+  - huaweicloud-ecs-ops
   - huaweicloud-iam-ops
   - huaweicloud-obs-ops
   - huaweicloud-rds-ops
@@ -83,7 +84,7 @@ agent execution path.**
 |---|---|
 | CMK lifecycle (list/create/describe/enable/disable/delete) | OBS object encryption → `huaweicloud-obs-ops` |
 | Key rotation toggle | RDS TDE → `huaweicloud-rds-ops` |
-| Schedule deletion (7–1096 day window) | EVS disk encryption → EVS skill (when present) |
+| Schedule deletion (7–1096 day window) | EVS disk encryption → EVS skill |
 | Grant management (create/list/revoke) | IAM policy authoring → `huaweicloud-iam-ops` |
 | Key material import (BYOK) | Billing cost tracking → `huaweicloud-billing-ops` |
 | Data key create / decrypt | |
@@ -120,7 +121,7 @@ agent execution path.**
 
 - Encrypting OBS objects → `huaweicloud-obs-ops`
 - Enabling RDS TDE → `huaweicloud-rds-ops`
-- EVS disk encryption → EVS skill (when present)
+- EVS disk encryption → EVS skill
 - IAM policy authoring → `huaweicloud-iam-ops`
 - Pure billing reconciliation → `huaweicloud-billing-ops`
 

@@ -25,7 +25,7 @@
 ## 3. Cross-Skill Delegation
 
 - `huaweicloud-ecs-ops → huaweicloud-vpc-ops` for security group changes
-- `huaweicloud-ecs-ops → huaweicloud-evs-ops` for disk operations
+- `huaweicloud-ecs-ops` handles disk (EVS volume) operations in-skill — no cross-skill delegation.
 - `huaweicloud-ecs-ops → huaweicloud-iam-ops` for agency / AK-SK rotation
 
 > **Security-Sensitive**: destructive operations above MUST pass the Safety

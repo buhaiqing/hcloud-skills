@@ -1,7 +1,6 @@
 ---
 name: huaweicloud-hss-ops
 delegates_to:
-  - huaweicloud-antiddos-ops
   - huaweicloud-billing-ops
   - huaweicloud-cce-ops
   - huaweicloud-ecs-ops
@@ -120,7 +119,7 @@ Host Security Service (HSS) provides server security including intrusion detecti
 
 - Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about WAF (web application firewall) → delegate to: `huaweicloud-waf-ops`
-- Task is about Anti-DDoS → delegate to: `huaweicloud-antiddos-ops` (when present)
+- Task is about Anti-DDoS → no Anti-DDoS skill in this repo (escalate to console/API); L7 filtering → `huaweicloud-waf-ops`
 - Task is about ECS instance lifecycle → delegate to: `huaweicloud-ecs-ops`
 - Task is about VPC/subnet/security group → delegate to: `huaweicloud-vpc-ops`
 

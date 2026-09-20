@@ -68,7 +68,7 @@ hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 3600
 |---------|-------------|
 | Encrypted bucket impact | `huaweicloud-obs-ops` |
 | Encrypted DB impact | `huaweicloud-rds-ops` |
-| Encrypted disk impact | `huaweicloud-evs-ops` |
+| Encrypted disk impact | `huaweicloud-ecs-ops` |
 | Permission / grant review | `huaweicloud-iam-ops` |
 | Cost of key ops | `huaweicloud-billing-ops` |
 | Audit trail validation | `huaweicloud-cts-ops` |

@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -112,5 +115,95 @@ func TestCriticArgsValueSet(t *testing.T) {
 	}
 	if v.String() != "[a b]" {
 		t.Fatalf("String() = %q, want %q", v.String(), "[a b]")
+	}
+}
+
+// ---- --structural-critic-only semantics ----------------------------------
+
+// writeSmokeSkill scaffolds the minimum skill dir the `gcl run` CLI needs in
+// order to route: <root>/huaweicloud-ecs-ops/SKILL.md with a name frontmatter.
+func writeSmokeSkill(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, "huaweicloud-ecs-ops")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nname: huaweicloud-ecs-ops\ndescription: manage ECS servers\nside_effect_class_max: read-only\nmetadata:\n  version: 1\n---\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestGCLRunStructuralCriticOnlyRejectsCriticCmd pins the mutual exclusion
+// between --structural-critic-only and --critic-cmd. Both flags name the
+// Critic to use, so honouring one and silently dropping the other is a
+// footgun; the CLI must fail up front instead. The stub critic touches a
+// marker file when executed, so an absent marker proves no critic subprocess
+// was spawned on the rejected path.
+func TestGCLRunStructuralCriticOnlyRejectsCriticCmd(t *testing.T) {
+	tmp := t.TempDir()
+	marker := filepath.Join(tmp, "critic-spawned")
+	script := filepath.Join(tmp, "critic.sh")
+	body := "#!/bin/sh\ntouch " + marker + "\necho '{\"scores\":{\"correctness\":1,\"safety\":1,\"idempotency\":1,\"traceability\":1,\"spec_compliance\":1}}'\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	skillDir := writeSmokeSkill(t, filepath.Join(tmp, "repo"))
+
+	err := runGCLRun([]string{"--root", skillDir, "--structural-critic-only", "--critic-cmd", script})
+	if err == nil {
+		t.Fatal("both --structural-critic-only and --critic-cmd set: want an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "structural-critic-only and critic-cmd are mutually exclusive") {
+		t.Errorf("error = %q, want the mutual-exclusion message", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Error("critic subprocess ran even though the flag combination was rejected")
+	}
+}
+
+// TestGCLRunStructuralCriticOnlySmokePath runs the CLI end-to-end with
+// --structural-critic-only and no --critic-cmd: the default `echo ok` smoke
+// command must still PASS, and the persisted trace must record the
+// in-process structural critic rather than an external one.
+func TestGCLRunStructuralCriticOnlySmokePath(t *testing.T) {
+	bin := buildSkillcheckBinary(t)
+	skillDir := writeSmokeSkill(t, t.TempDir())
+
+	cmd := exec.Command(bin, "gcl", "run", "--root", skillDir, "--structural-critic-only", "--quiet")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil || cmd.ProcessState.ExitCode() != 0 {
+		t.Fatalf("gcl run --structural-critic-only failed: %v (exit %v)\nstdout: %s\nstderr: %s",
+			err, cmd.ProcessState.ExitCode(), out, stderr.String())
+	}
+
+	tracePath := strings.TrimSpace(string(out))
+	if !strings.Contains(tracePath, "gcl-trace-") {
+		t.Fatalf("--quiet should print the trace path, got %q (stderr: %s)", tracePath, stderr.String())
+	}
+	data, readErr := os.ReadFile(tracePath)
+	if readErr != nil {
+		t.Fatalf("read trace %q: %v", tracePath, readErr)
+	}
+	var trace struct {
+		Final *struct {
+			Status     string `json:"status"`
+			CriticType string `json:"critic_type"`
+		} `json:"final"`
+	}
+	if jsonErr := json.Unmarshal(data, &trace); jsonErr != nil {
+		t.Fatalf("trace is not valid JSON: %v", jsonErr)
+	}
+	if trace.Final == nil {
+		t.Fatal("persisted trace has no final block")
+	}
+	if trace.Final.Status != "PASS" {
+		t.Errorf("final.status = %q, want PASS", trace.Final.Status)
+	}
+	if trace.Final.CriticType != "structural" {
+		t.Errorf("final.critic_type = %q, want structural", trace.Final.CriticType)
 	}
 }

@@ -34,9 +34,9 @@ fi
 |-----------------|--------------|----------------|-------------|
 | Function error rate high | huaweicloud-functiongraph-ops | huaweicloud-ces-ops | Check CES metrics, correlate with code change |
 | Function timeout | huaweicloud-functiongraph-ops | huaweicloud-lts-ops | Check LTS logs for slow code, optimize |
-| APIG trigger down | huaweicloud-functiongraph-ops | huaweicloud-apig-ops | Check APIG configuration, function availability |
+| APIG trigger down | huaweicloud-functiongraph-ops | huaweicloud-lts-ops | Check APIG trigger logs in LTS, function availability |
 | OBS trigger not firing | huaweicloud-functiongraph-ops | huaweicloud-obs-ops | Verify OBS bucket, event notification config |
-| SMN message loss | huaweicloud-functiongraph-ops | huaweicloud-smn-ops | Check SMN topic, subscription status |
+| SMN message loss | huaweicloud-functiongraph-ops | huaweicloud-ces-ops | Check CES notification topic, subscription status |
 | CTS audit trail | huaweicloud-functiongraph-ops | huaweicloud-cts-ops | Trace function creation/deletion events |
 | Function cost spike | huaweicloud-functiongraph-ops | huaweicloud-billing-ops | Check invocation volume, optimize memory/timeout |
 | DMS/Kafka consumer lag | huaweicloud-functiongraph-ops | huaweicloud-dms-ops | Check DMS queue, function processing rate |

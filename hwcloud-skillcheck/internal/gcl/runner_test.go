@@ -359,3 +359,172 @@ func TestTracePath_Naming(t *testing.T) {
 		t.Errorf("Trace should have .json extension, got %s", filepath.Ext(path))
 	}
 }
+
+// ---- critic_type provenance (CA-4) ---------------------------------------
+
+// criticAllPassJSON is an ExternalCritic wire payload whose scores satisfy
+// every rubric threshold, so Run reaches PASS whichever critic produced them.
+const criticAllPassJSON = `{"scores":{"correctness":1,"safety":1,"idempotency":1,"traceability":1,"spec_compliance":1}}`
+
+// TestRun_TraceCriticType pins the provenance recorded in the persisted
+// trace: final.critic_type must distinguish the in-process deterministic
+// proxy ("structural") from a real out-of-process critic ("external") so a
+// consumer never reads a heuristic score as an LLM verdict. The assertion is
+// against the bytes on disk, not the in-memory trace — the field has to
+// survive PersistTrace.
+func TestRun_TraceCriticType(t *testing.T) {
+	if _, err := exec.LookPath("/bin/echo"); err != nil {
+		t.Skip("/bin/echo not available on this platform")
+	}
+	tests := []struct {
+		name   string
+		critic Critic
+		want   string
+	}{
+		{"default critic is structural", nil, "structural"},
+		{"explicit structural adapter", StructuralCriticAdapter{}, "structural"},
+		{"external critic subprocess", NewExternalCritic("/bin/echo", criticAllPassJSON), "external"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Run(RunConfig{
+				Skill:   "huaweicloud-ecs-ops",
+				Request: "list servers",
+				Command: "echo ok",
+				MaxIter: 1,
+				Timeout: 10,
+				Root:    t.TempDir(),
+				Critic:  tt.critic,
+			})
+			if result.ExitCode != ExitOK {
+				t.Fatalf("Run exit code = %d, want %d (PASS)", result.ExitCode, ExitOK)
+			}
+			data, err := os.ReadFile(result.TracePath)
+			if err != nil {
+				t.Fatalf("read trace: %v", err)
+			}
+			var trace GCLTrace
+			if err := json.Unmarshal(data, &trace); err != nil {
+				t.Fatalf("trace is not valid JSON: %v", err)
+			}
+			if trace.Final == nil {
+				t.Fatal("persisted trace has no final block")
+			}
+			if trace.Final.CriticType != tt.want {
+				t.Errorf("final.critic_type = %q, want %q", trace.Final.CriticType, tt.want)
+			}
+			want := `"critic_type": "` + tt.want + `"`
+			if !strings.Contains(string(data), want) {
+				t.Errorf("raw trace JSON missing %s", want)
+			}
+		})
+	}
+}
+
+// TestRun_MaxIterTraceCarriesFinal pins that a MAX_ITER run persists a final
+// block too. cmd/aggregate.go and internal/learning REQUIRE a non-empty
+// "final" and classify a trace without one as a smoke artifact, so an omitted
+// final would silently drop MAX_ITER runs out of pass_rate/MAX_ITER
+// accounting (aggregate would also bucket them as UNKNOWN).
+func TestRun_MaxIterTraceCarriesFinal(t *testing.T) {
+	result := Run(RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Request: "list servers",
+		Command: "echo 'an error occurred' && exit 1",
+		MaxIter: 1,
+		Timeout: 10,
+		Root:    t.TempDir(),
+	})
+	if result.ExitCode != ExitMaxIter {
+		t.Fatalf("Run exit code = %d, want %d (MAX_ITER)", result.ExitCode, ExitMaxIter)
+	}
+	data, err := os.ReadFile(result.TracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	var trace GCLTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		t.Fatalf("trace is not valid JSON: %v", err)
+	}
+	if trace.Final == nil {
+		t.Fatal("MAX_ITER trace has no final block")
+	}
+	if trace.Final.Status != "MAX_ITER" {
+		t.Errorf("final.status = %q, want MAX_ITER", trace.Final.Status)
+	}
+	if trace.Final.CriticType != "structural" {
+		t.Errorf("final.critic_type = %q, want structural", trace.Final.CriticType)
+	}
+	if len(trace.Final.Unresolved) == 0 {
+		t.Error("MAX_ITER final should list the rubric dimensions that never passed")
+	}
+}
+
+// TestRun_TraceRecordsL2SkippedNoSchema pins the integration fix for the L2
+// hallucination check: the HallucinationResult is now persisted on every run,
+// not only when L1/L2 blocked, so "the skill ships no OpenAPI schema, nothing
+// was checked" is visible in the trace instead of looking like a clean check.
+func TestRun_TraceRecordsL2SkippedNoSchema(t *testing.T) {
+	result := Run(RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Request: "list servers",
+		Command: "echo '{}'", // valid JSON output, so L2 reaches the schema lookup
+		MaxIter: 1,
+		Timeout: 10,
+		Root:    t.TempDir(), // no references/openapi-schema.json in this skill root
+	})
+	if result.ExitCode != ExitOK {
+		t.Fatalf("Run exit code = %d, want %d (PASS)", result.ExitCode, ExitOK)
+	}
+	data, err := os.ReadFile(result.TracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("trace is not valid JSON: %v", err)
+	}
+	hd, _ := raw["hallucination_detection"].(map[string]any)
+	if hd == nil {
+		t.Fatal("a passing run persisted no hallucination_detection block")
+	}
+	l2, _ := hd["l2"].(map[string]any)
+	if l2 == nil {
+		t.Fatal("hallucination_detection has no l2 block")
+	}
+	if got, _ := l2["status"].(string); got != string(L2StatusSkippedNoSchema) {
+		t.Errorf("l2.status = %q, want %q", got, L2StatusSkippedNoSchema)
+	}
+	if blocked, _ := l2["blocked"].(bool); blocked {
+		t.Error("a skipped L2 must not block the run")
+	}
+}
+
+// TestCriticTypeOf_WrappedExternalCritic pins the Critic finding that kind
+// reporting must survive composition: a wrapper that embeds ExternalCritic is
+// still an external critic, not the in-process proxy (a wrong label would
+// present heuristic scores as an LLM verdict in the trace).
+func TestCriticTypeOf_WrappedExternalCritic(t *testing.T) {
+	type wrappedCritic struct{ ExternalCritic }
+	base := NewExternalCritic("/bin/echo")
+	wrapped := &wrappedCritic{ExternalCritic: *base}
+
+	cases := []struct {
+		name   string
+		critic Critic
+		want   string
+	}{
+		{"pointer", base, "external"},
+		{"value", *base, "external"},
+		{"wrapped pointer", wrapped, "external"},
+		{"nil critic", nil, "structural"},
+		{"structural adapter", StructuralCriticAdapter{}, "structural"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := criticTypeOf(tc.critic); got != tc.want {
+				t.Errorf("criticTypeOf(%T) = %q, want %q", tc.critic, got, tc.want)
+			}
+		})
+	}
+}

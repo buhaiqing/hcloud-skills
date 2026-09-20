@@ -413,8 +413,7 @@ Derived by the runner at trace finalization. Quantifies operational efficiency f
 All FinOps/AIOps context fields are injected via `--context-json <path>` at runtime. The file is a flat JSON object; the runner extracts known keys and ignores unknown ones.
 
 ```bash
-hwcloud-skillcheck gcl run --root . \
-  --skill huaweicloud-ecs-ops \
+hwcloud-skillcheck gcl run --root huaweicloud-ecs-ops \
   --request "Stop ECS instance" \
   --command 'hcloud ecs stop-server --server-id xxx' \
   --context-json /tmp/ops-context.json \

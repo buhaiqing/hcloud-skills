@@ -414,7 +414,7 @@ Detailed runtime-quality specs are externalized. Key reads before modifying GCL-
 |---|---|
 | `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md` |
 | `hwcloud-skillcheck gcl run --root .` | runtime Orchestrator loop; external Critic required in production |
-| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results |
+| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter (incl. dangling `delegates_to` targets) + eval-queries + product-assessment + advanced-coverage + audit-results |
 
 
 - **Contexts**: isolated Generator + Critic only; shared-context G+C banned.
@@ -425,8 +425,8 @@ Detailed runtime-quality specs are externalized. Key reads before modifying GCL-
 
 
 ```bash
-hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
-hwcloud-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
+hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter (incl. dangling `delegates_to` targets) + eval-queries + product-assessment + advanced-coverage + audit-results
+hwcloud-skillcheck gcl run --root huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
 hwcloud-skillcheck aggregate trace --root . --since-hours 168
 hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
 ```

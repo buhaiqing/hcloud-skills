@@ -51,7 +51,7 @@ func runGCLRun(args []string) error {
 	command := fs.String("command", "", "shell command for the Generator to run (e.g. 'hcloud ecs list-servers --region cn-north-4'). When empty, a smoke 'echo ok' is run so the structural critic path can still be exercised.")
 	request := fs.String("request", "smoke test", "natural-language request the Generator is responding to; recorded in trace.iterations[*].request.")
 	maxIter := fs.Int("max-iter", 0, "maximum GCL iterations (0 uses the skill default)")
-	structuralOnly := fs.Bool("structural-critic-only", false, "use the local structural Critic; intended for CI/local smoke tests")
+	structuralOnly := fs.Bool("structural-critic-only", false, "use the local structural Critic; intended for CI/local smoke tests. Mutually exclusive with --critic-cmd.")
 	criticCmd := fs.String("critic-cmd", "", "path to an external Critic executable. The Runner pipes GeneratorOutput JSON to its stdin and reads CriticResult JSON from stdout. When empty, the in-process Structural critic is used. Pass repeated --critic-arg to forward arguments.")
 	budgetTokens := fs.Int("budget-tokens", 0, "hard context token budget (0 uses 200000)")
 	budgetToolCalls := fs.Int("budget-tool-calls", 0, "hard Generator tool-call budget (0 uses 50)")
@@ -60,12 +60,19 @@ func runGCLRun(args []string) error {
 	confirmIssue := fs.Bool("confirm-issue", false, "P0 trust boundary: instead of consuming a nonce, issue a fresh one and print it (then exit). Used by human review flows to get the nonce they will paste back in.")
 	var criticArgs []string
 	fs.Var(&criticArgsValue{slice: &criticArgs}, "critic-arg", "argument forwarded to --critic-cmd (repeatable).")
-	_ = criticArgs
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil // help was shown; exit cleanly
 		}
 		return err
+	}
+
+	// --structural-critic-only pins the in-process Critic while --critic-cmd
+	// names an external one. Accepting both would silently ignore whichever
+	// flag loses, so reject the combination here — before any Critic is
+	// constructed and before any subprocess can be spawned.
+	if *structuralOnly && *criticCmd != "" {
+		return fmt.Errorf("structural-critic-only and critic-cmd are mutually exclusive")
 	}
 
 	skillDir, err := filepath.Abs(*root)
@@ -113,7 +120,6 @@ func runGCLRun(args []string) error {
 		},
 		RouterDecision: routerDecision,
 	}
-	_ = structuralOnly
 	if *confirmNonce != "" {
 		cfg.ConfirmationToken = *confirmNonce
 		cfg.ConfirmationRegistry = gcl.NewConfirmationRegistry(gcl.DefaultConfirmationTTL)
@@ -129,7 +135,13 @@ func runGCLRun(args []string) error {
 		fmt.Println(nonce)
 		return nil
 	}
-	if *criticCmd != "" {
+	// Critic selection. --structural-critic-only wins outright: it pins the
+	// in-process structural Critic even if a skill config or another path
+	// would otherwise select an external one.
+	switch {
+	case *structuralOnly:
+		cfg.Critic = gcl.StructuralCriticAdapter{}
+	case *criticCmd != "":
 		cfg.Critic = gcl.NewExternalCritic(*criticCmd, criticArgs...)
 	}
 

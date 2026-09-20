@@ -27,7 +27,6 @@ go get github.com/huaweicloud/huaweicloud-sdk-go-v3/core
 | Storage quota near (>80%) | `huaweicloud-swr-ops` | `huaweicloud-ces-ops` | SWR storage metric alert |
 | Pull throttling | `huaweicloud-swr-ops` | `huaweicloud-vpc-ops` | Rate limit exceeded |
 | Webhook failure spike | `huaweicloud-swr-ops` | `huaweicloud-vpc-ops` | Webhook delivery failure |
-| Build failure spike | `huaweicloud-swr-ops` | `huaweicloud-codearts-ops` | Build trigger failed |
 | Security vulnerability | `huaweicloud-swr-ops` | `huaweicloud-hss-ops` | Image scan critical finding |
 | Multi-resource alarm storm | `huaweicloud-swr-ops` | `huaweicloud-ces-ops` | ≥3 resources affected |
 

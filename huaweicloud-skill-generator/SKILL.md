@@ -21,6 +21,7 @@ compatibility: >-
   `references/execution-environment.md` (CLI + Go SDK setup details),
   `references/cli-behavior.md` (verified huawei CLI behavioral notes),
   `references/p0-p1-checklist.md` (generated skill quality checklist — P0/P1 criteria),
+  `references/openapi-schema-asset.md` (per-skill `references/openapi-schema.json` for the L2 hallucination check),
   `references/well-architected-assessment.md` (five-pillar assessment template),
   and agentskills.io frontmatter conventions.
 metadata:
@@ -152,6 +153,7 @@ If the user wants **operational execution** (e.g. "create a resource"), load the
 | `references/prompt-templates.md` | GCL Generator/Critic/Orchestrator templates with sanitized `operation_intent` | Always |
 | `assets/example-config.yaml` | Example configuration with UX and optimization settings | Always |
 | `assets/eval_queries.json` | Trigger accuracy evaluation queries for the generated skill | Always |
+| `references/openapi-schema.json` | OpenAPI-derived response schema validated by hallucination L2 (`skipped_no_schema` until present) | When an OpenAPI/Swagger spec is available for the product |
 
 ---
 
@@ -300,6 +302,7 @@ huaweicloud-[product]-ops/
 │   ├── rubric.md                 # MANDATORY: GCL 8-section rubric
 │   ├── prompt-templates.md       # MANDATORY: GCL 7-section prompt templates
 │   └── idempotency-checklist.md  # When retries/automation required
+│   ├── openapi-schema.json      # When an OpenAPI spec exists: L2 hallucination target (see references/openapi-schema-asset.md)
 ├── assets/
 │   ├── example-config.yaml
 │   └── eval_queries.json         # MANDATORY: trigger accuracy eval queries
