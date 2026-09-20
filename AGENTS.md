@@ -116,6 +116,11 @@ hwcloud-skillcheck status --skill <name> --root .
 **状态清理**：
 - GCL Trace：保留最近 7 天
 - Failure Patterns：append-only，手动 curation 删除
+
+#### 执行决策树
+
+```
+收到任务
   ├─ 风险评估（risk_tier）
   │   ├─ LOW → 直接执行 + 2-round self-review
   │   ├─ MEDIUM → Light GCL
@@ -391,35 +396,19 @@ hwcloud-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "s
 
 ## Self-Healing Loop & Experience Learning (L4)
 
-Full spec: `references/self-healing-spec.md`
+> 完整规范：[`references/self-healing-spec.md`](references/self-healing-spec.md)
 
-### Artifacts per skill
+**核心产物**：
+- `assets/remediation-playbooks.json` — 修复 playbooks
+- `assets/failure_patterns.json` — 失败知识库
 
-| File | Purpose |
-|------|---------|
-| `assets/remediation-playbooks.json` | Machine-readable fix playbooks (trigger→diagnose→execute→verify→rollback) |
-| `assets/failure_patterns.json` | Learned failure knowledge base (signature→fix→stats) |
-
-### Runtime scripts
-
+**关键命令**：
 ```bash
-# Aggregate GCL traces → update failure_patterns.json
-`hwcloud-skillcheck learning trace aggregate --skill huaweicloud-ecs-ops [--since-hours 168] [--dry-run] --root .`
-# Learn from single trace
-`hwcloud-skillcheck learning trace learn --skill huaweicloud-ecs-ops --trace audit-results/gcl-trace-*.json --root .`
-# Knowledge base report
-`hwcloud-skillcheck learning trace report --skill huaweicloud-ecs-ops --root .`
+hwcloud-skillcheck learning trace aggregate --skill <name> --root .
+hwcloud-skillcheck learning trace report --skill <name> --root .
 ```
 
-### GCL integration
-
-`hwcloud-skillcheck gcl run` executes one Generator command (default smoke `echo ok`; override with `--command` for production work) under a per-iteration timeout and writes the trace to `audit-results/gcl-trace-<UTC>-<rand>.json`. The pre-execution risk check on `failure_patterns.json` happens in the L4 orchestrator step loop (`hwcloud-skillcheck l4 handle`), not in `gcl run` — see the L4 section.
-
-### Hard constraints
-
-- Playbooks with `risk_level: critical` MUST NOT auto-execute; always escalate.
-- `failure_patterns.json` is append-only during learning; manual curation required for deletion.
-- `hwcloud-skillcheck learning trace aggregate` MUST be run after any GCL campaign to close the learning loop.
+**硬约束**：`risk_level: critical` 的 playbooks 禁止自动执行；`failure_patterns.json` append-only。
 
 ## CodeGraph Integration — 代码变动即时同步
 
