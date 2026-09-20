@@ -220,114 +220,24 @@ Every skill MUST embed FinOps + SecOps + AIOps. No exceptions:
 
 **不可压缩的内容**：Agent 可执行命令本身（参数、JSON paths）、错误恢复逻辑、安全门、Credential 规则、跨技能编排链。
 
-## 复利资产沉淀机制（Compound-Asset Distillation Loop, CADL）
+## 复利资产沉淀机制（CADL）
 
-**目的**：让少量高价值决策规则产生复利——下次同类任务**不读代码、不重复踩坑**也能走对。
-**默认不写。** 大多数任务的正确终点是：测试绿、CI 绿、代码/配置即文档——**不是**再抄一遍到 AGENTS.md。
+> 完整规范：[`references/cadl-spec.md`](references/cadl-spec.md)
 
-### 价值取向（什么值得沉淀）
-
-复利资产 ≠ 经验日记。写入前必须满足 **「四问全过」**：
-
-| # | 问题 | 过栏 |
-|---|------|------|
-| 1 | **复用半径** — 未来还有多少任务会碰到？ | ≥3 次同类场景，或跨 skill / 跨模块 |
-| 2 | **失败成本** — 如果不写，会怎样？ | silent wrong（看起来绿、实际错）或 ≥30min 排查 |
-| 3 | **抽象层级** — 这是决策规则还是操作手册？ | 决策规则（遇到 X → 做 Y）；不是标准库/工具官方文档可查到的事实 |
-| 4 | **可执行性** — agent 读完能立刻改变行为吗？ | 一条 Rule 即可约束；不需要再读 200 行上下文 |
-
-**任一不过 → 不写入 AGENTS.md。** 落点降级：
-
-| 情况 | 落点 |
-|------|------|
-| 已用测试 / CI / ADR / workflow 门禁 | ** nowhere ** — 代码即文档，不写 |
-| 仅本仓库、但高价值 | 本节「复利资产」或上方规范章节 |
-| 跨仓库通用 | 用户级 `~/.config/opencode/AGENTS.md` |
-| 某 skill 专属 | skill 的 `references/`，不经 AGENTS.md |
-
-### 明确不写入（反模式）
-
-- **已修复的一次性 bug** — 测试或 CI 已覆盖，下次 red 即信号
-- **标准实践** — gofmt、heredoc 引号、`StdinPipe` 先 Close、optional JSON 设默认值
-- **环境小技巧** — `GOCACHE=/tmp/...`、action 版本号；写进 commit/PR 即可
-- **与现有条目重复** — 写入前 `grep AGENTS.md`；重复 = 噪音
-- **纯叙事** — 「某次 CI 红了然后修了」无 Rule 可提取
-
-### 触发条件（任务结束时检查）
-
-满足任一 → 走沉淀**判定**（不是判定 = 必须写）：
-
-- 多步 / 跨文件 / 跨 skill 任务完成
-- 评审或修复循环（GCL、self-review、CI auto-recover）
-- 发现 silent wrong 或架构级坑
-- 用户给出可复用的工作流偏好
-
-### 闭环步骤
-
-```
-1. 提取   → 能否写成一条 Rule？不能 → 停止
-2. 四问   → 全过？不过 → 停止（或降级到 ADR / commit message）
-3. grep   → 已有覆盖？→ 停止
-4. 落点   → 复利资产 / 规范章节 / ADR / skill references
-5. 门禁   → AGENTS.md ≥500 行时，加一条必须删或合并一条（见下行数预算）
-6. 复用   → 下次同类任务读 AGENTS.md 即生效
-```
-
-### 行数预算
-
-AGENTS.md 是 **agent 上下文税**，不是 wiki。硬上限意识：
-
-- **规范 + 门禁**（Pre-flight、Dual-Copy、TE、GCL 指针）：保留，这是 repo 的操作系统
-- **术语表**：索引 ADR，不复制 API 面（详见 `docs/architecture/`）
-- **复利资产**： curated，目标 **≤12 条**；超出则 prune 最弱条目
-
-### Skill 侧钩子
-
-- Agent 任务结束前主动做沉淀**判定**；用户未要求时不批量写条目
-- `huaweicloud-skill-generator` 在 SKILL.md 末尾保留一行 CADL 提示即可
+**核心要点**：
+- 默认不写入；写入前过「四问」（复用半径/失败成本/抽象层级/可执行性）
+- 复利资产目标 ≤12 条；超出则 prune 最弱条目
+- 任务结束时主动做沉淀判定
 
 ## Skill Update Rule: 2-Round Self-Reflection
 
-**After every skill update or creation, execute 2 mandatory self-reflection rounds and auto-fix all discovered issues before finishing.**
+> 完整规范：[`references/skill-update-rule.md`](references/skill-update-rule.md)
 
-### Round 1 — Foundation Check
-1. **FinOps**: Are cost patterns actionable? Billing model comparison present? Idle detection documented?
-2. **SecOps**: IAM permissions minimum documented? Credential masking enforced? Network isolation?
-3. **AIOps**: Multi-metric correlation defined? Delegation matrix present? Knowledge base populated?
-
-#### Round 1, Item 4 — Token Efficiency (C6 — MUST PASS)
-
-**必检项**：TE-1~TE-7 是否全部满足（见上一节 Token Efficiency Requirements）？未满足则 **BLOCK**。
-
-| TE 规则 | 检查方法 | 不通过则 |
-|---------|---------|---------|
-| TE-1 | 检查 references/ 中是否有硬编码的版本号/配额数字 | 替换为 `hcloud` 查询命令 |
-| TE-2 | 检查 Go SDK 代码块是否有函数级 docstring | 删除 docstring，改用 `#` 行注释 |
-| TE-3 | 检查错误表是否超过 3 列 | 合并列，每行 1 个错误码 |
-| TE-4 | 检查 JSON path 是否在文件顶部集中声明 | 移至文件顶部统一声明 |
-| TE-5 | 检查 example-config.yaml 是否有重复字段 | 用 YAML anchors 消除 |
-| TE-6 | 检查 SKILL.md 与 references/ 是否有内容重复 | 删除 references 中的重复 |
-| TE-7 | 检查 AIOps/FinOps 是否在 `references/advanced/`；安全敏感操作是否标注 Security-Sensitive | 移至 `advanced/` + 添加 Security-Sensitive 标注 |
-
-**发现任一违规 → 立即修复 → 重新检查直到全部通过。**
-
-### Round 2 — Critical Analysis
-4. **Gap Analysis**: What would break in production if a user follows this skill?
-5. **Alternative Coverage**: Is there a better way that reduces agent confusion?
-6. **Escalation Paths**: Are HALT conditions clear? Enough non-retryable error patterns?
-7. **Cross-Pillar Synergy**: Do FinOps recommendations conflict with reliability? SecOps create performance bottlenecks?
-
-**For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
-
-- A single shot gun covers everything: `hwcloud-skillcheck check --pre-commit`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
-- The git pre-commit hook is fully covered by `hwcloud-skillcheck check --pre-commit`; CI runs the same command. Markdown-only commits stay fast because Go build/test gates skip when `.go` and the `hwcloud-skillcheck/` tree are unchanged.
-- New scripts MUST:
-  - Start with a module docstring describing purpose.
-  - Avoid unused imports / unreachable code / bare `except:`.
-  - Prefer `flag` (std lib) with explicit `--help` text for CLIs.
-  - Keep functions short; favor pure helpers that are unit-testable.
-- Tests live next to source as Go `_test.go` files; `go test ./...` runs them. Subagent-driven-development + race detector are how new functionality is verified before commit.
-- CI runs `hwcloud-skillcheck validate --root .` plus `go test ./... -race`; local dev MUST run the same suite before pushing.
+**核心要点**：
+- 每次 skill 更新/创建后，执行 2 轮 self-reflection
+- Round 1: FinOps/SecOps/AIOps + Token Efficiency (TE-1~TE-7)
+- Round 2: Gap Analysis / Alternative Coverage / Escalation Paths / Cross-Pillar Synergy
+- 发现问题立即修复，不报告即停
 
 ## Go 编码规范
 
@@ -383,92 +293,44 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 
 ## Documentation Locations (强制)
 
-文档必须放置在以下固定位置，**禁止随意新建顶层 docs/ 子目录**：
+> 完整规范：[`references/documentation-locations.md`](references/documentation-locations.md)
 
-| 类型 | 路径 | 说明 |
-|------|------|------|
-| **ADR（架构决策记录）** | `docs/architecture/NNNN-<slug>.md` | 编号递增，slug 用 kebab-case。任何架构选型（存储/接口/外部依赖/取舍）必写 ADR |
-| **Spec（功能规格）** | `docs/superpowers/specs/<slug>.md` | 配合 ADR 写，描述 FR/NFR/数据模型 |
-| **Implementation Plan** | `docs/superpowers/plans/YYYY-MM-DD-<slug>.md` | 遵循 `superpowers:writing-plans` 模板 |
-| **运行时规范** | `docs/gcl-spec.md`、`docs/deployment-guide.md` 等根级 | 不轻易新建根级 .md，先复用现有 |
-
-**ADR 文件名约束**：
-
-- 4 位数字编号（`0001` ~ `9999`），递增
-- 单数主题一个 ADR（如 `0007-outcome-memory-self-healing.md`）
-- 状态字段：`Proposed` → `Accepted` → `Superseded`，写入 frontmatter 或正文
-
-**反模式**：
-
-- ❌ 把 ADR 写到 **docs/adr/**、**docs/decisions/**、**docs/adr-NNNN/** 等其他目录
-- ❌ 把 Plan 写到 **docs/plans/** 或根级 **docs/<feature>.md**
-- ❌ 没有编号的 ADR（如 architecture-decision.md 不允许）
-
-**Why**: 跨仓库协作时（如 GCL 生成新 skill 时引用 ADR），固定路径才能让引用稳定。`docs/architecture/` 是 hcloud-skills 项目的硬约定，所有 skill / generator / docs 工具都必须遵守。
+**核心要点**：
+- ADR → `docs/architecture/NNNN-<slug>.md`
+- Spec → `docs/superpowers/specs/<slug>.md`
+- Plan → `docs/superpowers/plans/YYYY-MM-DD-<slug>.md`
+- 禁止随意新建顶层 docs/ 子目录
 
 ---
 
 ## 术语表 (Glossary)
 
-> **索引，非副本。** 字段级 API → ADR（`docs/architecture/`）与源码（`internal/l4/`）。
+> 完整规范：[`references/glossary.md`](references/glossary.md)
 
-| 术语 | 一句话 | 详见 |
-|------|--------|------|
-| **L3→L4 / L4→L5** | Agent 成熟度跃迁；L4 = outcome memory + healing；L5 = trust 单一来源 | ADR-0007~0009 |
-| **Outcome Memory** | 跨任务 step 结果 JSONL（`.l4-memory/outcomes.jsonl`），self-healing 底座 | ADR-0007 |
-| **Context Memory** | 跨调用 agent 状态 JSON（`.l4-memory/context.json`），atomic write | ADR-0008 |
-| **Trust Score / Phase 1–4** | 历史-derived 可信度；Phase 4 后单一来源 = outcome memory | ADR-0009 |
-| **Executor / RealExecutor** | `RunExecutionLoop` 与 subprocess 的 interface seam | ADR-0010 |
-| **GCL** | Generator + Critic 双 Agent 闭环质量门控 | `docs/gcl-spec.md` |
-| **L4 Orchestrator** | 多 step 执行 + RBAC + GCL + topology + trust + healing | `internal/l4/` |
-| **Cross-skill delegation** | Orchestrator 经 `DelegatesTo` 扩计划并同步 pipeline 执行（非 skill 互调） | ADR-0011 |
-| **RBAC** | 按 `RBACRisk` 做操作前权限决策 | `internal/l4/rbac.go` |
-| **Topology Graph** | skill→resource 静态+动态依赖图 | `internal/l4/topology.go` |
-| **CADL** | 复利资产沉淀机制（见上文 §CADL） | 本节 |
-| **Dual-Copy Trap** | generator 根副本 vs `.agents/skills/` 运行时副本；见 CA-10 | 上文 §Dual-Copy |
+**核心术语**：
+- **GCL** — Generator + Critic 双 Agent 闭环质量门控
+- **L4 Orchestrator** — 多 step 执行 + RBAC + GCL + topology + trust + healing
+- **Outcome Memory** — 跨任务 step 结果 JSONL，self-healing 底座
+- **CADL** — 复利资产沉淀机制（见 `references/cadl-spec.md`）
+- **Dual-Copy Trap** — generator 根副本 vs `.agents/skills/` 运行时副本
 
-**L4 实现约束**（改 healing/trust/executor 前必读）：
-
-1. `HealingPolicy` 零值安全 → 只以 `p.IsZero()` 判断，不用 sum-based check
-2. destructive verb 列表只从 `ExtractHighRiskVerbs()` 取；匹配走 `TaskStep.Verb` 非 `Action` 子串
-3. 改 `Executor` interface 或 bypass → 新 ADR
+> L4 实现约束（改 healing/trust/executor 前必读）→ `references/glossary.md`
 
 ---
 
 ## Runtime Quality Gates: GCL
 
-Detailed runtime-quality specs are externalized. Key reads before modifying GCL-related files:
-| Spec / Tool | Read or run before modifying |
-|---|---|
-| `docs/gcl-spec.md` | any `## Quality Gate (GCL)` section, `references/rubric.md`, `references/prompt-templates.md` |
-| `hwcloud-skillcheck gcl run --root .` | runtime Orchestrator loop; external Critic required in production |
-| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results |
+> 完整规范：[`references/gcl-runtime.md`](references/gcl-runtime.md)
 
-
-- **Contexts**: isolated Generator + Critic only; shared-context G+C banned.
-- **Critic**: read-only, no hcloud/SDK/mutation/self-score; sees sanitized `{{output.operation_intent}}` only.
-- **Safety=0/SAFETY_FAIL**: abort immediately, never partial output.
-- **Loops bounded**: every run has `max_iterations` + masked trace to `audit-results/gcl-trace-*.json`.
-- **Templates**: placeholders MUST use `{{env.*}}/{{user.*}}/{{output.*}}`; bare `{…}` banned.
-
+**核心约束**：
+- Contexts: isolated Generator + Critic only; shared-context G+C banned
+- Safety=0/SAFETY_FAIL: abort immediately, never partial output
+- Loops bounded: every run has `max_iterations` + masked trace
 
 ```bash
-hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results
+hwcloud-skillcheck validate --root .
 hwcloud-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
-hwcloud-skillcheck aggregate trace --root . --since-hours 168
-hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
 ```
-
-### Relationship to build-time self-reflection
-
-Build-time 2-round self-reflection and runtime GCL are independent gates. A clean self-reflection does not exempt runtime scoring; a passing GCL rubric does not exempt sloppy skill updates.
-
-### GCL changelog
-
-| Version | Date | Change |
-|---|---|---|
-| 1.0.0 | 2026-06-04 | Initial GCL specification and ECS pilot |
-| 1.6.0 | 2026-06-19 | qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES summary schema added |
 
 
 ## Self-Healing Loop & Experience Learning (L4)
@@ -505,61 +367,22 @@ Full spec: `references/self-healing-spec.md`
 
 ## CodeGraph Integration — 代码变动即时同步
 
-CodeGraph (`codegraph` CLI) 维护仓库知识图谱。本仓库已配置 MCP Server（`.mcp.json`），Agent 启动时自动获得 `codegraph_explore` 工具。索引数据位于全局 `~/`.omo/codegraph/`（仓库内 `.codegraph` 为软链，已被 `.gitignore` 忽略）。
+> 完整规范：[`references/codegraph-integration.md`](references/codegraph-integration.md)
 
-#### MANDATORY: CodeGraph sync 纪律
-
-1. **读前 sync** — 任何 `codegraph explore/impact/callees` 前先 `codegraph sync --quiet`（过期索引产生假阴性）。例外：`codegraph status` 显示 up-to-date 且距变更 < 几分钟。
-2. **写后 sync** — 每次 Go/Python 变更提交前必须 sync。Agent 纪律，非 CI 门禁。
-3. **MCP 优先** — 代码理解任务先 `codegraph explore <symbol>`，再 grep/read 补充（AST+调用图覆盖接口实现、动态派送）。纯文本搜索除外。
-4. **Fallback 层级** — 代码理解按以下顺序选择工具：
-   - **首选**：`codegraph explore <symbol>`（符号定义、调用者、影响面分析）
-   - **备选**：`grep` / `read` / `rg`（当 CodeGraph 不可用、索引过期、或仅需文本匹配时）
-   - **显式原则**：当 `codegraph explore` 已能回答问题时，禁止跳过他直接用 grep
-
-| 场景 | 命令 |
-|------|------|
-| 符号定义+调用者 | `codegraph explore <pkg.Symbol>` |
-| 影响面 / 调用链 | `codegraph impact` / `codegraph callees <pkg.Symbol>` |
-| 同步索引 | `codegraph sync --quiet` |
-
-MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegraph` 在 PATH 中（`which codegraph` 验证）。
-
-#### GoLang 程序集成规范（hwcloud-skillcheck 等 Go 工程）
-
-`codegraph` 的索引基于 AST/调用图，对 Go 的符号命名有固定约定。在 Go 工程中集成或排查 CodeGraph 时必须遵守：
-
-1. **符号记法** — Go 符号用 `pkg.Symbol`（包路径末段 + 导出符号），例如 `internal/l4.TrustScore`、`internal/l4.EvaluateOperationWithHistory`。`codegraph explore` 入参区分大小写，仅索引导出符号（首字母大写）。
-2. **编译先行** — 任何 `codegraph explore/impact/callees` 针对 Go 符号前，先确保 `go build ./...` 通过。索引器解析依赖 AST，**编译失败 → 符号缺失 → 假阴性**。
-3. **写后 sync 强约束** — 修改 `internal/` 下任何 Go 文件（含 `_test.go`）后、提交前必须 `codegraph sync --quiet`。Go 的接口实现/动态派送（如 `Executor` interface、`HealingPolicy`）只在 sync 后才反映到调用图。
-4. **影响面分析优先于 grep** — 改 `internal/l4/` 等核心包前，先 `codegraph impact <pkg.Symbol>` 拿到真实调用方（含间接调用者），再决定是否需 cascade 修改；禁止仅凭 `grep` 判定「无调用方」。
-5. **vendor / 离线** — 沙箱无公网时 `codegraph sync` 可能拉取失败；此时回退到 `grep`/`read` 并标注 `// OFFLINE: codegraph unavailable`，不得假设索引存在。
+**核心纪律**：
+- 读前 sync（`codegraph sync --quiet`）
+- 写后 sync（Go/Python 变更提交前）
+- MCP 优先（`codegraph explore` 优于 grep）
+- Go 符号用 `pkg.Symbol`；编译先行
 
 ### 版本升级规则
 
-重大功能重构或实现完成后，Git push 成功后必须升级版本：
+> 完整规范：[`references/version-upgrade.md`](references/version-upgrade.md)
 
-1. **触发条件**：完成了以下任一工作后
-   - 新增了工具子命令（`hwcloud-skillcheck` 新增 `pitfall-report` 等）
-   - 新增了 `internal/` 包（新的可复用模块）
-   - 重构了核心 GCL / L4 / learning 逻辑
-   - 删除了废弃的 Python 脚本或旧逻辑
-   - 任何影响 `hwcloud-skills` 对外行为的功能变更
-
-2. **操作步骤**：
-   ```bash
-   # push 完成后，在仓库根目录执行：
-   task release VERSION=X.Y.Z
-   ```
-   `task release` 会 `git tag` + `git push origin <tag>`，触发 CI 构建和 GitHub Release。
-
-3. **版本号规范**：遵循语义化版本（semver）
-   - `X.Y.Z`：主版本.次版本.补丁版本
-   - 主版本：破坏性 API 变更
-   - 次版本：新功能向后兼容
-   - 补丁版本：Bug 修复或小改进
-
-> 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
+**核心要点**：
+- 触发条件：新增工具子命令 / 新增 internal 包 / 重构核心逻辑 / 功能变更
+- 操作：`task release VERSION=X.Y.Z`
+- 版本号：语义化版本（主版本.次版本.补丁版本）
 
 ### Post-push Gate（推送后 — CI 验证）
 
