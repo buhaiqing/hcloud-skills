@@ -89,8 +89,33 @@ IF tool_calls >= max_tool_calls OR tokens >= max_tokens THEN
 END IF
 ```
 
+#### 状态管理统一（State Query Layer）
+
+当前状态存储分散在 5 个位置，Agent 需要多次工具调用获取完整状态。目标是引入统一查询层：
+
+| 状态 | 位置 | 当前查询方式 |
+|------|------|-------------|
+| GCL Trace | `audit-results/gcl-trace-*.json` | `hwcloud-skillcheck aggregate trace --root .` |
+| Failure Patterns | `assets/failure_patterns.json` | `hwcloud-skillcheck learning trace report --skill <name> --root .` |
+| Remediation Playbooks | `assets/remediation-playbooks.json` | 同上 |
+| Context Memory | `.l4-memory/context.json` | 直接读取 |
+| Outcome Memory | `.l4-memory/outcomes.jsonl` | 直接读取 |
+
+**当前最佳实践**：任务开始前按需查询相关状态，任务结束后调用 `hwcloud-skillcheck learning trace aggregate` 更新。
+
+**目标架构**（待实现）：
+```bash
+hwcloud-skillcheck status --skill <name> --root .
+# 返回 JSON：{ "gcl_traces": [...], "failure_patterns": {...}, ... }
 ```
-收到任务
+
+**使用规则**：
+1. **任务结束后**：调用 `hwcloud-skillcheck learning trace aggregate` 更新状态
+2. **避免**：直接读取多个文件拼接状态（应按需查询）
+
+**状态清理**：
+- GCL Trace：保留最近 7 天
+- Failure Patterns：append-only，手动 curation 删除
   ├─ 风险评估（risk_tier）
   │   ├─ LOW → 直接执行 + 2-round self-review
   │   ├─ MEDIUM → Light GCL
