@@ -91,8 +91,8 @@ func runTraceAggregate(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n  Skipped (smoke, no verification signal): %d\n",
-		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount, res.SkippedSmoke)
+	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n  Skipped (smoke, no verification signal): %d\n  Skipped (invalid trace, schema): %d\n  Rejected (untrusted pattern): %d\n",
+		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount, res.SkippedSmoke, res.InvalidTraces, res.RejectedPatterns)
 	if res.WrittenTo != "" {
 		fmt.Printf("\nWritten: %s\n", res.WrittenTo)
 	}
@@ -128,6 +128,13 @@ func runTraceLearn(args []string) error {
 	if fp == nil {
 		fmt.Println("No failure_pattern in trace (likely a PASS). Nothing to learn.")
 		return nil
+	}
+	// Same trust boundary as `trace aggregate`: the trace is a file on disk and
+	// its failure_pattern would drive matchPreExecutionRisk (which SKIPS planned
+	// steps on a match). A pattern the validator refuses is not merged and not
+	// silently ignored — the operator named this file explicitly, so say why.
+	if vErr := learning.ValidateTracePattern(fp, *skill); vErr != nil {
+		return fmt.Errorf("refusing untrusted failure pattern in %s: %w", filepath.Base(*tracePath), vErr)
 	}
 	existing := learning.LoadFailurePatterns(*root, *skill)
 	patterns, _ := existing["patterns"].([]any)

@@ -36,7 +36,7 @@ fi
 | ECS Memory Leak | `mem_usedPercent` trend ↑ | huaweicloud-ecs-ops | huaweicloud-ces-ops (agent metrics; no APM/AOM skill in this repo) | Recommended |
 | Disk Full | `diskUsage_percent` > 90% | huaweicloud-ecs-ops | huaweicloud-ces-ops | — |
 | SSH Brute Force | HSS event | huaweicloud-hss-ops | huaweicloud-ecs-ops | Required |
-| Network DDoS | ELB dropped packets | huaweicloud-elb-ops | huaweicloud-waf-ops | Recommended |
+| Network DDoS | ELB dropped packets | huaweicloud-elb-ops | no Anti-DDoS skill (escalate); L7 → huaweicloud-waf-ops | Recommended |
 | ECS Instance Down | `status == ERROR` | huaweicloud-ecs-ops | huaweicloud-ces-ops | Recommended |
 | Database Performance | RDS CPU/Memory | huaweicloud-rds-ops | huaweicloud-ecs-ops (if on self-managed) | Optional |
 | CCE Node Failure | Node CPU/Memory | huaweicloud-cce-ops | huaweicloud-ecs-ops (node investigation) | Recommended |

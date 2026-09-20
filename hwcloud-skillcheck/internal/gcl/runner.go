@@ -86,6 +86,11 @@ type GeneratorOutput struct {
 	StderrTruncated bool   `json:"stderr_truncated,omitempty"`
 	DurationMs      int    `json:"duration_ms"`
 	HasLeak         bool   `json:"has_leak"` // true if raw output contained a credential leak (before masking)
+	// Args carries the canonical iteration metadata the trace schema requires
+	// (`{"iter": int>=1, "critic_feedback": string|null}` in
+	// huaweicloud-ces-ops/assets/gcl-trace.schema.json). Populate it with
+	// iterationArgs so the field is never null or missing.
+	Args map[string]any `json:"args"`
 }
 
 // maxCaptureBytes caps the per-stream capture buffer in runCommand. Past
@@ -182,9 +187,13 @@ type FinalResult struct {
 	// Consumers must not read a "structural" trace as an LLM verdict (CA-4).
 	// Omitted only on traces persisted before this field existed; readers
 	// MUST default an absent value to "structural".
-	CriticType           string          `json:"critic_type,omitempty"`
-	Output               string          `json:"output,omitempty"`
-	FailurePattern       *FailurePattern `json:"failure_pattern,omitempty"`
+	CriticType string `json:"critic_type,omitempty"`
+	// Output and FailurePattern are required by the canonical trace schema, so
+	// they are always emitted (empty string / null) instead of being dropped by
+	// omitempty — a missing key makes the whole trace fail validation and get
+	// excluded from the quality metrics.
+	Output               string          `json:"output"`
+	FailurePattern       *FailurePattern `json:"failure_pattern"`
 	HallucinationBlocked bool            `json:"hallucination_blocked,omitempty"`
 	Unresolved           []string        `json:"unresolved,omitempty"`
 }
@@ -293,6 +302,18 @@ func criticTypeOf(critic Critic) string {
 	return "structural"
 }
 
+// iterationArgs builds the canonical `generator.args` object for one iteration.
+// The trace schema requires both keys, so an empty map (which is what a writer
+// with no iteration context produces) fails validation and drops the trace out
+// of the quality metrics.
+func iterationArgs(iter int, prevCriticFeedback []string) map[string]any {
+	var feedback any
+	if len(prevCriticFeedback) > 0 {
+		feedback = strings.Join(prevCriticFeedback, "; ")
+	}
+	return map[string]any{"iter": iter, "critic_feedback": feedback}
+}
+
 func failBudget(cfg *RunConfig, trace *GCLTrace, start time.Time, kind, criticType string) RunResult {
 	trace.BudgetExceeded = kind
 	trace.Final = &FinalResult{
@@ -381,8 +402,17 @@ func Run(cfg RunConfig) RunResult {
 		OperationIntent:    opIntent,
 		RouterDecision:     cfg.RouterDecision,
 		RubricVersion:      "v1",
-		MaskedFields:       []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
-		Iterations:         []Iteration{},
+		MaskedFields: []string{
+			"request", "operation_intent",
+			"generator.command", "generator.result_excerpt",
+			// The hallucination block and the failure pattern echoed raw CLI
+			// tokens (resource IDs, password-shaped flag values) next to an
+			// already-masked generator.command — a credential could survive in
+			// the trace through them. Declared here so applyMaskFields
+			// enforces it.
+			"hallucination_detection", "final.failure_pattern",
+		},
+		Iterations: []Iteration{},
 	}
 	estimatedTokens := (len(cfg.Request) + len(cfg.Command) + 3) / 4
 	if estimatedTokens > budget.Tokens {
@@ -461,7 +491,13 @@ func Run(cfg RunConfig) RunResult {
 		var hdResult *HallucinationResult
 		if hdSkillRoot != "" {
 			hd := NewHallucinationDetector(hdSkillRoot)
-			hdResult, _ = hd.Run(context.Background(), generator, &trace)
+			var hdErr error
+			hdResult, hdErr = hd.Run(context.Background(), generator, &trace)
+			if hdErr != nil {
+				// A detector failure means no layer blocked. Say so instead of
+				// dropping the error: a silent failure reads as "checked clean".
+				fmt.Fprintf(rcStderr(&cfg), "warning: hallucination detection failed (no layer blocked the output): %v\n", hdErr)
+			}
 		}
 
 		// Persist the detection result on every run, not only on a block:
@@ -483,7 +519,7 @@ func Run(cfg RunConfig) RunResult {
 				FailurePattern: &FailurePattern{
 					Category: "hallucination",
 					Skill:    cfg.Skill,
-					Command:  generator.Command,
+					Command:  generator.Command, // redacted by applyMaskFields("final.failure_pattern")
 					Error:    hdResult.Summary,
 					Fix:      "fix invalid flags / JSON schema / WAF violations before retrying",
 					Reusable: true,
@@ -515,6 +551,11 @@ func Run(cfg RunConfig) RunResult {
 
 		decision := Decide(criticResult.Scores)
 
+		var prevFeedback []string
+		if n := len(trace.Iterations); n > 0 {
+			prevFeedback = trace.Iterations[n-1].Critic.Suggestions
+		}
+		generator.Args = iterationArgs(iteration, prevFeedback)
 		trace.Iterations = append(trace.Iterations, Iteration{
 			Iter:      iteration,
 			Generator: generator,
@@ -785,6 +826,68 @@ func applyMaskFields(trace *GCLTrace) {
 			}
 		}
 	}
+	if containsPath("hallucination_detection") {
+		maskHallucinationDetection(trace.HallucinationDetection)
+	}
+	if containsPath("final.failure_pattern") && trace.Final != nil && trace.Final.FailurePattern != nil {
+		fp := trace.Final.FailurePattern
+		fp.Command = "<masked>"
+		fp.Error = maskFlagValues(fp.Error)
+		fp.Fix = maskFlagValues(fp.Fix)
+	}
+}
+
+// flagEqRe matches `--flag=value`; flagSepRe matches `--flag value`. Both
+// require the flag to sit at the start of the text or after whitespace/bracket
+// punctuation, so a hyphenated word inside a command ("list-servers") is not
+// mistaken for a flag.
+var (
+	flagEqRe  = regexp.MustCompile(`(^|[\s\[(,;{])(-{1,2}[A-Za-z][A-Za-z0-9-]*)=([^\s,;\])}]+)`)
+	flagSepRe = regexp.MustCompile(`(^|[\s\[(,;{])(-{1,2}[A-Za-z][A-Za-z0-9-]*)(\s+)([^\s-][^\s,;\])}]*)`)
+)
+
+// maskFlagValues hides the VALUE of every CLI flag while keeping the flag name,
+// which is what a trace reader needs for diagnosis ("--prod-db-password" tells
+// you nothing; "--prod-db-password=<masked>" tells you the generator invented a
+// credential flag). Handles `--flag=value` and `--flag value`, including flags
+// inside bracket/parenthesis lists, and leaves non-flag text alone.
+func maskFlagValues(s string) string {
+	if s == "" || !strings.Contains(s, "-") {
+		return s
+	}
+	s = flagEqRe.ReplaceAllString(s, "$1$2=<masked>")
+	s = flagSepRe.ReplaceAllString(s, "$1$2$3<masked>")
+	return s
+}
+
+// maskHallucinationDetection redacts flag values inside the hallucination
+// result. The layer verdicts (blocked/status/counts) stay intact so the trace
+// still explains WHAT was rejected, without echoing what the generator put on
+// the command line.
+func maskHallucinationDetection(h *HallucinationResult) {
+	if h == nil {
+		return
+	}
+	if h.L1 != nil {
+		for i := range h.L1.InvalidFlags {
+			h.L1.InvalidFlags[i] = maskFlagValues(h.L1.InvalidFlags[i])
+		}
+		h.L1.Details = maskFlagValues(h.L1.Details)
+	}
+	if h.L2 != nil {
+		h.L2.Details = maskFlagValues(h.L2.Details)
+		for i := range h.L2.Errors {
+			h.L2.Errors[i].Message = maskFlagValues(h.L2.Errors[i].Message)
+			h.L2.Errors[i].Actual = maskFlagValues(h.L2.Errors[i].Actual)
+		}
+	}
+	if h.L3 != nil {
+		h.L3.Details = maskFlagValues(h.L3.Details)
+		for i := range h.L3.Violations {
+			h.L3.Violations[i].Detail = maskFlagValues(h.L3.Violations[i].Detail)
+		}
+	}
+	h.Summary = maskFlagValues(h.Summary)
 }
 
 // uniqueShortID returns 8 hex chars from crypto/rand; the Python port

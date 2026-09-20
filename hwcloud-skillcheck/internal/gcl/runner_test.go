@@ -528,3 +528,72 @@ func TestCriticTypeOf_WrappedExternalCritic(t *testing.T) {
 		})
 	}
 }
+
+// TestMaskFlagValues pins the redaction rule: flag names stay (they are the
+// diagnostic value), values disappear for both `--flag=value` and
+// `--flag value` forms. A trace must never echo a password-shaped value the
+// generator put on the command line.
+func TestMaskFlagValues(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"equals form", "--prod-db-password=Sup3rSecretValue123", "--prod-db-password=<masked>"},
+		{"space form", "--server-id ecs-abc12345", "--server-id <masked>"},
+		{"mixed", "hcloud ecs list --server-id=ecs-abc --region cn-north-4", "hcloud ecs list --server-id=<masked> --region <masked>"},
+		{"no flags", "invalid JSON body", "invalid JSON body"},
+		{"hyphenated word is not a flag", "hcloud ecs list-servers cn-north-4", "hcloud ecs list-servers cn-north-4"},
+		{"inside bracket list", "flags [--server-id=ecs-abc12345 blocked]", "flags [--server-id=<masked> blocked]"},
+		{"empty", "", ""},
+		{"trailing flag", "--verbose", "--verbose"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := maskFlagValues(tc.in); got != tc.want {
+				t.Errorf("maskFlagValues(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRun_HallucinationBlockIsMasked is the regression test for the leak the
+// safety Critic executed: a command carrying a password-shaped flag value and a
+// resource ID appeared verbatim in hallucination_detection.l1.invalid_flags /
+// .details / .summary and in final.failure_pattern.command while
+// iterations[].generator.command was already "<masked>".
+func TestRun_HallucinationBlockIsMasked(t *testing.T) {
+	const secret = "Sup3rSecretValue123"
+	const resource = "ecs-abc12345"
+
+	result := Run(RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Request: "list servers",
+		Command: "echo ok --server-id=" + resource + " --prod-db-password=" + secret,
+		MaxIter: 1,
+		Timeout: 10,
+		Root:    t.TempDir(),
+	})
+	data, err := os.ReadFile(result.TracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	raw := string(data)
+	if strings.Contains(raw, secret) {
+		t.Errorf("trace leaks the password-shaped flag value %q", secret)
+	}
+	if strings.Contains(raw, resource) {
+		t.Errorf("trace leaks the resource ID %q", resource)
+	}
+	var trace GCLTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		t.Fatalf("trace is not valid JSON: %v", err)
+	}
+	if trace.HallucinationDetection != nil {
+		if !strings.Contains(trace.HallucinationDetection.Summary, "<masked>") &&
+			len(trace.HallucinationDetection.Summary) > 0 {
+			t.Logf("summary kept no masked marker: %q", trace.HallucinationDetection.Summary)
+		}
+	}
+	if trace.Final != nil && trace.Final.FailurePattern != nil {
+		if trace.Final.FailurePattern.Command != "<masked>" {
+			t.Errorf("final.failure_pattern.command = %q, want <masked>", trace.Final.FailurePattern.Command)
+		}
+	}
+}

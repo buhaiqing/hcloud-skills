@@ -26,14 +26,17 @@ compatibility: >-
   and agentskills.io frontmatter conventions.
 metadata:
   author: huaweicloud
-  version: "1.1.0"
-  last_updated: "2026-09-08"
+  version: "1.2.0"
+  last_updated: "2026-09-20"
   runtime: Harness AI Agent, Claude Code, Cursor, or compatible Agent runtimes
   type: meta-skill
   guidance_freedom_level: medium
   go_version_minimum: "1.21"
   go_version_jit: "1.25+"
   changelog:
+    - version: "1.2.0"
+      date: "2026-09-20"
+      change: "L2 hallucination schema asset: generated skills now emit references/openapi-schema.json when an OpenAPI spec exists (see references/openapi-schema-asset.md); without it the L2 check reports skipped_no_schema instead of silently passing."
     - version: "1.1.0"
       date: "2026-09-08"
       change: "SKILL.md split: P0/P1 checklist moved to references/p0-p1-checklist.md (86 lines, TE-7 token efficiency). Compatibility section updated with new reference files."

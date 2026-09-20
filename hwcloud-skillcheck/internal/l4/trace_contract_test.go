@@ -2,11 +2,15 @@ package l4
 
 import (
 	"encoding/json"
+	"io"
 	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 )
 
 // readTraceMap parses a persisted orchestrator trace into its generic map
@@ -324,4 +328,200 @@ func TestGCLFinalStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// canonicalTraceSchemaPath is the CES-owned canonical GCL trace schema —
+// the same asset cmd/validate_contract.go reads and the one docs/gcl-spec.md
+// points at. Tests validate against THIS file (not internal/embed's copy,
+// which has drifted) so the writer cannot silently diverge from the contract
+// the repo advertises.
+var canonicalTraceSchemaPath = filepath.Join(
+	"..", "..", "..", "huaweicloud-ces-ops", "assets", "gcl-trace.schema.json",
+)
+
+// TestHandleFault_TraceSatisfiesCanonicalSchema is the guard for the P0
+// blocker "the L4 writer's own trace fails the canonical schema": every trace
+// family the repo advertises as schema-compatible MUST validate against
+// huaweicloud-ces-ops/assets/gcl-trace.schema.json with ZERO violations. A
+// trace that fails validation is exactly what lets a crafted file impersonate
+// a real run — the consumer's schema check is only meaningful if the
+// orchestrator's own output passes it.
+func TestHandleFault_TraceSatisfiesCanonicalSchema(t *testing.T) {
+	schemaData, err := os.ReadFile(canonicalTraceSchemaPath)
+	if err != nil {
+		t.Fatalf("read canonical trace schema %s: %v", canonicalTraceSchemaPath, err)
+	}
+
+	cases := []struct {
+		name     string
+		fault    string
+		resource string
+		risk     string
+	}{
+		{name: "fault with a planned step", fault: "RDS connection timeout", resource: "rds:instance", risk: "medium"},
+		// Zero planned steps: the smoke/MAX_ITER shape, which carries an empty
+		// iterations array. It must validate too — it is the shape the
+		// aggregators see most often.
+		{name: "fault matching no skill", fault: "smoke", risk: "low"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			out := HandleFault(HandleFaultInput{
+				Root:     root,
+				Fault:    tc.fault,
+				Resource: tc.resource,
+				Risk:     tc.risk,
+			}, nil)
+			if out.Learning.TracePersisted == "" {
+				t.Fatal("orchestrator did not persist a trace")
+			}
+			raw, err := os.ReadFile(out.Learning.TracePersisted)
+			if err != nil {
+				t.Fatalf("read trace: %v", err)
+			}
+
+			errs, verr := schema.ValidateFile(raw, schemaData)
+			if verr != nil {
+				t.Fatalf("validate %s: %v", out.Learning.TracePersisted, verr)
+			}
+			if len(errs) > 0 {
+				t.Errorf("orchestrator trace violates %s (%d violations):\n  %s",
+					canonicalTraceSchemaPath, len(errs), strings.Join(errs, "\n  "))
+			}
+		})
+	}
+}
+
+// TestHandleFault_TraceCanonicalFieldValues pins the values the canonical
+// schema cannot (or should not) constrain by itself, so they cannot drift:
+// trace_schema_version is the schema's `const`, rubric_version must match the
+// value the GCL writer uses, and masked_fields must be the honest declaration
+// of what THIS writer masks. internal/l4 applies no masking (it persists the
+// caller's fault text verbatim and its readers rely on that: the smoke marker
+// is read from `request`/`fault`), so the list must be empty — claiming a
+// masked field the writer never masks would be a false trust signal.
+func TestHandleFault_TraceCanonicalFieldValues(t *testing.T) {
+	root := t.TempDir()
+	out := HandleFault(HandleFaultInput{
+		Root:     root,
+		Fault:    "RDS connection timeout",
+		Resource: "rds:instance",
+		Risk:     "medium",
+	}, nil)
+	trace := readTraceMap(t, out.Learning.TracePersisted)
+
+	if got, _ := trace["trace_schema_version"].(string); got != "v1" {
+		t.Errorf("trace_schema_version=%q, want \"v1\" (canonical schema const)", got)
+	}
+	if got, _ := trace["rubric_version"].(string); got != "v1" {
+		t.Errorf("rubric_version=%q, want the GCL writer's \"v1\"", got)
+	}
+	masked, ok := trace["masked_fields"].([]any)
+	if !ok {
+		t.Fatalf("masked_fields=%T, want a JSON array (canonical schema requires it)", trace["masked_fields"])
+	}
+	if len(masked) != 0 {
+		t.Errorf("masked_fields=%v, want [] — internal/l4 masks nothing, so it must not claim to", masked)
+	}
+	// A non-canonical `operation_intent` block (the old {goal, risk_class}
+	// object) was removed: the canonical schema requires operation /
+	// resource_scope / expected_state / safety_class whenever the key is
+	// present, and a dry-run planner has no honest value for them.
+	if v, ok := trace["operation_intent"]; ok {
+		t.Errorf("trace carries operation_intent=%v; the L4 dry-run has no canonical intent (remove it or emit the four required fields)", v)
+	}
+
+	// The dry-run iteration must carry the full generator shape the canonical
+	// schema requires (stdout_len/stderr_len/args in addition to
+	// command/exit_code/result_excerpt).
+	iters, _ := trace["iterations"].([]any)
+	if len(iters) != 1 {
+		t.Fatalf("iterations=%v, want exactly one dry-run iteration", trace["iterations"])
+	}
+	gen := mapOf(t, mapOf(t, iters[0], "iterations[0]")["generator"], "iterations[0].generator")
+	if got := scoreOf(t, gen["stdout_len"], "generator.stdout_len"); got != 0 {
+		t.Errorf("generator.stdout_len=%v, want 0 (a dry run produces no output)", got)
+	}
+	if got := scoreOf(t, gen["stderr_len"], "generator.stderr_len"); got != 0 {
+		t.Errorf("generator.stderr_len=%v, want 0 (a dry run produces no output)", got)
+	}
+	args := mapOf(t, gen["args"], "generator.args")
+	if got := scoreOf(t, args["iter"], "generator.args.iter"); got != 1 {
+		t.Errorf("generator.args.iter=%v, want 1", got)
+	}
+	if v, ok := args["critic_feedback"]; !ok || v != nil {
+		t.Errorf("generator.args.critic_feedback=%v, want null (iteration 1 had no feedback)", v)
+	}
+}
+
+// TestHandleFault_TraceWriteErrorIsNotReportedAsPersisted covers the P0 minor
+// finding "write errors ignored / TracePersisted set before the write": when
+// the trace cannot be written, `learning.trace_persisted` must NOT point at a
+// file that does not exist (that is how a silent write failure turns into a
+// phantom PASS in the aggregates), and the operator must see a WARN naming the
+// path and the error.
+func TestHandleFault_TraceWriteErrorIsNotReportedAsPersisted(t *testing.T) {
+	root := t.TempDir()
+	// A regular file where the audit-results directory must go: MkdirAll and
+	// the write both fail with ENOTDIR, deterministically.
+	if err := os.WriteFile(filepath.Join(root, "audit-results"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out *OrchestratorOutput
+	stderr := captureStderr(t, func() {
+		out = HandleFault(HandleFaultInput{
+			Root:     root,
+			Fault:    "RDS connection timeout",
+			Resource: "rds:instance",
+			Risk:     "medium",
+		}, nil)
+	})
+
+	if out.Learning.TracePersisted != "" {
+		t.Errorf("learning.trace_persisted=%q after a failed write, want \"\" (nothing was persisted)",
+			out.Learning.TracePersisted)
+	}
+	if !strings.Contains(stderr, "WARN") {
+		t.Errorf("no WARN on stderr after a failed trace write; stderr=%q", stderr)
+	}
+	if !strings.Contains(stderr, "orchestrator-trace-") {
+		t.Errorf("WARN does not name the trace path; stderr=%q", stderr)
+	}
+	if !strings.Contains(stderr, "audit-results") {
+		t.Errorf("WARN does not name the failing path; stderr=%q", stderr)
+	}
+	// The return contract is unchanged: the pipeline still completes.
+	if out.Decision == "" {
+		t.Error("HandleFault must still return a decision when the trace write fails")
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected to a pipe and returns what
+// fn wrote to it.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("close stderr pipe: %v", err)
+	}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("read stderr pipe: %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("close stderr reader: %v", err)
+	}
+	return string(data)
 }

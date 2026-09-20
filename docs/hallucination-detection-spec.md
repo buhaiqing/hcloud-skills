@@ -48,15 +48,33 @@ C 仍独立评分，但可在 `correctness` 维度叠加 H 的发现。
 - Schema 校验：required 字段缺失、类型错误、enum 越界
 - 不合规 → `blocked: true`
 
+**asset 缺失 ≠ 通过**: skill 未提供 `references/openapi-schema.json` 时，L2 **不静默跳过**：
+每个 skill root 记一条 `WARN`，trace 记 `hallucination_detection.l2.status = skipped_no_schema`，
+`aggregate trace` 汇总 `l2_skipped_no_schema`。生产验收**禁止**把 skipped 当作「schema 已验证」。
+asset 生成方式见 `huaweicloud-skill-generator/references/openapi-schema-asset.md`。
+
 **输出 schema**:
 ```json
 {
   "layer": "L2",
   "blocked": false,
+  "status": "pass | violation | skipped_no_schema | skipped_no_output | invalid_output | schema_unreadable | validator_error",
   "errors": [],
-  "details": "..."
+  "details": "pass: schema valid"
 }
 ```
+
+**状态语义**（`(*L2Result).Status()`；`status` 为持久化形式，旧 trace 由 `details` 前缀回退解析）:
+
+| status | 含义 | 阻塞 |
+|---|---|---|
+| `pass` | 有 schema 且输出合规 | 否 |
+| `violation` | 有 schema 且输出不合规 | 是 → SAFETY_FAIL |
+| `skipped_no_schema` | skill 未提供 schema，**未做校验** | 否（但必须可见） |
+| `skipped_no_output` | 无 Generator 输出可校验 | 否 |
+| `invalid_output` | 输出非 JSON | 否 |
+| `schema_unreadable` | schema 存在但读失败 | 否 |
+| `validator_error` | schema 本身无法解析/引用 | 否 |
 
 ### 2.3 L3: WAF 合规
 

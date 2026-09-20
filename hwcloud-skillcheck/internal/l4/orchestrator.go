@@ -375,6 +375,16 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 				"command":        primaryCmd,
 				"exit_code":      0,
 				"result_excerpt": "dry-run",
+				// The canonical trace schema requires the full gcl
+				// GeneratorOutput shape. A dry run captures nothing, so the
+				// byte counts are real zeros, and the only loop bookkeeping
+				// is iteration 1 with no critic feedback to carry forward.
+				"stdout_len": 0,
+				"stderr_len": 0,
+				"args": map[string]any{
+					"iter":            1,
+					"critic_feedback": nil,
+				},
 			},
 			"critic":   traceCritic,
 			"decision": gcl.Decide(traceCritic.Scores),
@@ -384,28 +394,48 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	auditRoot := filepath.Join(root, "audit-results")
 	_ = os.MkdirAll(auditRoot, 0o700)
 	tracePath := filepath.Join(auditRoot, fmt.Sprintf("orchestrator-trace-%s.json", faultID))
+	// Recorded before the trace is built so the persisted file names itself;
+	// cleared below if the write fails, so a caller never sees a path that
+	// does not exist (a silent write failure used to read as a persisted run).
 	learning.TracePersisted = tracePath
 
 	trace := map[string]any{
-		"trace_id":         faultID,
-		"skill":            primary,
-		"request":          in.Fault,
-		"fault":            in.Fault, // smoke marker for l4 traces (learning.IsSmokeTrace)
-		"source":           "l4",     // readers treat an absent source as "gcl"
-		"command":          primaryCmd,
-		"started_at":       startedAt,
-		"finished_at":      NowISO(),
-		"status":           "pass",
-		"exit_code":        0,
-		"stdout":           "",
-		"stderr":           "",
-		"iteration":        1,
-		"max_iterations":   1,
-		"decision":         "pass",
-		"resource_scope":   map[string]any{"resource_id": resource, "type": strings.SplitN(resource, ":", 2)[0]},
-		"operation_intent": map[string]any{"goal": in.Fault, "risk_class": risk},
-		"critic_scores":    traceCritic.Scores,
-		"iterations":       iterations,
+		// Canonical trace contract: huaweicloud-ces-ops/assets/
+		// gcl-trace.schema.json. docs/gcl-spec.md §6 advertises the
+		// orchestrator-trace family as schema-compatible, so the required
+		// top-level fields are emitted exactly as gcl.PersistTrace emits them.
+		"trace_schema_version": "v1",
+		"trace_id":             faultID,
+		"skill":                primary,
+		"request":              in.Fault,
+		"rubric_version":       "v1", // same literal the GCL writer uses
+		// This writer masks nothing: it persists the caller's fault text and
+		// its own plan commands verbatim, and the smoke-marker readers
+		// (internal/learning.IsSmokeTrace) depend on the raw request/fault.
+		// An empty list is the honest declaration — naming a field here
+		// without masking it would be a false trust signal.
+		"masked_fields":  []string{},
+		"fault":          in.Fault, // smoke marker for l4 traces (learning.IsSmokeTrace)
+		"source":         "l4",     // readers treat an absent source as "gcl"
+		"command":        primaryCmd,
+		"started_at":     startedAt,
+		"finished_at":    NowISO(),
+		"status":         "pass",
+		"exit_code":      0,
+		"stdout":         "",
+		"stderr":         "",
+		"iteration":      1,
+		"max_iterations": 1,
+		"decision":       "pass",
+		"resource_scope": map[string]any{"resource_id": resource, "type": strings.SplitN(resource, ":", 2)[0]},
+		// No `operation_intent` block: the canonical schema requires
+		// operation / resource_scope / expected_state / safety_class whenever
+		// the key is present, and this dry-run planner derives none of them
+		// from a user request (it has a fault string and a keyword-matched
+		// plan, not an intent). The old {goal, risk_class} object made every
+		// orchestrator trace schema-invalid.
+		"critic_scores": traceCritic.Scores,
+		"iterations":    iterations,
 		"final": map[string]any{
 			"status":          finalStatus, // PASS | SAFETY_FAIL | MAX_ITER
 			"iter":            1,
@@ -428,8 +458,14 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		trace["exit_code"] = 1
 		trace["decision"] = "halt"
 	}
-	raw, _ := json.MarshalIndent(trace, "", "  ")
-	_ = os.WriteFile(tracePath, append(raw, '\n'), 0o600)
+	raw, err := json.MarshalIndent(trace, "", "  ")
+	if err != nil {
+		learning.TracePersisted = ""
+		fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, marshal %s: %v\n", tracePath, err)
+	} else if err := os.WriteFile(tracePath, append(raw, '\n'), 0o600); err != nil {
+		learning.TracePersisted = ""
+		fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, write %s: %v\n", tracePath, err)
+	}
 
 	decision := "human_review_required"
 	executionTask := (*TaskState)(nil)
@@ -565,8 +601,13 @@ func traceCriticResult(critics []gcl.CriticResult, fallbackCommand string) gcl.C
 	}
 	out := gcl.CriticResult{
 		Scores: foldCriticScores(critics),
-		Mode:   "structural-only",
-		Model:  "structural-only",
+		// Non-nil so the persisted trace carries `suggestions: []` rather than
+		// `null`: the canonical trace schema types critic.suggestions as an
+		// array, and a trace that fails the schema is dropped as invalid by
+		// the consumers (cmd/aggregate.go, internal/learning).
+		Suggestions: []string{},
+		Mode:        "structural-only",
+		Model:       "structural-only",
 	}
 	for _, c := range critics {
 		out.Suggestions = append(out.Suggestions, c.Suggestions...)

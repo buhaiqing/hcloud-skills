@@ -440,7 +440,9 @@ Build-time 2-round self-reflection and runtime GCL are independent gates. A clea
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-06-04 | Initial GCL specification and ECS pilot |
-| 1.6.0 | 2026-06-19 | qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES summary schema added |
+|1.6.0|2026-06-19|qcloud-style runtime scripts, sanitized `operation_intent`, Tier-A conformance, and CES summary schema added|
+|1.8.0|2026-09-20|Trace trust: canonical-schema validation on the consumption path (`invalid_trace`), `evidence_runs` + `aggregate trace --require-evidence`, `SAFETY_FAIL` never smoke, `by_critic_type` normalization, validated trace-derived patterns (`provenance: trace`, `verified: false`), `hallucination_detection` / `final.failure_pattern` added to `MaskedFields`|
+|1.7.0|2026-09-20|P0 loop closure: `final.critic_type` provenance, two-family trace consumption (L4 traces schema-compatible + real scores), smoke exclusion via `skipped_smoke`, `l2_skipped_no_schema` observability, `--structural-critic-only` implemented (mutually exclusive with `--critic-cmd`), dangling `delegates_to` targets fail `validate`|
 
 
 ## Self-Healing Loop & Experience Learning (L4)
@@ -468,6 +470,10 @@ Full spec: `references/self-healing-spec.md`
 ### GCL integration
 
 `hwcloud-skillcheck gcl run` executes one Generator command (default smoke `echo ok`; override with `--command` for production work) under a per-iteration timeout and writes the trace to `audit-results/gcl-trace-<UTC>-<rand>.json`. The pre-execution risk check on `failure_patterns.json` happens in the L4 orchestrator step loop (`hwcloud-skillcheck l4 handle`), not in `gcl run` — see the L4 section.
+
+**Trace trust.** Consumed traces are validated against `huaweicloud-ces-ops/assets/gcl-trace.schema.json` first; schema-invalid (`invalid_trace`) and smoke (`skipped_smoke`) traces are counted but never feed `pass_rate` or `failure_patterns.json`, and only real evidence (`evidence_runs`) does. `aggregate trace --require-evidence` is the hard gate for "at least one trace carried a verification signal"; `--require-traces` only requires a parseable file. A `SAFETY_FAIL` trace is never smoke, and patterns learned from traces are validated + marked `verified: false` before they can influence step skipping. `MaskedFields` covers `hallucination_detection` and `final.failure_pattern` (flag values redacted, flag names kept).
+
+**Two trace families, one consumer set.** `internal/l4.HandleFault` writes `audit-results/orchestrator-trace-*.json` (`source: "l4"`); `internal/gcl.PersistTrace` writes `audit-results/gcl-trace-*.json` (`source` absent = `gcl`). Both are read by `aggregate trace` and `learning trace aggregate` (`internal/learning.TraceFilePatterns`). Traces with no `final` block, a `smoke` request/fault, or zero executed steps carry no verification signal: they are counted in `skipped_smoke` and never feed `pass_rate` or `failure_patterns.json`. A run whose `final.critic_type` is `structural` used a deterministic proxy Critic and MUST NOT approve production work.
 
 ### Hard constraints
 

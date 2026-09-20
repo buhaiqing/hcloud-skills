@@ -173,6 +173,24 @@
       "type": "integer",
       "minimum": 0,
       "description": "Traces with no verification signal (no final block, smoke request/fault, or zero executed steps): excluded from pass_rate, by_skill, and failure-pattern merging."
+    },
+    "evidence_runs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Traces that carried a verification signal (schema-valid and not smoke). This is the pass_rate denominator; 0 means the window proves nothing about quality."
+    },
+    "invalid_trace": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Parsed traces rejected by the canonical trace schema. Excluded from every metric and from failure-pattern merging."
+    },
+    "by_critic_type": {
+      "type": "object",
+      "description": "Contributing traces split by final.critic_type; unrecognized or absent -> unknown (structural is a deterministic proxy and must not approve production).",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     }
   },
   "additionalProperties": true
