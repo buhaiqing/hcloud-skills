@@ -35,19 +35,48 @@
 **例外（仅代码变更）**：< 5 行的 typo/注释/格式化改动可跳过 GCL，但须执行 2-round self-review。
 **运维配置变更无例外**：所有 `.yml`/`.yaml`/`.json`/`.tf` 等变更必须走 GCL。
 
+#### 风险分级（Risk Triage）
+
+在触发判定前，先评估任务风险等级，决定 GCL 执行深度：
+
+| 风险等级 | 判定条件 | GCL 路径 | 预期开销 |
+|----------|----------|----------|----------|
+| **Low** | <5 行变更；typo/注释/格式化；纯文档；**非核心文件、非配置文件** | 跳过 GCL → 2-round self-review | ~5 calls |
+| **Medium** | 单文件修改；配置微调；非核心文档 | Light GCL → 1 Critic（无 Generator） | ~15 calls |
+| **High** | 多文件重构；新功能；Go 代码；核心文件；**运维配置文件** | Full GCL → Generator + ≥2 Critics | ~50 calls |
+
+**快速判定规则**：
+```
+IF is_core_file OR is_config_file THEN risk = "high"
+ELSE IF files_changed <= 1 AND lines_changed < 20 AND NOT is_go_code THEN risk = "low"
+ELSE IF files_changed <= 3 AND lines_changed < 100 THEN risk = "medium"
+ELSE risk = "high"
+```
+
+**核心文件白名单**：`SKILL.md`、`rubric.md`、`prompt-templates.md`、`AGENTS.md` §GCL
+**配置文件白名单**：`.yml`、`.yaml`、`.json`、`.tf`、`.hcl`、`.toml`（运维配置变更无例外）
+
 #### 执行决策树
 
 ```
 收到任务
-  ├─ 触发条件 A-E 任一满足？
-  │   ├─ YES → 启动 GCL 多子 Agent 架构
-  │   │         ├─ 创建 worktree（用户级 `~/.codebuddy/rules/git-worktree.md`）
-  │   │         ├─ 输出模型配置公示
-  │   │         ├─ spawn Generator（后台）
-  │   │         ├─ spawn ≥2 Critics（后台，并行，不同厂商模型）
-  │   │         ├─ 执行 GCL 循环（最多 3 轮）
-  │   │         └─ 汇总结果，写入 memory
-  │   └─ NO  → 直接执行 + 2-round self-review
+  ├─ 风险评估（risk_tier）
+  │   ├─ LOW → 直接执行 + 2-round self-review
+  │   ├─ MEDIUM → Light GCL
+  │   │           ├─ 创建 worktree
+  │   │           ├─ spawn 1 Critic（后台）
+  │   │           ├─ 执行 1 轮评审
+  │   │           └─ 汇总结果
+  │   └─ HIGH → Full GCL
+  │             ├─ 创建 worktree
+  │             ├─ 输出模型配置公示
+  │             ├─ spawn Generator（后台）
+  │             ├─ spawn ≥2 Critics（后台，并行，不同厂商模型）
+  │             ├─ 执行 GCL 循环（最多 3 轮）
+  │             └─ 汇总结果，写入 memory
+  └─ 触发条件 A-E 任一满足？
+      ├─ YES → 按风险等级走对应路径
+      └─ NO  → 直接执行 + 2-round self-review
 ```
 
 #### 模型选型（硬约束）
@@ -78,25 +107,24 @@
 | 连续 2 次失败 | 主 Agent 直接接管 |
 | 子 Agent 卡死 (>10min 无输出) | 发送询问 → 30s 无响应 → 强制停止，主 Agent 接管 |
 
-#### 收尾检查清单（GCL 通过后、commit 前）
+### Pre-commit Gate（本地提交前 — 强制，不可跳过）
 
-- [ ] `go test -race ./...` 全绿
-- [ ] `go vet ./...` 零 warning
-- [ ] `gofmt -l .` 空输出
-- [ ] 无凭据泄露（`maskSecrets` 覆盖所有 detail 输出）
-- [ ] memory 文件已写入（`feedback_gcl_auto_trigger.md`、`feedback_gcl_execution.md`）
-- [ ] 如涉及文档变更：`hwcloud-skillcheck validate --root .` 通过
-
-### Commit Gate（强制 — 不可跳过）
-
-**任何 `git commit` 之前，必须确认所有单元测试通过。** 执行：
+**任何 `git commit` 之前，必须通过以下检查。** 一站式执行：
 
 ```bash
-cd hwcloud-skillcheck && go test ./...
+cd hwcloud-skillcheck && go test -race ./... && go vet ./... && gofmt -l .
 ```
 
-- exit code ≠ 0 → **禁止 commit**，先修测试
-- `git commit` 本身可正常执行（不自动触发 pre-commit hook 的 go test，因为 go test gate 在 `hwcloud-skillcheck check --pre-commit` 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit
+| 检查项 | 命令 | 失败处理 |
+|--------|------|----------|
+| 单元测试 | `go test -race ./...` | exit code ≠ 0 → **禁止 commit**，先修测试 |
+| 静态分析 | `go vet ./...` | 零 warning |
+| 格式化 | `gofmt -l .` | 空输出 |
+| 凭据泄露 | `maskSecrets` 覆盖所有 detail 输出 | 禁止明文 |
+| 文档校验 | `hwcloud-skillcheck validate --root .`（仅涉及文档变更时） | 通过 |
+
+> **注意**：`git commit` 本身不自动触发 pre-commit hook 的 go test（hook 在 `hwcloud-skillcheck check --pre-commit` 中）；但 **Agent 必须自行检查**，不允许在测试 red 状态下 commit。
+> 如涉及 GCL：memory 文件（`feedback_gcl_auto_trigger.md`、`feedback_gcl_execution.md`）需在此步骤写入。
 
 ## What This Repo Is
 
@@ -533,15 +561,17 @@ MCP 配置见 `.mcp.json`（stdio `codegraph serve --mcp`）。前置：`codegra
 
 > 日常提交（文档、测试用例、typo 修复等）**不需要**升级版本。
 
-## Post-Push CI Monitoring（强制 — 每次 push 后必跑）
+### Post-push Gate（推送后 — CI 验证）
 
-与文首 **Commit Gate**（push 前 `go test`）配对。平台：GitHub Actions（`.github/workflows/*.yml`）。
+与 **Pre-commit Gate**（本地提交前）配对。平台：GitHub Actions（`.github/workflows/*.yml`）。
 
-1. **`git push` 成功** → watch CI 到终态（`gh run watch --exit-status` 或 Actions UI / API 等价物）
-2. **CI 失败** → 本地 `go test ./...` 先绿 → 最小 fix → `fix(ci): …` commit → 再 push
-3. **最多 3 轮** auto-recover；仍失败 → 升级用户
-4. **fix commit** body 含 classifier + run id（模板见 `docs/deployment-guide.md` §4.3）
-5. **沉淀** — 仅当 fix 提取出通过 CADL 四问的决策规则时写入「复利资产」
+| 步骤 | 动作 | 失败处理 |
+|------|------|----------|
+| 1. watch CI | `gh run watch --exit-status` 或 Actions UI | — |
+| 2. CI 失败 | 本地 `go test ./...` 先绿 → 最小 fix → `fix(ci): …` commit → 再 push | 最多 3 轮 auto-recover |
+| 3. 升级 | 3 轮仍失败 → 升级用户 | — |
+| 4. fix commit | body 含 classifier + run id（模板见 `docs/deployment-guide.md` §4.3） | — |
+| 5. 沉淀 | 仅当 fix 提取出通过 CADL 四问的决策规则时写入「复利资产」 | — |
 
 > 操作细节（API、log 拉取、escalation 条件、commit 模板）→ **`docs/deployment-guide.md` §4.3**
 ## 复利资产（Curated — 开始 GCL / Harness / L4 工作前速读）
