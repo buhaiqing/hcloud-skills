@@ -167,7 +167,7 @@ hwcloud-skillcheck learning trace report --skill huaweicloud-ecs-ops
 hwcloud-skillcheck learning gen
 
 # GCL execution loop (Actor + Verifier)
-hwcloud-skillcheck gcl run --skill huaweicloud-billing-ops --command 'hcloud ...' --structural-critic-only
+hwcloud-skillcheck gcl run --root huaweicloud-billing-ops --command 'hcloud ...' --structural-critic-only
 
 # Critic scoring (Verifier)
 hwcloud-skillcheck critic score --generator /path/to/generator-trace.json

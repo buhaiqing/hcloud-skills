@@ -981,9 +981,6 @@ Which approach?
 
 - **M1–M5** — see outcome-memory plan §GSTACK REVIEW REPORT for full details.
 
-<<<<<<< HEAD
-NO UNRESOLVED DECISIONS
-=======
 NO UNRESOLVED DECISIONS
 
 ## Progress
@@ -994,4 +991,3 @@ NO UNRESOLVED DECISIONS
 - Task 4 (Mutation API: RecordTask/RecordError/SetPreference/CloseTask) — committed eb0abdb
 - Task 5 (Wire ContextMemory into HandleFault) — committed 773e3ea
 - Task 6 (E2E persistence-across-runs test) — committed 4d0c15a
->>>>>>> feature/cross-call-memory
