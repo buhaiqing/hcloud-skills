@@ -6,12 +6,213 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 )
+
+// Trace sources. Every trace reader (this package's Aggregate/ScanTraces and
+// cmd/aggregate.go) must accept both writers' output; an absent top-level
+// "source" field means TraceSourceGCL (the ~100 legacy gcl traces written
+// before the field existed).
+const (
+	TraceSourceGCL = "gcl"
+	TraceSourceL4  = "l4"
+)
+
+// TraceFilePatterns are the audit-results/ filenames that carry traces:
+//   - gcl-trace-<timestamp>-<hex>.json      (internal/gcl.PersistTrace)
+//   - orchestrator-trace-<faultID>.json     (internal/l4.HandleFault)
+var TraceFilePatterns = []string{"gcl-trace-*.json", "orchestrator-trace-*.json"}
+
+// IsTraceFileName reports whether an audit-results/ entry name is a trace
+// file produced by either writer.
+func IsTraceFileName(name string) bool {
+	for _, pat := range TraceFilePatterns {
+		if ok, err := path.Match(pat, name); err == nil && ok {
+			return true
+		}
+	}
+	return false
+}
+
+// TraceSource returns the writer that produced a trace: TraceSourceL4 for
+// orchestrator traces, TraceSourceGCL otherwise (including legacy gcl traces
+// that predate the field).
+func TraceSource(trace map[string]any) string {
+	if s, ok := trace["source"].(string); ok && s != "" {
+		return s
+	}
+	return TraceSourceGCL
+}
+
+// TraceClass is how a trace file is consumed. The classification order is
+// frozen and MUST be applied in exactly this sequence:
+//
+//  1. parse           — unparseable JSON never becomes a trace at all: the
+//     reader WARNs and drops it (cmd/aggregate.go).
+//  2. schema-invalid  — the trace does not conform to the canonical trace
+//     schema (embed.TraceSchema, the same schema
+//     `hwcloud-skillcheck validate schema trace` enforces).
+//     An audit-results/ file is written by a runtime run, so
+//     it is untrusted input: a non-conforming trace is
+//     attacker-shaped, not merely quirky. Counted in
+//     invalid_trace and excluded from every metric AND from
+//     failure-pattern merging.
+//  3. smoke           — conforming, but carries no verification signal (see
+//     IsSmokeTrace): counted in skipped_smoke, excluded from
+//     every metric and from merging.
+//  4. evidence        — the contributing runs. evidence_runs counts only
+//     these; pass_rate's denominator is their number, and
+//     only they feed by_source / by_skill / by_critic_type /
+//     rubric averages / failure-pattern merge.
+type TraceClass int
+
+const (
+	// TraceInvalid is the zero value on purpose: a trace nobody classified
+	// must not be able to move a metric (fail closed).
+	TraceInvalid TraceClass = iota
+	// TraceSmoke: schema-valid, no verification signal.
+	TraceSmoke
+	// TraceEvidence: schema-valid and non-smoke — the only traces allowed to
+	// move a metric.
+	TraceEvidence
+)
+
+// ValidateTrace returns the canonical-schema violations of a raw trace file
+// (empty slice = conforming). It is the trust boundary for the read path: the
+// schema is the embedded copy of huaweicloud-ces-ops/assets/gcl-trace.schema.json
+// (internal/embed), so validation needs no repo-relative file and matches what
+// `validate schema trace` enforces. A validator-level failure (unparseable
+// schema/instance) is reported as a violation too: an unverifiable trace must
+// not be trusted.
+func ValidateTrace(raw []byte) []string {
+	errs, err := schema.ValidateFile(raw, embed.TraceSchema)
+	if err != nil {
+		return []string{"schema validator error: " + err.Error()}
+	}
+	return errs
+}
+
+// ClassifyTrace returns the consumption class of one parsed trace and, when it
+// is TraceInvalid, the schema errors that disqualified it (first error is
+// reported to the operator). Both readers — cmd/aggregate.go and this package's
+// Aggregate/ScanTraces — call this so the frozen order (schema-invalid before
+// smoke, both before evidence) cannot drift between them.
+func ClassifyTrace(raw []byte, trace map[string]any) (TraceClass, []string) {
+	if errs := ValidateTrace(raw); len(errs) > 0 {
+		return TraceInvalid, errs
+	}
+	if IsSmokeTrace(trace) {
+		return TraceSmoke, nil
+	}
+	return TraceEvidence, nil
+}
+
+// traceWarn writes one attribution line for a trace the reader refused.
+func traceWarn(name, msg string) {
+	fmt.Fprintf(os.Stderr, "WARN: %s: %s\n", name, msg)
+}
+
+// IsSmokeTrace reports whether a trace carries no verifiable signal and must
+// therefore stay out of pass-rate math, failure-pattern merging, and knowledge
+// extraction. A trace is smoke when any of these hold:
+//
+//   - it has no `final` block — nothing terminal was recorded. This is how the
+//     ~100 orchestrator traces written before the P0 fix are classified; they
+//     were never consumable at all.
+//   - its request or fault is the literal "smoke" (the pre-commit smoke gate
+//     runs `l4 handle --fault smoke`).
+//   - its recorded step count is 0: no step executed, so nothing was verified.
+//     L4 traces always carry orchestration.step_count; gcl traces carry no step
+//     count at all, and "absent" is not "zero" — an empty-iteration gcl trace
+//     is a budget/SAFETY_FAIL run, which is real signal that must keep counting
+//     against the pass rate.
+//
+// A trace whose final status is exactly SAFETY_FAIL is NEVER smoke, whatever
+// the request/fault/step count says. A safety failure is the strongest signal a
+// trace can carry — the run reached the terminal, safety-critical verdict — so
+// classifying it as "nothing was verified" deleted a genuine failure from
+// pass_rate and from failure-pattern learning at the same time (the smoke gate
+// fixture and the SAFETY_FAIL verdict collide in exactly this shape). The
+// verdict wins: it must stay in the metric set and in the learning corpus.
+func IsSmokeTrace(trace map[string]any) bool {
+	if trace == nil {
+		return true
+	}
+	final, ok := trace["final"].(map[string]any)
+	if !ok {
+		return true
+	}
+	if status, _ := final["status"].(string); status == "SAFETY_FAIL" {
+		return false
+	}
+	if isSmokeToken(trace["request"]) || isSmokeToken(trace["fault"]) {
+		return true
+	}
+	if n, ok := traceStepCount(trace); ok && n == 0 {
+		return true
+	}
+	return false
+}
+
+// isSmokeToken reports whether a request/fault value is the smoke marker.
+// Values are matched case-insensitively on the trimmed whole string so a real
+// fault that merely mentions smoke ("smoke detected in rack 3") is not
+// misclassified.
+func isSmokeToken(v any) bool {
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(s), "smoke")
+}
+
+// traceStepCount returns the step count explicitly recorded on a trace and
+// whether the trace carries one at all. L4 traces use
+// orchestration.step_count; a top-level step_count is honored too. JSON
+// numbers decode as float64; a string count is tolerated for hand-written
+// traces. gcl traces record neither (they record iterations instead, which is
+// not a step count — see IsSmokeTrace).
+func traceStepCount(trace map[string]any) (int, bool) {
+	if n, ok := asInt(trace["step_count"]); ok {
+		return n, true
+	}
+	if orch, ok := trace["orchestration"].(map[string]any); ok {
+		if n, ok := asInt(orch["step_count"]); ok {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
+// asInt normalizes a JSON number (or numeric string) to int.
+func asInt(v any) (int, bool) {
+	switch x := v.(type) {
+	case float64:
+		return int(x), true
+	case int:
+		return x, true
+	case int64:
+		return int(x), true
+	case json.Number:
+		if n, err := x.Int64(); err == nil {
+			return int(n), true
+		}
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(x)); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
+}
 
 // ValidCategories is the set of failure-pattern categories (mirrors Python).
 var ValidCategories = map[string]struct{}{
@@ -23,6 +224,144 @@ var ValidCategories = map[string]struct{}{
 	"network":          {},
 	"token_efficiency": {},
 	"skill_generation": {},
+}
+
+// maxPatternStringLen caps every trace-derived string written into
+// failure_patterns.json. The values are produced by an unbounded runtime run
+// (a critic suggestion, a CLI stderr line); 200 bytes is the long-standing cap
+// for these fields (see CreatePatternEntry / MergePattern).
+const maxPatternStringLen = 200
+
+// controlCharReason reports the first control character in s ("" = none).
+// A raw trace string can carry \x00-\x1f or \x7f, which would let a crafted
+// trace forge log lines and JSON layout inside the knowledge base.
+func controlCharReason(s string) string {
+	for i := range len(s) {
+		if c := s[i]; c < 0x20 || c == 0x7f {
+			return fmt.Sprintf("contains control character 0x%02x at offset %d", c, i)
+		}
+	}
+	return ""
+}
+
+// patternString returns v as the string a pattern field would store.
+func patternString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// skillIdentityTokens returns the tokens that appear in (nearly) every command
+// a skill's steps are built from: the CLI binary and the product short name.
+//
+// matchPreExecutionRisk (internal/l4) folds a pattern's error_message_regex to
+// its first whitespace-separated field and tests it with
+// strings.Contains(command, field). A pattern anchored on one of these tokens
+// therefore matches EVERY planned step, and a match is not a warning: the
+// executor records SKIPPED_BY_PATTERN_RISK and does not run the step. Such an
+// entry is not knowledge, it is a step-disable switch.
+func skillIdentityTokens(skill string) []string {
+	short := strings.TrimSuffix(strings.TrimPrefix(skill, "huaweicloud-"), "-ops")
+	tokens := []string{"hcloud"}
+	if short != "" && !strings.EqualFold(short, "hcloud") {
+		tokens = append(tokens, short)
+	}
+	return tokens
+}
+
+// ValidateTracePattern reports why a failure_pattern block extracted from a
+// trace must NOT enter failure_patterns.json, or nil when it is safe to merge.
+//
+// This is the trust boundary of the write path. A trace under audit-results/ is
+// produced by a runtime run, and `learning trace aggregate` merges whatever it
+// finds there into the knowledge base; the knowledge base then drives
+// matchPreExecutionRisk, whose match SKIPS the planned step
+// (SKIPPED_BY_PATTERN_RISK) and whose fix.action is fed to the autofix
+// executor. An unvalidated merge therefore lets a crafted trace disable steps
+// and inject hostile text into the remediation path. The checks:
+//
+//   - category must be one this knowledge base knows (ValidCategories — the
+//     vocabulary mirrored from internal/learning/knowledge.go; an unknown
+//     category yields a pattern no consumer can reason about).
+//   - error_message_regex and command_pattern must compile and must not match
+//     the empty string: a pattern that matches everything makes every step
+//     skippable.
+//   - the error pattern's anchor (its first field — the literal the live
+//     matcher substrings into every command) must not be one of the skill's
+//     identity tokens, and the pattern must not match one either: anchoring on
+//     "hcloud" or the product name matches every command of the skill.
+//   - every string written must be control-character free and within
+//     maxPatternStringLen.
+//
+// Rejection is the only safe outcome: a rejected pattern is dropped (counted in
+// AggregateResult.RejectedPatterns and WARNed), never repaired into something
+// the validator would accept.
+func ValidateTracePattern(fp map[string]any, skill string) error {
+	if fp == nil {
+		return fmt.Errorf("no failure_pattern block")
+	}
+	category, categoryIsString := fp["category"].(string)
+	if _, known := ValidCategories[category]; !known || !categoryIsString {
+		return fmt.Errorf("category %q is not in the known failure-pattern vocabulary", patternString(fp["category"]))
+	}
+	rawError, errIsString := fp["error"].(string)
+	if !errIsString || rawError == "" {
+		return fmt.Errorf("error is not a non-empty string (%T)", fp["error"])
+	}
+	if _, cmdIsString := fp["command"].(string); !cmdIsString && fp["command"] != nil {
+		return fmt.Errorf("command is not a string (%T)", fp["command"])
+	}
+	cmdPat := firstToken(fp["command"])
+
+	for _, f := range []struct{ name, value string }{
+		{"skill", skill},
+		{"category", category},
+		{"error", rawError},
+		{"command", cmdPat},
+		{"fix", patternString(fp["fix"])},
+	} {
+		if len(f.value) > maxPatternStringLen {
+			return fmt.Errorf("%s is %d bytes, over the %d-byte cap", f.name, len(f.value), maxPatternStringLen)
+		}
+		if reason := controlCharReason(f.value); reason != "" {
+			return fmt.Errorf("%s %s", f.name, reason)
+		}
+	}
+
+	// The two signature patterns are compiled by consumers; validate them as
+	// the regexes they will be.
+	identity := skillIdentityTokens(skill)
+	for _, f := range []struct{ name, pattern string }{
+		{"error_message_regex", rawError},
+		{"command_pattern", cmdPat},
+	} {
+		if f.pattern == "" {
+			continue
+		}
+		re, err := regexp.Compile(f.pattern)
+		if err != nil {
+			return fmt.Errorf("%s %q does not compile: %v", f.name, f.pattern, err)
+		}
+		if re.MatchString("") {
+			return fmt.Errorf("%s %q matches the empty string", f.name, f.pattern)
+		}
+		if f.name != "error_message_regex" {
+			continue
+		}
+		for _, tok := range identity {
+			// The anchor is what the live matcher substrings into every
+			// planned command; the whole-pattern match catches a universal
+			// regex whose first field looks harmless ("hcloud.*").
+			if strings.EqualFold(firstToken(f.pattern), tok) || strings.EqualFold(re.String(), tok) || re.MatchString(tok) {
+				return fmt.Errorf("%s %q is anchored on the skill's own invocation token %q, so it matches every command", f.name, f.pattern, tok)
+			}
+		}
+	}
+	return nil
 }
 
 // SignatureKey builds the (category, error, command) dedup tuple.
@@ -101,6 +440,14 @@ func CreatePatternEntry(fp map[string]any, skill string, nextNum int, traceFile 
 	entry := map[string]any{
 		"id":       MakePatternID(skill, nextNum),
 		"category": category,
+		// provenance/verified let a reader tell a machine-learned entry from a
+		// curated one: trace-derived entries are written by
+		// `learning trace aggregate` from runtime traces (untrusted until
+		// ValidateTracePattern accepted them) and carry verified=false, while
+		// the curated knowledge base (internal/learning/knowledge.go) has
+		// neither field.
+		"provenance": "trace",
+		"verified":   false,
 		"signature": map[string]any{
 			"error_code":          "",
 			"error_message_regex": fp["error"],
@@ -277,13 +624,21 @@ func toFloat(v any) float64 {
 	return 0
 }
 
-// ScanTraces returns all gcl-trace-*.json files for a skill, optionally
-// filtered by mtime.
+// TraceFile is one scanned trace: its path plus the decoded payload.
 type TraceFile struct {
 	Path string
 	Data map[string]any
 }
 
+// ScanTraces returns all valid trace files for a skill (gcl-trace-*.json from
+// the GCL runner and orchestrator-trace-*.json from the L4 orchestrator),
+// optionally filtered by mtime.
+//
+// Every candidate is classified (see ClassifyTrace) before it is returned: a
+// trace that fails canonical-schema validation is dropped with one WARN naming
+// the file and the first violation, because an unverifiable trace must not be
+// allowed to move a metric in any caller. Smoke traces are returned — they are
+// a classification callers make (IsSmokeTrace), not a read error.
 func ScanTraces(root, skill string, sinceHours *int) []TraceFile {
 	tracesDir := filepath.Join(root, "audit-results")
 	entries, err := os.ReadDir(tracesDir)
@@ -293,7 +648,7 @@ func ScanTraces(root, skill string, sinceHours *int) []TraceFile {
 	var out []TraceFile
 	now := time.Now().UTC()
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasPrefix(e.Name(), "gcl-trace-") || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !IsTraceFileName(e.Name()) {
 			continue
 		}
 		fp := filepath.Join(tracesDir, e.Name())
@@ -306,6 +661,10 @@ func ScanTraces(root, skill string, sinceHours *int) []TraceFile {
 			continue
 		}
 		if data["skill"] != skill {
+			continue
+		}
+		if class, errs := ClassifyTrace(raw, data); class == TraceInvalid {
+			traceWarn(e.Name(), fmt.Sprintf("invalid trace (excluded from every metric): %s", errs[0]))
 			continue
 		}
 		if sinceHours != nil {
@@ -329,18 +688,38 @@ type AggregateResult struct {
 	NewCount     int
 	UpdatedCount int
 	SkippedCount int
-	WrittenTo    string
+	// SkippedSmoke counts traces rejected as smoke (no `final` block, a smoke
+	// request/fault, or zero executed steps). They are excluded from Scanned
+	// and therefore from meta.source_traces_analyzed — a smoke trace proves
+	// nothing about the skill, so counting it would fake loop health.
+	SkippedSmoke int
+	// InvalidTraces counts traces dropped by canonical-schema validation (see
+	// ClassifyTrace). They are excluded from Scanned, from every metric, and
+	// from failure-pattern merging: a trace-shaped file that does not conform
+	// to the schema is untrusted input, not a low-quality observation.
+	InvalidTraces int
+	// RejectedPatterns counts failure_pattern blocks that ValidateTracePattern
+	// refused to merge. Each rejection is one WARN; the count makes a burst of
+	// crafted traces visible in the CLI output instead of only in the log.
+	RejectedPatterns int
+	WrittenTo        string
 }
 
-// Aggregate runs the loop: scan → extract → dedup → merge → write.
+// Aggregate runs the loop: scan → classify → extract → dedup → merge → write.
 //
-// Stream implementation: each gcl-trace-*.json is read, parsed, and
-// consumed one at a time. The full trace map and its raw JSON go out
-// of scope after we've extracted the failure_pattern block — peak
-// memory is O(1 trace) rather than O(N traces × ~50 KB). For
-// ScanTraces callers (test fixtures, ad-hoc tools) the full slice is
-// still available; production aggregate traffic goes through this
-// function only.
+// Classification order per trace file is frozen (see ClassifyTrace): parse →
+// schema-invalid (InvalidTraces) → smoke (SkippedSmoke) → evidence (Scanned).
+// Only evidence traces reach the failure-pattern merge, and even then the
+// extracted block must pass ValidateTracePattern — an audit-results/ file is
+// untrusted input, and a merged pattern can skip planned steps.
+//
+// Stream implementation: each trace file (gcl-trace-*.json or
+// orchestrator-trace-*.json) is read, parsed, and consumed one at a time. The
+// full trace map and its raw JSON go out of scope after we've extracted the
+// failure_pattern block — peak memory is O(1 trace) rather than
+// O(N traces × ~50 KB). For ScanTraces callers (test fixtures, ad-hoc tools)
+// the full slice is still available; production aggregate traffic goes through
+// this function only.
 func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResult, error) {
 	data := LoadFailurePatterns(root, skill)
 	patterns, _ := data["patterns"].([]any)
@@ -380,7 +759,7 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		// same sequence.
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasPrefix(e.Name(), "gcl-trace-") || !strings.HasSuffix(e.Name(), ".json") {
+			if e.IsDir() || !IsTraceFileName(e.Name()) {
 				continue
 			}
 			fp := filepath.Join(tracesDir, e.Name())
@@ -401,9 +780,29 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 			if uErr := json.Unmarshal(raw, &trace); uErr != nil {
 				continue
 			}
-			// Drop the raw bytes now — they were only needed for Unmarshal.
-			raw = nil
 			if trace["skill"] != skill {
+				continue
+			}
+			// Classification order is frozen: parse (done above) →
+			// schema-invalid → smoke → evidence. Validation runs on the raw
+			// bytes, before `raw` is dropped, so the schema sees exactly what
+			// was written above.
+			class, schemaErrs := ClassifyTrace(raw, trace)
+			// Drop the raw bytes now — they were only needed for Unmarshal and
+			// classification.
+			raw = nil
+			switch class {
+			case TraceInvalid:
+				// A non-conforming trace is untrusted input: it must not reach
+				// the failure-pattern merge (see ValidateTracePattern).
+				res.InvalidTraces++
+				traceWarn(e.Name(), fmt.Sprintf("invalid trace (excluded from every metric and from learning): %s", schemaErrs[0]))
+				continue
+			case TraceSmoke:
+				// Smoke traces prove nothing (no `final`, smoke request/fault,
+				// or zero steps): keep them out of source_traces_analyzed and
+				// out of failure_patterns entirely.
+				res.SkippedSmoke++
 				continue
 			}
 			res.Scanned++
@@ -411,6 +810,11 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 			patternFp := ExtractPatternFromTrace(trace)
 			if patternFp == nil {
 				res.SkippedCount++
+				continue
+			}
+			if vErr := ValidateTracePattern(patternFp, skill); vErr != nil {
+				res.RejectedPatterns++
+				traceWarn(traceName, fmt.Sprintf("rejected untrusted failure pattern (not merged): %v", vErr))
 				continue
 			}
 			cat, _ := patternFp["category"].(string)

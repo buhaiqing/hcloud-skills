@@ -17,7 +17,7 @@
 | Default deny on SG | Only open ports with explicit ingress allowlist; do not use `0.0.0.0/0` for SSH/RDP/DB |
 | Egress constraint | Restrict outbound to known CIDRs (e.g., specific API endpoints) |
 | Audit | Tag every EIP with `owner`, `purpose`, `cost-center` so leaks are attributable |
-| DDoS-aware | EIPs that face the public internet should be protected; delegate to `huaweicloud-ddos-ops` |
+| DDoS-aware | EIPs that face the public internet should be protected; delegate to `huaweicloud-waf-ops` |
 | Key hardening | Rotate `HW_ACCESS_KEY_ID` every 90 days; never share across skills |
 
 ### Encryption
@@ -28,7 +28,7 @@
 ### Network Isolation
 
 - EIP lives in the **public** address space — do not bind to a private-only workload.
-- For workloads that need both, prefer SNAT via NAT Gateway (delegate to `huaweicloud-nat-ops`).
+- For workloads that need both, prefer SNAT via NAT Gateway (delegate to `huaweicloud-vpc-ops`).
 
 ## 2. Stability Pillar (稳定支柱)
 
@@ -133,7 +133,7 @@ Mandatory tags on every EIP:
 
 | Trigger | Action |
 |---|---|
-| `incoming_bandwidth` p99 > 10× p50 | Delegate to `huaweicloud-ddos-ops` / `huaweicloud-hss-ops` |
+| `incoming_bandwidth` p99 > 10× p50 | Delegate to `huaweicloud-waf-ops` / `huaweicloud-hss-ops` |
 | Repeated `unbind`/`bind` from same AK | Audit; possible credential leak |
 | New EIP with `0.0.0.0/0` SG exposure | Block via SG change; delegate to `huaweicloud-vpc-ops` |
 | 95计费 bill shock | Cross-check with `huaweicloud-billing-ops` |

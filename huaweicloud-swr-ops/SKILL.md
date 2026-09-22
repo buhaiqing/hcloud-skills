@@ -4,7 +4,6 @@ delegates_to:
   - huaweicloud-billing-ops
   - huaweicloud-cce-ops
   - huaweicloud-ces-ops
-  - huaweicloud-codearts-ops
   - huaweicloud-cts-ops
   - huaweicloud-hss-ops
   - huaweicloud-iam-ops
@@ -105,7 +104,7 @@ Huawei Cloud SWR provides fully-managed container image repository service with 
 
 - Task is IAM/permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about container orchestration (CCE/K8s) → delegate to: `huaweicloud-cce-ops`
-- Task is about host-level vulnerability scanning → delegate to: `huaweicloud-hss-ops` (when present)
+- Task is about host-level vulnerability scanning → delegate to: `huaweicloud-hss-ops`
 - Task is about monitoring/alarm rules → delegate to: `huaweicloud-ces-ops`
 
 ## Variables

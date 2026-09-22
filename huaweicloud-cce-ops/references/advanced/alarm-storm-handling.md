@@ -68,7 +68,7 @@ hcloud cce list-nodes --cluster <id>
 |----------|-------------|-------------------|
 | 子网 IP 耗尽 | `huaweicloud-vpc-ops` | 无法扩容 |
 | 节点 ECS 故障 | `huaweicloud-ecs-ops` | 底层实例异常 |
-| EVS 配额/PVC 失败 | `huaweicloud-evs-ops` | 配额申请被拒 |
+| EVS 配额/PVC 失败 | `huaweicloud-ecs-ops` | 配额申请被拒 |
 | 入口流量异常 | `huaweicloud-elb-ops` | 504 上涨 |
 | 指标/告警异常 | `huaweicloud-ces-ops` | 监控缺失 |
 | 日志采集异常 | `huaweicloud-lts-ops` | 日志断流 |

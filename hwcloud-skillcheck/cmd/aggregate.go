@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/learning"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -23,7 +25,7 @@ func runAggregate(args []string) error {
 	case "trace":
 		return runAggregateTrace(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck aggregate trace --root <dir> [--since-hours N] [--output FILE] [--require-traces] [--self-check]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck aggregate trace --root <dir> [--since-hours N] [--output FILE] [--require-traces] [--require-evidence] [--self-check]")
 		return nil
 	default:
 		return fmt.Errorf("aggregate: unknown subcommand %q", args[0])
@@ -35,12 +37,24 @@ const (
 	finalStatuses = "PASS,SAFETY_FAIL,MAX_ITER"
 )
 
-// runAggregateTrace aggregates audit-results/gcl-trace-*.json into a quality
-// summary, mirroring scripts/gcl_trace_aggregate.py. When no trace files exist
-// it WARNs and returns nil (exit 0) per Spec §4 by default — trace files are
-// produced by the runtime runner, so an external user may legitimately have
-// none. Pass --require-traces to fail (non-zero exit) instead; pre-commit and
-// CI set this so the gate cannot silently pass on a fresh checkout.
+// runAggregateTrace aggregates audit-results traces into a quality summary,
+// mirroring scripts/gcl_trace_aggregate.py. Both writers' output is read:
+// gcl-trace-*.json (internal/gcl.PersistTrace) and orchestrator-trace-*.json
+// (internal/l4.HandleFault) — see learning.TraceFilePatterns.
+//
+// Every candidate is classified in the frozen order parse → schema-invalid →
+// smoke → evidence (learning.ClassifyTrace): only evidence traces move a
+// metric, and evidence_runs is exactly their number (pass_rate's denominator).
+// A trace that fails canonical-schema validation is untrusted input, so it is
+// counted in invalid_trace, WARNed by file name, and excluded from pass_rate,
+// rubric averages, by_skill, by_source, by_critic_type, and
+// evidence_runs. When no trace files exist it WARNs and returns nil (exit 0)
+// per Spec §4 by default — trace files are produced by the runtime runner, so
+// an external user may legitimately have none. Pass --require-traces to fail
+// (non-zero exit) instead; pre-commit and CI set this so the gate cannot
+// silently pass on a fresh checkout. --require-evidence is the stricter gate: it
+// fails when trace files were found but none of them carried a verification
+// signal (all smoke and/or schema-invalid).
 func runAggregateTrace(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck aggregate trace")
 	root := fs.String("root", ".", "skill repository root")
@@ -48,6 +62,7 @@ func runAggregateTrace(args []string) error {
 	output := fs.String("output", "", "write summary to FILE instead of stdout")
 	selfCheck := fs.Bool("self-check", false, "aggregate the embedded trace fixture instead of the repo")
 	requireTraces := fs.Bool("require-traces", false, "fail (exit 1) instead of warning when no trace files exist")
+	requireEvidence := fs.Bool("require-evidence", false, "fail (exit 1) when no trace carried a verification signal (all smoke or schema-invalid)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -63,8 +78,12 @@ func runAggregateTrace(args []string) error {
 
 	auditDir := filepath.Join(rootDir, "audit-results")
 	var paths []string
-	if entries, gErr := filepath.Glob(filepath.Join(auditDir, "gcl-trace-*.json")); gErr == nil {
-		paths = entries
+	for _, pat := range learning.TraceFilePatterns {
+		entries, gErr := filepath.Glob(filepath.Join(auditDir, pat))
+		if gErr != nil {
+			continue
+		}
+		paths = append(paths, entries...)
 	}
 	sort.Strings(paths)
 
@@ -89,21 +108,27 @@ func runAggregateTrace(args []string) error {
 		// CI checkout from failing the gate while still guaranteeing the
 		// binary's aggregate code is run end-to-end on every pre-commit / CI.
 		if *requireTraces {
-			fmt.Fprintf(os.Stderr, "INFO: no gcl-trace files under %s (--require-traces set; falling back to embedded fixture self-check)\n", auditDir)
+			fmt.Fprintf(os.Stderr, "INFO: no trace files under %s (--require-traces set; falling back to embedded fixture self-check)\n", auditDir)
 			return runAggregateSelfCheck(*output)
 		}
-		fmt.Fprintln(os.Stderr, "WARN: no gcl-trace files found; skipping aggregate (trace files are produced by the runtime runner)")
+		if *requireEvidence {
+			// Zero trace files is zero verification signal; the explicit
+			// --require-evidence gate must not pass on it.
+			return fmt.Errorf("aggregate: --require-evidence set but no trace files found under %s", auditDir)
+		}
+		fmt.Fprintln(os.Stderr, "WARN: no trace files found; skipping aggregate (trace files are produced by the runtime runner)")
 		return nil
 	}
 
 	// Fan-out parseAggregateTrace across paths with bounded concurrency.
-	// Each trace file is read+decoded in its own goroutine; the wall-clock
-	// win is roughly NumCPU on a CI box with 100+ trace files (was serial).
-	// Results are collected into per-index slots so we never need a mutex —
-	// errgroup.Wait gives us happens-before across all of them.
+	// Each trace file is read+decoded+classified in its own goroutine; the
+	// wall-clock win is roughly NumCPU on a CI box with 100+ trace files (was
+	// serial). Results are collected into per-index slots so we never need a
+	// mutex — errgroup.Wait gives us happens-before across all of them.
+	// A nil slot is a file that did not parse at all.
 	var (
-		traces = make([]map[string]any, len(paths))
-		skips  = make([]string, len(paths))
+		slots = make([]*consumedTrace, len(paths))
+		skips = make([]string, len(paths))
 	)
 	g, gCtx := errgroup.WithContext(context.Background())
 	g.SetLimit(runtime.NumCPU())
@@ -115,15 +140,21 @@ func runAggregateTrace(args []string) error {
 				return gCtx.Err()
 			default:
 			}
-			trace, perr := parseAggregateTrace(p)
+			trace, raw, perr := parseAggregateTrace(p)
+			rel, _ := filepath.Rel(rootDir, p)
 			if perr != nil {
-				rel, _ := filepath.Rel(rootDir, p)
 				skips[i] = fmt.Sprintf("skip %s: %v", rel, perr)
 				return nil
 			}
-			rel, _ := filepath.Rel(rootDir, p)
+			class, schemaErrs := learning.ClassifyTrace(raw, trace)
 			trace["_source_path"] = rel
-			traces[i] = trace
+			slots[i] = &consumedTrace{Trace: trace, Class: class}
+			if class == learning.TraceInvalid {
+				// One WARN per rejected file, naming it and the first
+				// violation: a crafted audit-results/ file must be visible,
+				// not silently dropped.
+				skips[i] = fmt.Sprintf("%s: invalid trace (excluded from every metric and from learning): %s", rel, schemaErrs[0])
+			}
 			return nil
 		})
 	}
@@ -136,23 +167,36 @@ func runAggregateTrace(args []string) error {
 			fmt.Fprintln(os.Stderr, "WARN:", s)
 		}
 	}
-	// Compact: drop nil slots left by skipped traces.
-	parsed := traces[:0]
-	for _, t := range traces {
+	// Compact: drop nil slots left by unparseable traces.
+	parsed := make([]*consumedTrace, 0, len(slots))
+	for _, t := range slots {
 		if t != nil {
 			parsed = append(parsed, t)
 		}
 	}
-	traces = parsed
-	if len(traces) == 0 {
+	if len(parsed) == 0 {
 		if *requireTraces {
 			return fmt.Errorf("aggregate: no valid traces parsed under %s (--require-traces set)", auditDir)
+		}
+		if *requireEvidence {
+			return fmt.Errorf("aggregate: --require-evidence set but no trace under %s parsed", auditDir)
 		}
 		fmt.Fprintln(os.Stderr, "WARN: no valid traces parsed; skipping aggregate")
 		return nil
 	}
 
-	summary := aggregateTraces(traces)
+	summary := aggregateTraces(parsed)
+	evidenceRuns := intOf(summary["evidence_runs"])
+	if evidenceRuns == 0 {
+		switch {
+		case *requireEvidence:
+			return fmt.Errorf("aggregate: --require-evidence set but no trace carried a verification signal (parsed=%d, skipped_smoke=%d, invalid_trace=%d)",
+				len(parsed), intOf(summary["skipped_smoke"]), intOf(summary["invalid_trace"]))
+		case *requireTraces:
+			fmt.Fprintf(os.Stderr, "WARN: %d trace file(s) parsed but none carried a verification signal (skipped_smoke=%d, invalid_trace=%d); --require-traces still passes — pass --require-evidence to fail here\n",
+				len(parsed), intOf(summary["skipped_smoke"]), intOf(summary["invalid_trace"]))
+		}
+	}
 
 	var out []byte
 	out, err = json.MarshalIndent(summary, "", "  ")
@@ -169,27 +213,68 @@ func runAggregateTrace(args []string) error {
 		if wErr := os.WriteFile(outPath, out, 0o644); wErr != nil {
 			return wErr
 		}
-		fmt.Printf("Wrote quality summary to %s (total_runs=%d, pass_rate=%.4f)\n",
-			outPath, intOf(summary["totals"].(map[string]any)["total_runs"]), summary["pass_rate"].(float64))
+		byCriticType, _ := summary["by_critic_type"].(map[string]int)
+		fmt.Printf("Wrote quality summary to %s (evidence_runs=%d, pass_rate=%.4f, skipped_smoke=%d, invalid_trace=%d, by_critic_type={structural:%d, external:%d, unknown:%d}, l2_skipped_no_schema=%d)\n",
+			outPath, evidenceRuns, summary["pass_rate"].(float64), intOf(summary["skipped_smoke"]), intOf(summary["invalid_trace"]),
+			byCriticType[criticTypeStructural], byCriticType[criticTypeExternal], byCriticType[criticTypeUnknown], intOf(summary["l2_skipped_no_schema"]))
 		return nil
 	}
 	os.Stdout.Write(out)
 	return nil
 }
 
+// consumedTrace is one parsed trace file plus its consumption class (always set
+// by learning.ClassifyTrace). The operator-facing WARN for a rejected file is
+// emitted by the reader, which is where the schema errors are available.
+type consumedTrace struct {
+	Trace map[string]any
+	Class learning.TraceClass
+}
+
+// critic_type vocabulary. The frozen contract for final.critic_type is
+// {structural, external}: structural is the deterministic dry-run proxy,
+// external is a real Critic. Anything else — including an absent field, or a
+// self-declared critic name nothing in the repo implements — is counted as
+// "unknown" so a fake critic_type cannot inflate a trusted bucket.
+const (
+	criticTypeStructural = "structural"
+	criticTypeExternal   = "external"
+	criticTypeUnknown    = "unknown"
+)
+
+// criticTypeOf normalizes a trace's final.critic_type into the frozen
+// vocabulary.
+func criticTypeOf(final map[string]any) string {
+	if final == nil {
+		return criticTypeUnknown
+	}
+	switch s, _ := final["critic_type"].(string); s {
+	case criticTypeStructural, criticTypeExternal:
+		return s
+	default:
+		return criticTypeUnknown
+	}
+}
+
 // runAggregateSelfCheck aggregates the embedded healthy trace fixture and
-// verifies the resulting summary is well-formed (total_runs >= 1, pass_rate in
-// [0,1]). This proves the aggregation path is wired correctly inside the binary
-// without requiring repo trace files.
+// verifies the resulting summary is well-formed (evidence_runs >= 1, pass_rate
+// in [0,1]). This proves the aggregation path is wired correctly inside the
+// binary without requiring repo trace files — and, since the fixture goes
+// through the same classification as any real trace, that the fixture still
+// conforms to the canonical schema and still counts as evidence.
 func runAggregateSelfCheck(output string) error {
 	var trace map[string]any
 	if err := json.Unmarshal(embed.TraceHealthy, &trace); err != nil {
 		return fmt.Errorf("self-check: bad embedded trace fixture: %w", err)
 	}
-	traces := []map[string]any{trace}
-	summary := aggregateTraces(traces)
+	class, schemaErrs := learning.ClassifyTrace(embed.TraceHealthy, trace)
+	if class != learning.TraceEvidence {
+		return fmt.Errorf("self-check: embedded trace fixture is not usable evidence (class=%d, violations=%v)", class, schemaErrs)
+	}
+	trace["_source_path"] = "embedded:fixtures/gcl-trace-healthy.json"
+	summary := aggregateTraces([]*consumedTrace{{Trace: trace, Class: class}})
 
-	totalRuns, _ := summary["totals"].(map[string]any)["total_runs"].(int)
+	totalRuns := intOf(summary["totals"].(map[string]any)["total_runs"])
 	passRate, _ := summary["pass_rate"].(float64)
 	if totalRuns < 1 {
 		return fmt.Errorf("self-check: aggregated summary reported total_runs=%d", totalRuns)
@@ -215,27 +300,48 @@ func runAggregateSelfCheck(output string) error {
 	return nil
 }
 
-func parseAggregateTrace(path string) (map[string]any, error) {
+// parseAggregateTrace decodes one trace file, returning the decoded payload
+// plus the raw bytes (the raw bytes are what canonical-schema validation runs
+// on — validating the re-encoded map would silently "repair" a crafted file,
+// e.g. by normalizing a float where the schema demands an integer). Only
+// `skill` is required here: a trace without it cannot be bucketed at all. A
+// missing `final` block is NOT a parse error — such a trace is classified as
+// schema-invalid (it no longer conforms to the canonical contract) and surfaces
+// under invalid_trace instead of being folded into an indistinguishable "skip".
+func parseAggregateTrace(path string) (map[string]any, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var trace map[string]any
 	if err := json.Unmarshal(data, &trace); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if _, ok := trace["skill"]; !ok {
-		return nil, fmt.Errorf("missing skill")
+		return nil, nil, fmt.Errorf("missing skill")
 	}
-	if _, ok := trace["final"]; !ok {
-		return nil, fmt.Errorf("missing final")
-	}
-	return trace, nil
+	return trace, data, nil
 }
 
-// aggregateTraces reduces a set of traces into a quality summary with totals,
-// pass_rate, per-dimension average scores, and per-skill buckets.
-func aggregateTraces(traces []map[string]any) map[string]any {
+// aggregateTraces reduces classified traces into a quality summary with totals,
+// pass_rate, per-dimension average scores, per-skill buckets, and the trust
+// counters (invalid_trace / skipped_smoke / evidence_runs / by_critic_type).
+//
+// The classification order is frozen (learning.ClassifyTrace — applied by the
+// reader, since unparseable files never reach here):
+//
+//	parse (reader) → schema-invalid (invalid_trace) → smoke (skipped_smoke) → evidence
+//
+// A schema-invalid trace is untrusted input: it is counted in invalid_trace and
+// excluded from every metric. Smoke traces (see learning.IsSmokeTrace) carry no
+// verification signal, so folding them in would either fake a pass rate or tank
+// it with unverified dry runs. evidence_runs counts the traces that did
+// contribute (schema-valid, non-smoke) and is pass_rate's denominator. by_source
+// splits those contributing traces by writer (gcl vs l4) — the observability
+// hook for "is the L4 loop actually feeding the aggregator?" — and
+// by_critic_type records which Critic produced their scores (a self-declared
+// critic name outside {structural, external} is counted as "unknown").
+func aggregateTraces(traces []*consumedTrace) map[string]any {
 	dims := splitOnComma(rubricDims)
 	statuses := splitOnComma(finalStatuses)
 
@@ -246,13 +352,41 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 	totals["total_runs"] = 0
 
 	bySkill := map[string]any{}
+	bySource := map[string]int{learning.TraceSourceGCL: 0, learning.TraceSourceL4: 0}
+	byCriticType := map[string]int{criticTypeStructural: 0, criticTypeExternal: 0, criticTypeUnknown: 0}
 	scoreSums := map[string]float64{}
 	scoreCount := 0
+	skippedSmoke := 0
+	invalidTrace := 0
+	l2SkippedNoSchema := 0
 	for _, d := range dims {
 		scoreSums[d] = 0
 	}
 
-	for _, trace := range traces {
+	for _, item := range traces {
+		if item == nil {
+			// Defensive: an unclassified slot must not move a metric.
+			invalidTrace++
+			continue
+		}
+		switch item.Class {
+		case learning.TraceInvalid:
+			invalidTrace++
+			continue
+		case learning.TraceSmoke:
+			skippedSmoke++
+			continue
+		}
+		trace := item.Trace
+		// "source" is absent on traces written before the field existed; those
+		// are gcl traces, per learning.TraceSource.
+		src := learning.TraceSource(trace)
+		bySource[src]++
+
+		if l2StatusOf(trace) == "skipped_no_schema" {
+			l2SkippedNoSchema++
+		}
+
 		skill, _ := trace["skill"].(string)
 		if skill == "" {
 			skill = "unknown"
@@ -266,9 +400,17 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 		}
 		if _, ok := totals[status]; ok {
 			totals[status] = intOf(totals[status]) + 1
+		} else {
+			// Defensive only: a schema-valid trace always carries an enum
+			// status, so an out-of-enum value lands in invalid_trace before it
+			// can reach this loop. If the contract's enum ever gains a value
+			// the aggregator does not know, it must still stay visible: it
+			// counts in total_runs, so leaving it out of every bucket would
+			// depress pass_rate with nothing to explain it.
+			totals["UNKNOWN"] = intOf(totals["UNKNOWN"]) + 1
 		}
 		totals["total_runs"] = intOf(totals["total_runs"]) + 1
-
+		byCriticType[criticTypeOf(final)]++
 		bucket, _ := bySkill[skill].(map[string]any)
 		if bucket == nil {
 			bucket = map[string]any{
@@ -279,6 +421,8 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 		bucket["total"] = intOf(bucket["total"]) + 1
 		if _, ok := bucket[status]; ok {
 			bucket[status] = intOf(bucket[status]) + 1
+		} else {
+			bucket["UNKNOWN"] = intOf(bucket["UNKNOWN"]) + 1
 		}
 		iterCount := lenOfList(trace["iterations"])
 		prevAvg := floatOf(bucket["avg_iterations"])
@@ -309,24 +453,61 @@ func aggregateTraces(traces []map[string]any) map[string]any {
 	}
 
 	traceFiles := make([]any, 0, len(traces))
-	for _, trace := range traces {
-		if sp, ok := trace["_source_path"]; ok {
+	for _, item := range traces {
+		if item == nil {
+			continue
+		}
+		// Every parsed input is listed, including smoke and schema-invalid
+		// ones: the summary names the window it was computed from, and the
+		// per-file reasons live in the WARN lines.
+		if sp, ok := item.Trace["_source_path"]; ok {
 			traceFiles = append(traceFiles, sp)
 		}
 	}
 
 	return map[string]any{
-		"version":           "1.0",
-		"generated_at":      time.Now().UTC().Format(time.RFC3339),
-		"cloud":             "huaweicloud",
-		"metric_namespace":  "CUSTOM.GCL",
-		"window":            map[string]any{"trace_count": totalRuns},
-		"totals":            totals,
-		"pass_rate":         round4(passRate),
-		"avg_rubric_scores": avgScores,
-		"by_skill":          bySkill,
-		"trace_files":       traceFiles,
+		"version":          "1.0",
+		"generated_at":     time.Now().UTC().Format(time.RFC3339),
+		"cloud":            "huaweicloud",
+		"metric_namespace": "CUSTOM.GCL",
+		"window":           map[string]any{"trace_count": totalRuns},
+		"totals":           totals,
+		// evidence_runs = totals.total_runs = the contributing (schema-valid,
+		// non-smoke) traces; it is pass_rate's denominator.
+		"evidence_runs":        totalRuns,
+		"pass_rate":            round4(passRate),
+		"avg_rubric_scores":    avgScores,
+		"by_skill":             bySkill,
+		"by_source":            bySource,
+		"by_critic_type":       byCriticType,
+		"skipped_smoke":        skippedSmoke,
+		"invalid_trace":        invalidTrace,
+		"l2_skipped_no_schema": l2SkippedNoSchema,
+		"trace_files":          traceFiles,
 	}
+}
+
+// l2StatusOf returns the L2 hallucination-check outcome recorded on a trace
+// (L2Result.Outcome, JSON field "status"), or "" when the trace carries none.
+// Traces written before that field existed encode the status as the
+// "<status>: <detail>" prefix of l2.details, which is parsed here as a fallback.
+func l2StatusOf(trace map[string]any) string {
+	hd, _ := trace["hallucination_detection"].(map[string]any)
+	if hd == nil {
+		return ""
+	}
+	l2, _ := hd["l2"].(map[string]any)
+	if l2 == nil {
+		return ""
+	}
+	if s, ok := l2["status"].(string); ok {
+		return s
+	}
+	details, _ := l2["details"].(string)
+	if token, _, ok := strings.Cut(details, ": "); ok {
+		return token
+	}
+	return ""
 }
 
 // lastCriticScores returns the critic scores from the final iteration.

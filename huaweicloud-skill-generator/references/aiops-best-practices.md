@@ -164,9 +164,9 @@ Any skill with monitoring capabilities MUST define ≥ 4 anomaly patterns:
 
 Each skill with cross-skill capability MUST define in `integration.md`:
 
-| Alarm Type | Metric | Primary Skill | Secondary Skill | HSS/AOM Deleg. |
+| Alarm Type | Metric | Primary Skill | Secondary Skill | HSS/CES Deleg. |
 |-----------|--------|--------------|----------------|---------------|
-| CPU高 | cpu_usage | huaweicloud-ecs-ops | huaweicloud-aom-ops | Optional |
+| CPU高 | cpu_usage | huaweicloud-ecs-ops | huaweicloud-ces-ops | Optional |
 | 数据库慢查询 | rds043_slow_queries | huaweicloud-rds-ops | — | Recommended |
 | 连接数满 | active_connection_count | huaweicloud-elb-ops | huaweicloud-ecs-ops | — |
 | 安全告警 | hss_event_count | huaweicloud-hss-ops | huaweicloud-ecs-ops | Required |

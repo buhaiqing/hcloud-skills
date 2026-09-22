@@ -78,6 +78,4 @@ hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 1800
 | Cost of WAF | `huaweicloud-billing-ops` |
 | Account permission | `huaweicloud-iam-ops` |
 | Network / subnet | `huaweicloud-vpc-ops` |
-| Certificate management | `huaweicloud-scm-ops` |
 | Alarm rule config | `huaweicloud-ces-ops` |
-| DDoS protection | `huaweicloud-antiddos-ops` |

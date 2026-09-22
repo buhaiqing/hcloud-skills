@@ -88,6 +88,65 @@ func validateSkillFrontmatter(content []byte, skillDir string) []string {
 	return errs
 }
 
+// validateDelegatesTo checks every entry of a SKILL.md `delegates_to`
+// frontmatter list against skillDirs (the skills that exist under the repo
+// root). A target that names no existing skill is a dangling reference: the
+// runtime delegate expansion would route the request to a skill that cannot be
+// loaded, so each one is a hard error. Frontmatter that validateSkillFrontmatter
+// already rejects is skipped here to avoid duplicate reporting.
+func validateDelegatesTo(content []byte, skillDir string, skillDirs map[string]bool) []string {
+	fm, err := yaml.ExtractFrontmatter(content)
+	if err != nil {
+		return nil
+	}
+	raw, ok := fm["delegates_to"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	var targets []string
+	switch v := raw.(type) {
+	case []any:
+		for i, item := range v {
+			name, isString := item.(string)
+			if !isString {
+				return []string{fmt.Sprintf("%s: delegates_to entry %d is not a skill name", skillDir, i+1)}
+			}
+			targets = append(targets, name)
+		}
+	case string:
+		targets = append(targets, v)
+	default:
+		return []string{fmt.Sprintf("%s: delegates_to must be a list of skill names", skillDir)}
+	}
+
+	var errs []string
+	for _, target := range targets {
+		if !skillDirs[target] {
+			errs = append(errs, fmt.Sprintf("%s: delegates_to references missing skill %s", skillDir, target))
+		}
+	}
+	return errs
+}
+
+// skillDirsUnder returns the name of every huaweicloud-* directory directly
+// under root. The directory listing is the filesystem truth for delegation
+// targets, so deleting or renaming a skill turns every stale reference to it
+// into a validation error.
+func skillDirsUnder(root string) (map[string]bool, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("read root: %w", err)
+	}
+	dirs := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "huaweicloud-") {
+			dirs[e.Name()] = true
+		}
+	}
+	return dirs, nil
+}
+
 // runValidateFrontmatter handles:
 //
 //	hwcloud-skillcheck validate frontmatter --root <dir>
@@ -111,6 +170,11 @@ func runValidateFrontmatter(args []string) error {
 	}
 	if len(skills) == 0 {
 		return fmt.Errorf("validate frontmatter: no huaweicloud-*-ops/*/SKILL.md found under %s", rootDir)
+	}
+
+	skillDirs, err := skillDirsUnder(rootDir)
+	if err != nil {
+		return fmt.Errorf("validate frontmatter: %w", err)
 	}
 
 	// Frontmatter validation is embarrassingly parallel: each skill file is
@@ -139,6 +203,7 @@ func runValidateFrontmatter(args []string) error {
 			}
 			skillDir := skillNameFromPath(path)
 			errs := validateSkillFrontmatter(content, skillDir)
+			errs = append(errs, validateDelegatesTo(content, skillDir, skillDirs)...)
 			mu.Lock()
 			if len(errs) == 0 {
 				okCount++

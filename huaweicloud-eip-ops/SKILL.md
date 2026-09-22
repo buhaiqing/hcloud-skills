@@ -4,12 +4,11 @@ delegates_to:
   - huaweicloud-billing-ops
   - huaweicloud-cdn-ops
   - huaweicloud-ces-ops
-  - huaweicloud-ddos-ops
   - huaweicloud-ecs-ops
   - huaweicloud-elb-ops
   - huaweicloud-hss-ops
-  - huaweicloud-nat-ops
   - huaweicloud-vpc-ops
+  - huaweicloud-waf-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud Elastic IP (EIP / 弹性公网IP) and bandwidth — public IP allocation,
@@ -19,7 +18,7 @@ description: >-
   (e.g., "实例访问不了公网", "释放未绑定的EIP", "EIP被限速", "从ECS解绑公网IP")
   even without naming the product directly.
   Not for VPC / subnet / NAT / security-group management that has dedicated ops skills
-  (delegate to huaweicloud-vpc-ops / huaweicloud-nat-ops).
+  (delegate to `huaweicloud-vpc-ops`).
 license: MIT
 compatibility: >-
   Official Huawei Cloud CLI (`hcloud` / `openstack`), Go 1.21+ runtime
@@ -91,10 +90,10 @@ primary agent execution path.**
 | In scope | Out of scope (delegate) |
 |---|---|
 | EIP allocate / describe / bind / unbind / release | VPC / subnet / route table → `huaweicloud-vpc-ops` |
-| Bandwidth create / resize / delete | NAT gateway / SNAT / DNAT → `huaweicloud-nat-ops` |
-| `add-eip-to-shared` / `remove-eip-from-shared` | DDoS protection policy → `huaweicloud-ddos-ops` (when present) |
+| Bandwidth create / resize / delete | NAT gateway / SNAT / DNAT → `huaweicloud-vpc-ops` |
+| `add-eip-to-shared` / `remove-eip-from-shared` | Shared-bandwidth accounting → `huaweicloud-billing-ops` |
 | Idle / unbound EIP detection | Security group / EIP exposure → `huaweicloud-vpc-ops` + `huaweicloud-hss-ops` |
-| 95th-percentile subscription | CDN / traffic scheduling → `huaweicloud-cdn-ops` (when present) |
+| 95th-percentile subscription | CDN / traffic scheduling → `huaweicloud-cdn-ops` |
 | EIP billing-model comparison | Account-level billing → `huaweicloud-billing-ops` |
 
 ## Five Core Standards (Quality Gates)
@@ -128,8 +127,8 @@ primary agent execution path.**
 ### SHOULD NOT Use This Skill When
 
 - VPC / subnet / route table / security group only → `huaweicloud-vpc-ops`
-- NAT gateway / SNAT / DNAT → `huaweicloud-nat-ops`
-- DDoS attack handling → `huaweicloud-ddos-ops` (when present), else `huaweicloud-hss-ops`
+- NAT gateway / SNAT / DNAT → `huaweicloud-vpc-ops`
+- DDoS attack handling → no Anti-DDoS skill in this repo (escalate); L7 filtering → `huaweicloud-waf-ops`, host-level → `huaweicloud-hss-ops`
 - Pure billing reconciliation / 包年包月 invoice → `huaweicloud-billing-ops`
 - ECS-level public IP lifecycle on a *dehoused* instance (use ECS lifecycle, not EIP)
 
@@ -545,7 +544,7 @@ Poll `hcloud bandwidth describe --bandwidth-id {{user.bandwidth_id}}` — EIP id
 | Pattern | Detection Signal | Cross-skill delegation |
 |---|---|---|
 | Bandwidth saturation | `outgoing_bytes / bandwidth_size > 0.9` for 5 min | → `huaweicloud-ces-ops` for threshold, `huaweicloud-billing-ops` for overage |
-| Burst / DDoS shape | Egress p99 > 10× p50 for 10 min | → `huaweicloud-ddos-ops` (when present), `huaweicloud-hss-ops` |
+| Burst / DDoS shape | Egress p99 > 10× p50 for 10 min | → no Anti-DDoS skill (escalate); L7 → `huaweicloud-waf-ops`, host → `huaweicloud-hss-ops` |
 | Idle EIP | `port_id == null` for 7 d AND bandwidth paid | → `huaweicloud-billing-ops` for cost attribution |
 | Billing shock | 24h cost > 3× 7-day median | → `huaweicloud-billing-ops` for invoice audit |
 

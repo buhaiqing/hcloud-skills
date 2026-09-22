@@ -141,7 +141,7 @@ stateDiagram-v2
 |--------------|-------------------|-------------|
 | Network setup (VPC, subnet, SG) | VPC | `huaweicloud-vpc-ops` |
 | Monitoring & alarms | CES | `huaweicloud-ces-ops` |
-| Encryption keys | KMS | `huaweicloud-kms-ops` (when present) |
-| Billing analysis | BSS | Billing skill (when present) |
+| Encryption keys | KMS | `huaweicloud-kms-ops` |
+| Billing analysis | BSS | Billing skill |
 | Host security (ECS running Redis clients) | HSS | `huaweicloud-hss-ops` |
 | Application logging | LTS | `huaweicloud-lts-ops` |

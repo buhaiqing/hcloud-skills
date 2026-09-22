@@ -115,6 +115,62 @@ The Orchestrator owns `operation_intent` generation. Critic MUST NOT see raw use
 
 Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YYYYMMDD-HHMMSS.json`.
 
+The L4 orchestrator persists a second, schema-compatible trace family under
+`audit-results/orchestrator-trace-<faultID>.json` (writer: `internal/l4.HandleFault`).
+Both families are read by `aggregate trace` and by the self-healing learning path
+(`internal/learning.TraceFilePatterns`). Writers set a top-level `source` field
+(`gcl` | `l4`); readers MUST treat an absent `source` as `gcl`, which is what the
+traces written before the field existed are. `final.critic_type` is normalized on
+consume into `by_critic_type` with keys `structural` / `external` / `unknown` — an
+unrecognized or absent value is reported as `unknown`, never trusted as an LLM
+verdict.
+
+**Critic provenance.** `final.critic_type` records which Critic produced the
+scores: `structural` (in-process deterministic structural critic — a proxy, valid
+only for CI/local smoke per §10) or `external` (out-of-process Critic via
+`--critic-cmd`). A run with `critic_type: structural` MUST NOT be used as a
+production or human-acceptance quality pass. `--structural-critic-only` and
+`--critic-cmd` are mutually exclusive; the CLI rejects the combination before any
+Critic is constructed.
+
+**Consumption classification (fixed order).** Every candidate file under
+`audit-results/` is classified as: (1) unparseable → `WARN` + ignored; (2)
+**schema-invalid** → counted in `invalid_trace`, excluded from every metric and
+from failure-pattern merging (each trace is validated against the canonical
+`huaweicloud-ces-ops/assets/gcl-trace.schema.json`; the L4 writer emits the same
+required fields so its own traces pass); (3) **smoke** → counted in
+`skipped_smoke`, excluded from every metric; (4) **evidence** → contributes and
+is counted in `evidence_runs`. `trace_files` lists every parsed input, and
+`pass_rate` is computed over `evidence_runs` only.
+
+**Smoke exclusion.** A trace carries no verification signal when it has no
+`final` block, or its `request`/`fault` is `smoke` (trimmed, case-insensitive), or
+its recorded step count is `0` (`step_count`, or `orchestration.step_count` for L4
+traces). Such traces never feed `pass_rate`, rubric averages, or
+`failure_patterns.json`. **A `SAFETY_FAIL` trace is never smoke**: a real failure
+must stay in the metric set even if it was produced by a smoke-labelled run,
+otherwise the marker would hide exactly what the alarm contract watches for.
+
+**Trace-derived knowledge is untrusted input.** A pattern merged into
+`failure_patterns.json` from a trace is validated first: its category must exist
+in the knowledge-base vocabulary, both regexes must compile and must not match the
+empty string (a pattern that matches everything would let a crafted trace skip
+every planned step), string fields are length-capped and control-character-free,
+and the pattern is stored with `"provenance": "trace"` + `"verified": false`.
+Rejected patterns are counted (`Rejected (untrusted pattern)`).
+
+**Hallucination record.** `hallucination_detection` is persisted on every run, not
+only on a block, so a check that could not run is distinguishable from a clean
+one: `hallucination_detection.l2.status` carries the L2 outcome
+(`pass` | `violation` | `skipped_no_schema` | `skipped_no_output` |
+`invalid_output` | `schema_unreadable` | `validator_error`). `aggregate trace`
+sums `skipped_no_schema` occurrences into the `l2_skipped_no_schema` summary field
+— the observability hook for "no skill ships an OpenAPI schema, so L2 never
+actually checks anything". Scope: only traces that carry a
+`hallucination_detection` block count, i.e. GCL runs. L4 orchestrator traces do not
+run L1/L2 (the orchestrator dry-runs a plan, it has no Generator output to
+validate), so they contribute 0 by construction, not by a passing check.
+
 ```json
 {
   "trace_schema_version": "v3",
@@ -226,7 +282,8 @@ Every GCL run MUST persist a masked JSON trace under `audit-results/gcl-trace-YY
     "status": "PASS",
     "iter": 1,
     "output": "...",
-    "failure_pattern": null
+    "failure_pattern": null,
+    "critic_type": "external"
   }
 }
 ```
@@ -413,8 +470,7 @@ Derived by the runner at trace finalization. Quantifies operational efficiency f
 All FinOps/AIOps context fields are injected via `--context-json <path>` at runtime. The file is a flat JSON object; the runner extracts known keys and ignores unknown ones.
 
 ```bash
-hwcloud-skillcheck gcl run --root . \
-  --skill huaweicloud-ecs-ops \
+hwcloud-skillcheck gcl run --root huaweicloud-ecs-ops \
   --request "Stop ECS instance" \
   --command 'hcloud ecs stop-server --server-id xxx' \
   --context-json /tmp/ops-context.json \
@@ -507,9 +563,10 @@ Placeholder syntax MUST follow `{{env.*}}` / `{{user.*}}` / `{{output.*}}`; bare
 | Command | Purpose |
 |---|---|
 | `hwcloud-skillcheck gcl run --root .` | Orchestrator loop; external Critic required in production |
-| `hwcloud-skillcheck aggregate trace --root .` | Aggregate traces into quality summary |
+| `hwcloud-skillcheck aggregate trace --root .` | Aggregate BOTH trace families (`gcl-trace-*.json` + `orchestrator-trace-*.json`) into a quality summary; smoke traces are counted in `skipped_smoke`, schema-invalid in `invalid_trace`, L2 skips in `l2_skipped_no_schema`. `--require-traces` only requires a parseable trace (it falls back to the embedded fixture when the window is empty); **`--require-evidence` is the hard gate** and exits non-zero when no trace carried a verification signal |
+| `hwcloud-skillcheck learning trace aggregate --root .` | Merge non-smoke traces into `failure_patterns.json` / `remediation-playbooks.json` |
 | `hwcloud-skillcheck gcl alarm-wire --root .` | Plan/apply CES alarms from summary |
-| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter + eval-queries + product-assessment + advanced-coverage + audit-results |
+| `hwcloud-skillcheck validate --root .` | Go total-entry: frontmatter (incl. dangling `delegates_to` targets) + eval-queries + product-assessment + advanced-coverage + audit-results |
 
 ### Phase 4 CES Alarm Wiring Contract
 
@@ -570,6 +627,9 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 | 1.8.0 | 2026-07-25 | Trace schema v3: FinOps (`resource_context`, `cost_attribution`, token retry-waste) + AIOps (`incident`, `slo_context`, `change_impact`, `anomaly_baseline`, `ops_efficiency`) full data contract; `--context-json` injection |
 | 1.9.0 | 2026-07-27 | Trust boundary contract (§14): `SanitizeRequest` enforces fail-closed sanitization of user request; `applyMaskFields` enforces `MaskedFields` declarations on persist; embedded JSON-schema validators for `operation_intent` (`embed.OperationIntentSchema`) and `critic_output` (`embed.CriticOutputSchema`) gate Critic input/output at the wire format |
 | 2.0.0 | 2026-08-03 | Hallucination Detection (§15): L1 (CLI flags existence), L2 (JSON schema compliance), L3 (WAF: security/cost/stability). L1/L2 block immediately → SAFETY_FAIL; L3 violations surface to Critic.
+| 2.1.0 | 2026-09-20 | P0 loop-closure fixes. Trace provenance + two-family consumption: `final.critic_type` (`structural`/`external`), top-level `source` (`gcl`/`l4`), L4 `orchestrator-trace-*.json` now schema-compatible and consumed by `aggregate`/`learning` (real structural-critic scores replace hardcoded literals; MAX_ITER runs persist a `final` block), smoke traces counted in `skipped_smoke` and excluded from every metric, new `by_source` / `l2_skipped_no_schema` summary fields. `--structural-critic-only` implemented (was a no-op) and mutually exclusive with `--critic-cmd`. `delegates_to` dangling targets are now a hard `validate` failure. L2 skips (`skipped_no_schema`) are reported and persisted instead of silently passing (§15). |
+
+| 2.2.0 | 2026-09-20 | Trace-trust hardening after the round-2 safety Critic. Traces are validated against the canonical schema before they contribute (`invalid_trace`); L4 traces now carry the schema-required fields; `SAFETY_FAIL` is never smoke; `critic_type` is normalized into `by_critic_type`; trace-derived failure patterns are validated (category vocabulary, regex compiles and is not empty-matching, length/control-char caps) and stored with `provenance: trace` + `verified: false`, rejected ones counted; `aggregate trace --require-evidence` is the new hard evidence gate; `hallucination_detection` and `final.failure_pattern` joined `MaskedFields` (flag names kept, flag values redacted); a hallucination-detector error is reported instead of silently yielding "no block". |
 
 ## 14. Hallucination Detection
 
@@ -579,8 +639,17 @@ See `docs/hallucination-detection-spec.md` for full design.
 | Layer | Checks | Blocks? |
 |------|--------|---------|
 | **L1 — CLI param existence** | All `--flag` tokens in command validated against `references/cli-usage.md` | Yes → SAFETY_FAIL |
-| **L2 — JSON structure** | Generator output validated against `references/openapi-schema.json` | Yes → SAFETY_FAIL |
+| **L2 — JSON structure** | Generator output validated against `references/openapi-schema.json` **when the skill ships that asset** | Yes → SAFETY_FAIL |
 | **L3 — WAF compliance** | Credential exposure, dangerous verbs without guard, high-cost resources, no-rollback multi-resource mutations | No; surfaced to Critic as `correctness` penalty |
+
+**L2 availability is a capability, not an assumption.** No skill ships
+`references/openapi-schema.json` unless its generator run emitted one (see
+`huaweicloud-skill-generator/references/openapi-schema-asset.md`). When the asset
+is absent the check does not silently pass: the run logs one `WARN` per skill
+root, records `hallucination_detection.l2.status = skipped_no_schema` on the
+trace, and `aggregate trace` reports `l2_skipped_no_schema` in the quality
+summary. A production acceptance decision MUST NOT read a skipped L2 as
+"schema verified".
 
 **Implementation**: `internal/gcl/hallucination.go` + `hallucination_l1/2/3.go`.
 
@@ -673,7 +742,10 @@ the Critic.
 ### 14.4 Boundary 4 — Trace masking on persist
 
 `PersistTrace` in `hwcloud-skillcheck/internal/gcl/runner.go` invokes
-`applyMaskFields(trace)` immediately before `json.MarshalIndent`. The helper
+`applyMaskFields(trace)` immediately before `json.MarshalIndent`. The declared set
+is `request`, `operation_intent`, `generator.command`, `generator.result_excerpt`,
+`hallucination_detection` (flag values redacted, flag names kept) and
+`final.failure_pattern` (command redacted). The helper
 walks `trace.MaskedFields` (the *list* of fields the run promised to mask)
 and replaces each with the `<masked>` sentinel:
 

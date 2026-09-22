@@ -7,7 +7,7 @@
 - **CCE**: `huaweicloud-cce-ops` should handle container escape and pod-level security incidents.
 - **Billing**: `huaweicloud-billing-ops` should assess cost impact of host protection and isolation actions.
 - **IAM**: `huaweicloud-iam-ops` should manage account-level permissions for HSS agents and console access.
-- **Anti-DDoS**: `huaweicloud-antiddos-ops` should provide DDoS protection when attacks target host IPs.
+- **Anti-DDoS**: no Anti-DDoS skill exists in this repo — volumetric DDoS cleaning is a console/API operation and MUST be escalated; `huaweicloud-waf-ops` covers L7 filtering only.
 
 ## Cross-Skill Patterns
 

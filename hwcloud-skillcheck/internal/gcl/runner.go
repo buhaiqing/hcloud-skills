@@ -86,6 +86,11 @@ type GeneratorOutput struct {
 	StderrTruncated bool   `json:"stderr_truncated,omitempty"`
 	DurationMs      int    `json:"duration_ms"`
 	HasLeak         bool   `json:"has_leak"` // true if raw output contained a credential leak (before masking)
+	// Args carries the canonical iteration metadata the trace schema requires
+	// (`{"iter": int>=1, "critic_feedback": string|null}` in
+	// huaweicloud-ces-ops/assets/gcl-trace.schema.json). Populate it with
+	// iterationArgs so the field is never null or missing.
+	Args map[string]any `json:"args"`
 }
 
 // maxCaptureBytes caps the per-stream capture buffer in runCommand. Past
@@ -174,10 +179,21 @@ type Iteration struct {
 
 // FinalResult describes the terminal state of a GCL loop.
 type FinalResult struct {
-	Status               string          `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
-	Iter                 int             `json:"iter"`
-	Output               string          `json:"output,omitempty"`
-	FailurePattern       *FailurePattern `json:"failure_pattern,omitempty"`
+	Status string `json:"status"` // PASS, SAFETY_FAIL, MAX_ITER
+	Iter   int    `json:"iter"`
+	// CriticType records which Critic produced the scores this trace is
+	// based on: "structural" (the in-process deterministic proxy, whose
+	// scores are heuristic) or "external" (a real out-of-process critic).
+	// Consumers must not read a "structural" trace as an LLM verdict (CA-4).
+	// Omitted only on traces persisted before this field existed; readers
+	// MUST default an absent value to "structural".
+	CriticType string `json:"critic_type,omitempty"`
+	// Output and FailurePattern are required by the canonical trace schema, so
+	// they are always emitted (empty string / null) instead of being dropped by
+	// omitempty — a missing key makes the whole trace fail validation and get
+	// excluded from the quality metrics.
+	Output               string          `json:"output"`
+	FailurePattern       *FailurePattern `json:"failure_pattern"`
 	HallucinationBlocked bool            `json:"hallucination_blocked,omitempty"`
 	Unresolved           []string        `json:"unresolved,omitempty"`
 }
@@ -263,9 +279,49 @@ func resolvedBudget(budget ResourceBudget) ResourceBudget {
 	return budget
 }
 
-func failBudget(cfg *RunConfig, trace *GCLTrace, start time.Time, kind string) RunResult {
+// criticKindReporter is implemented by critics that know their own kind. It is
+// an optional interface so the Critic contract stays additive: ExternalCritic
+// implements it (value receiver, so both ExternalCritic and *ExternalCritic
+// satisfy it, as does any wrapper that embeds either).
+type criticKindReporter interface {
+	CriticKind() string
+}
+
+// criticTypeOf reports the canonical trace discriminator ("structural" |
+// "external") for the Critic a run delegates scoring to. Reporting goes through
+// criticKindReporter so a third-party critic that embeds ExternalCritic is still
+// attributed as external; any critic that does not report is treated as the
+// in-process structural proxy, whose scores are heuristic rather than an LLM
+// verdict.
+func criticTypeOf(critic Critic) string {
+	if c, ok := critic.(criticKindReporter); ok {
+		if kind := c.CriticKind(); kind != "" {
+			return kind
+		}
+	}
+	return "structural"
+}
+
+// iterationArgs builds the canonical `generator.args` object for one iteration.
+// The trace schema requires both keys, so an empty map (which is what a writer
+// with no iteration context produces) fails validation and drops the trace out
+// of the quality metrics.
+func iterationArgs(iter int, prevCriticFeedback []string) map[string]any {
+	var feedback any
+	if len(prevCriticFeedback) > 0 {
+		feedback = strings.Join(prevCriticFeedback, "; ")
+	}
+	return map[string]any{"iter": iter, "critic_feedback": feedback}
+}
+
+func failBudget(cfg *RunConfig, trace *GCLTrace, start time.Time, kind, criticType string) RunResult {
 	trace.BudgetExceeded = kind
-	trace.Final = &FinalResult{Status: "SAFETY_FAIL", Iter: len(trace.Iterations), Unresolved: []string{"budget_exceeded=" + kind}}
+	trace.Final = &FinalResult{
+		Status:     "SAFETY_FAIL",
+		Iter:       len(trace.Iterations),
+		CriticType: criticType,
+		Unresolved: []string{"budget_exceeded=" + kind},
+	}
 	trace.DurationMs = int(time.Since(start).Milliseconds())
 	FinalizeFinopsAiops(trace)
 	path, err := PersistTrace(trace, cfg.Root)
@@ -300,6 +356,9 @@ func Run(cfg RunConfig) RunResult {
 	if critic == nil {
 		critic = StructuralCriticAdapter{}
 	}
+	// Provenance of the scores, recorded on the persisted trace's final
+	// block so a consumer can tell a deterministic proxy from a real critic.
+	criticType := criticTypeOf(critic)
 
 	// Determine max iterations.
 	maxIter := cfg.MaxIter
@@ -343,15 +402,24 @@ func Run(cfg RunConfig) RunResult {
 		OperationIntent:    opIntent,
 		RouterDecision:     cfg.RouterDecision,
 		RubricVersion:      "v1",
-		MaskedFields:       []string{"request", "operation_intent", "generator.command", "generator.result_excerpt"},
-		Iterations:         []Iteration{},
+		MaskedFields: []string{
+			"request", "operation_intent",
+			"generator.command", "generator.result_excerpt",
+			// The hallucination block and the failure pattern echoed raw CLI
+			// tokens (resource IDs, password-shaped flag values) next to an
+			// already-masked generator.command — a credential could survive in
+			// the trace through them. Declared here so applyMaskFields
+			// enforces it.
+			"hallucination_detection", "final.failure_pattern",
+		},
+		Iterations: []Iteration{},
 	}
 	estimatedTokens := (len(cfg.Request) + len(cfg.Command) + 3) / 4
 	if estimatedTokens > budget.Tokens {
-		return failBudget(&cfg, &trace, startTime, "tokens")
+		return failBudget(&cfg, &trace, startTime, "tokens", criticType)
 	}
 	if budget.ToolCalls == 0 {
-		return failBudget(&cfg, &trace, startTime, "tool_calls")
+		return failBudget(&cfg, &trace, startTime, "tool_calls", criticType)
 	}
 
 	// P0 §14.3 — operation_intent schema validation BEFORE sanitization,
@@ -387,11 +455,11 @@ func Run(cfg RunConfig) RunResult {
 
 	for iteration := 1; iteration <= maxIter; iteration++ {
 		if iteration > budget.ToolCalls {
-			return failBudget(&cfg, &trace, startTime, "tool_calls")
+			return failBudget(&cfg, &trace, startTime, "tool_calls", criticType)
 		}
 		remaining := budget.WallClock - time.Since(startTime)
 		if remaining <= 0 {
-			return failBudget(&cfg, &trace, startTime, "wall_clock")
+			return failBudget(&cfg, &trace, startTime, "wall_clock", criticType)
 		}
 		commandTimeout := timeout
 		if remaining < commandTimeout {
@@ -411,7 +479,7 @@ func Run(cfg RunConfig) RunResult {
 		}
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
 		if generator.ExitCode == ExitTimeout && commandTimeout == remaining {
-			return failBudget(&cfg, &trace, startTime, "wall_clock")
+			return failBudget(&cfg, &trace, startTime, "wall_clock", criticType)
 		}
 
 		// [H] Hallucination Detection — L1/L2/L3 checks before Critic.
@@ -423,21 +491,35 @@ func Run(cfg RunConfig) RunResult {
 		var hdResult *HallucinationResult
 		if hdSkillRoot != "" {
 			hd := NewHallucinationDetector(hdSkillRoot)
-			hdResult, _ = hd.Run(context.Background(), generator, &trace)
+			var hdErr error
+			hdResult, hdErr = hd.Run(context.Background(), generator, &trace)
+			if hdErr != nil {
+				// A detector failure means no layer blocked. Say so instead of
+				// dropping the error: a silent failure reads as "checked clean".
+				fmt.Fprintf(rcStderr(&cfg), "warning: hallucination detection failed (no layer blocked the output): %v\n", hdErr)
+			}
+		}
+
+		// Persist the detection result on every run, not only on a block:
+		// a skipped L2 (no references/openapi-schema.json in the skill) has
+		// to be visible in the trace, otherwise "not checked" is
+		// indistinguishable from "checked and clean".
+		if hdResult != nil {
+			trace.HallucinationDetection = hdResult
 		}
 
 		// SAFETY_FAIL: L1 or L2 hallucination blocked the output.
 		if hdResult != nil && hdResult.BlockedBySafety() {
-			trace.HallucinationDetection = hdResult
 			trace.Final = &FinalResult{
 				Status:               "SAFETY_FAIL",
 				Iter:                 iteration,
+				CriticType:           criticType,
 				Output:               "",
 				HallucinationBlocked: true,
 				FailurePattern: &FailurePattern{
 					Category: "hallucination",
 					Skill:    cfg.Skill,
-					Command:  generator.Command,
+					Command:  generator.Command, // redacted by applyMaskFields("final.failure_pattern")
 					Error:    hdResult.Summary,
 					Fix:      "fix invalid flags / JSON schema / WAF violations before retrying",
 					Reusable: true,
@@ -469,6 +551,11 @@ func Run(cfg RunConfig) RunResult {
 
 		decision := Decide(criticResult.Scores)
 
+		var prevFeedback []string
+		if n := len(trace.Iterations); n > 0 {
+			prevFeedback = trace.Iterations[n-1].Critic.Suggestions
+		}
+		generator.Args = iterationArgs(iteration, prevFeedback)
 		trace.Iterations = append(trace.Iterations, Iteration{
 			Iter:      iteration,
 			Generator: generator,
@@ -481,6 +568,7 @@ func Run(cfg RunConfig) RunResult {
 			trace.Final = &FinalResult{
 				Status:         "SAFETY_FAIL",
 				Iter:           iteration,
+				CriticType:     criticType,
 				Output:         "",
 				FailurePattern: extractFailurePattern(cfg.Skill, cfg.Command, generator, criticResult),
 			}
@@ -495,9 +583,10 @@ func Run(cfg RunConfig) RunResult {
 
 		case "PASS":
 			trace.Final = &FinalResult{
-				Status: "PASS",
-				Iter:   iteration,
-				Output: generator.ResultExcerpt,
+				Status:     "PASS",
+				Iter:       iteration,
+				CriticType: criticType,
+				Output:     generator.ResultExcerpt,
 			}
 			trace.DurationMs = int(time.Since(startTime).Milliseconds())
 			FinalizeFinopsAiops(&trace)
@@ -511,13 +600,22 @@ func Run(cfg RunConfig) RunResult {
 
 	}
 
-	// MAX_ITER exhausted.
+	// MAX_ITER exhausted. The trace still gets a final block: the readers
+	// (cmd/aggregate.go, internal/learning) REQUIRE a non-empty "final" and
+	// treat a trace without one as a smoke artifact, so a MAX_ITER run that
+	// omitted it would silently drop out of pass_rate/MAX_ITER accounting.
 	last := trace.Iterations[len(trace.Iterations)-1]
 	var unresolved []string
 	for dim, threshold := range RUBRIC_THRESHOLDS {
 		if last.Critic.Scores[dim] < threshold {
 			unresolved = append(unresolved, dim)
 		}
+	}
+	trace.Final = &FinalResult{
+		Status:     "MAX_ITER",
+		Iter:       len(trace.Iterations),
+		CriticType: criticType,
+		Unresolved: unresolved,
 	}
 	trace.DurationMs = int(time.Since(startTime).Milliseconds())
 	FinalizeFinopsAiops(&trace)
@@ -635,6 +733,7 @@ func StructuralCritic(gen GeneratorOutput) CriticResult {
 		suggestions = append(suggestions, "Credential leak in trace — mask HW_SECRET_ACCESS_KEY and re-run")
 	}
 
+	// heuristic: fixed 0.5 proxy; real idempotency requires external critic — see critic_type in trace (CA-4)
 	scores["idempotency"] = 0.5
 	scores["traceability"] = 0.5
 	if gen.Command != "" && gen.ResultExcerpt != "" {
@@ -727,6 +826,68 @@ func applyMaskFields(trace *GCLTrace) {
 			}
 		}
 	}
+	if containsPath("hallucination_detection") {
+		maskHallucinationDetection(trace.HallucinationDetection)
+	}
+	if containsPath("final.failure_pattern") && trace.Final != nil && trace.Final.FailurePattern != nil {
+		fp := trace.Final.FailurePattern
+		fp.Command = "<masked>"
+		fp.Error = maskFlagValues(fp.Error)
+		fp.Fix = maskFlagValues(fp.Fix)
+	}
+}
+
+// flagEqRe matches `--flag=value`; flagSepRe matches `--flag value`. Both
+// require the flag to sit at the start of the text or after whitespace/bracket
+// punctuation, so a hyphenated word inside a command ("list-servers") is not
+// mistaken for a flag.
+var (
+	flagEqRe  = regexp.MustCompile(`(^|[\s\[(,;{])(-{1,2}[A-Za-z][A-Za-z0-9-]*)=([^\s,;\])}]+)`)
+	flagSepRe = regexp.MustCompile(`(^|[\s\[(,;{])(-{1,2}[A-Za-z][A-Za-z0-9-]*)(\s+)([^\s-][^\s,;\])}]*)`)
+)
+
+// maskFlagValues hides the VALUE of every CLI flag while keeping the flag name,
+// which is what a trace reader needs for diagnosis ("--prod-db-password" tells
+// you nothing; "--prod-db-password=<masked>" tells you the generator invented a
+// credential flag). Handles `--flag=value` and `--flag value`, including flags
+// inside bracket/parenthesis lists, and leaves non-flag text alone.
+func maskFlagValues(s string) string {
+	if s == "" || !strings.Contains(s, "-") {
+		return s
+	}
+	s = flagEqRe.ReplaceAllString(s, "$1$2=<masked>")
+	s = flagSepRe.ReplaceAllString(s, "$1$2$3<masked>")
+	return s
+}
+
+// maskHallucinationDetection redacts flag values inside the hallucination
+// result. The layer verdicts (blocked/status/counts) stay intact so the trace
+// still explains WHAT was rejected, without echoing what the generator put on
+// the command line.
+func maskHallucinationDetection(h *HallucinationResult) {
+	if h == nil {
+		return
+	}
+	if h.L1 != nil {
+		for i := range h.L1.InvalidFlags {
+			h.L1.InvalidFlags[i] = maskFlagValues(h.L1.InvalidFlags[i])
+		}
+		h.L1.Details = maskFlagValues(h.L1.Details)
+	}
+	if h.L2 != nil {
+		h.L2.Details = maskFlagValues(h.L2.Details)
+		for i := range h.L2.Errors {
+			h.L2.Errors[i].Message = maskFlagValues(h.L2.Errors[i].Message)
+			h.L2.Errors[i].Actual = maskFlagValues(h.L2.Errors[i].Actual)
+		}
+	}
+	if h.L3 != nil {
+		h.L3.Details = maskFlagValues(h.L3.Details)
+		for i := range h.L3.Violations {
+			h.L3.Violations[i].Detail = maskFlagValues(h.L3.Violations[i].Detail)
+		}
+	}
+	h.Summary = maskFlagValues(h.Summary)
 }
 
 // uniqueShortID returns 8 hex chars from crypto/rand; the Python port

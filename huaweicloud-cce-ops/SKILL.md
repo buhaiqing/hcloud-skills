@@ -5,7 +5,6 @@ delegates_to:
   - huaweicloud-ces-ops
   - huaweicloud-ecs-ops
   - huaweicloud-elb-ops
-  - huaweicloud-evs-ops
   - huaweicloud-iam-ops
   - huaweicloud-lts-ops
   - huaweicloud-swr-ops
@@ -119,13 +118,13 @@ Huawei Cloud Cloud Container Engine (CCE / 云容器引擎) is a managed Kuberne
 - Task is creating/deleting the **underlying compute** itself (e.g., ECS instance outside CCE) → delegate to: `huaweicloud-ecs-ops`
 - Task is VPC/subnet/security group configuration → delegate to: `huaweicloud-vpc-ops`
 - Task is ELB/LoadBalancer configuration → delegate to: `huaweicloud-elb-ops`
-- Task is container image management → delegate to `huaweicloud-swr-ops` (when present)
+- Task is container image management → delegate to `huaweicloud-swr-ops`
 
 ### Delegation Rules
 
 - Cluster creation requires VPC, subnet, and security group — verify via `huaweicloud-vpc-ops` before CCE create.
 - Node specification depends on ECS flavor — reference `huaweicloud-ecs-ops` for flavor details.
-- Persistent storage in CCE nodes requires EVS — delegate volume questions to `huaweicloud-evs-ops`.
+- Persistent storage in CCE nodes requires EVS — delegate volume questions to `huaweicloud-ecs-ops`.
 - CCE monitoring and alarms use CES — delegate metric/alarm questions to `huaweicloud-ces-ops`.
 - CCE log collection uses LTS — delegate log stream questions to `huaweicloud-lts-ops`.
 - Multi-product requests: handle each product with its skill; do not merge unrelated APIs.

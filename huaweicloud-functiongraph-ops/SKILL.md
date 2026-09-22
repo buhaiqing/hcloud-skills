@@ -1,7 +1,6 @@
 ---
 name: huaweicloud-functiongraph-ops
 delegates_to:
-  - huaweicloud-apig-ops
   - huaweicloud-billing-ops
   - huaweicloud-cce-ops
   - huaweicloud-ces-ops
@@ -11,7 +10,6 @@ delegates_to:
   - huaweicloud-iam-ops
   - huaweicloud-lts-ops
   - huaweicloud-obs-ops
-  - huaweicloud-smn-ops
 description: >-
   Use when the user needs to deploy, configure, troubleshoot, or monitor Huawei
   Cloud FunctionGraph — serverless function lifecycle, triggers, versioning,
@@ -91,7 +89,7 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 | 2 | **Structured I/O** | `{{env.*}}` for credentials, `{{user.*}}` for function config, `{{output.*}}` for API responses |
 | 3 | **Explicit Steps** | Every operation: Pre-flight → Execute → Validate → Recover with numbered imperative steps |
 | 4 | **Failure Strategies** | 12+ FunctionGraph-specific error codes with HALT vs retry distinction |
-| 5 | **Single Responsibility** | Function lifecycle only; delegates OBS to `huaweicloud-obs-ops`, API Gateway to `huaweicloud-apig-ops`, monitoring to `huaweicloud-ces-ops` |
+| 5 | **Single Responsibility** | Function lifecycle and function-trigger wiring (APIG / OBS / SMN / DMS) only; delegates OBS bucket lifecycle to `huaweicloud-obs-ops`, monitoring to `huaweicloud-ces-ops` |
 
 ## Trigger & Scope (Agent-Readable)
 
@@ -108,18 +106,17 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 ### SHOULD NOT Use This Skill When
 
 - Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops`
-- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops` (when present)
-- Task is OBS bucket/object management → delegate to: `huaweicloud-obs-ops` (when present)
-- Task is API Gateway (APIG) configuration → delegate to: `huaweicloud-apig-ops` (when present)
+- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops`
+- Task is OBS bucket/object management → delegate to: `huaweicloud-obs-ops`
 - Task is CCE/ECS compute management → delegate to: `huaweicloud-cce-ops` / `huaweicloud-ecs-ops`
-- Task is SMN topic/subscription management → delegate to: `huaweicloud-smn-ops` (when present)
+- Task is SMN topic/subscription management for alarms → no SMN skill in this repo (console/API); alarm-side wiring → `huaweicloud-ces-ops`
 
 ### Delegation Rules
 
 - Function code stored in OBS → delegate OBS upload to `huaweicloud-obs-ops` before function create/update
-- APIG trigger → create function first, then delegate APIG configuration to `huaweicloud-apig-ops`
+- APIG trigger → create the function first, then wire the APIG trigger binding in this skill
 - CES alarm on function errors → create function, then delegate alarm to `huaweicloud-ces-ops`
-- LTS log query → function execution logs accessible via this skill; advanced analytics delegate to `huaweicloud-lts-ops` (when present)
+- LTS log query → function execution logs accessible via this skill; advanced analytics delegate to `huaweicloud-lts-ops`
 
 ## Variable Convention
 

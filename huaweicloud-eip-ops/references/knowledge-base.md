@@ -58,8 +58,8 @@
 |---|---|
 | Root Cause | EIP is being attacked; upstream carrier null-routes |
 | Diagnosis | CES traffic shape; CES 5xx on the EIP |
-| Resolution | Delegate to `huaweicloud-ddos-ops` (when present) / `huaweicloud-hss-ops` for mitigation |
-| Cross-skill | `huaweicloud-ddos-ops`, `huaweicloud-hss-ops` |
+| Resolution | Delegate to `huaweicloud-waf-ops` / `huaweicloud-hss-ops` for mitigation |
+| Cross-skill | `huaweicloud-waf-ops`, `huaweicloud-hss-ops` |
 
 ## Pattern K8: 95计费 Cooldown Missed Resize
 

@@ -77,4 +77,4 @@ hcloud ces alarm-action modify --alarm_id <alarm-id> --suppress_duration 1800
 | Container escape | `huaweicloud-cce-ops` |
 | Cost of response | `huaweicloud-billing-ops` |
 | Account-level permission | `huaweicloud-iam-ops` |
-| DDoS protection | `huaweicloud-antiddos-ops` |
+| DDoS protection | no Anti-DDoS skill in this repo (escalate); L7 → `huaweicloud-waf-ops` |

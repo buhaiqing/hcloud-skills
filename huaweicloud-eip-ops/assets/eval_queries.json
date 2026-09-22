@@ -53,11 +53,11 @@
     },
     {
       "query": "Create a NAT gateway with SNAT for private subnet",
-      "reason": "NAT gateway — delegate to huaweicloud-nat-ops"
+      "reason": "NAT gateway — delegate to huaweicloud-vpc-ops"
     },
     {
       "query": "Set up DDoS protection for my EIP",
-      "reason": "DDoS policy — delegate to huaweicloud-ddos-ops (when present) or huaweicloud-hss-ops"
+      "reason": "DDoS policy — delegate to huaweicloud-waf-ops or huaweicloud-hss-ops"
     },
     {
       "query": "Reconcile last month's billing for ECS + EIP",

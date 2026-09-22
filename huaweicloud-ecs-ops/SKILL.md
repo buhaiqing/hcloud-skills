@@ -1,7 +1,6 @@
 ---
 name: huaweicloud-ecs-ops
 delegates_to:
-  - huaweicloud-aom-ops
   - huaweicloud-billing-ops
   - huaweicloud-cce-ops
   - huaweicloud-ces-ops
@@ -108,10 +107,10 @@ This skill integrates Huawei Cloud Well-Architected five pillars plus FinOps, Se
 ### SHOULD NOT Use This Skill When
 
 - Task is purely billing / cost analysis → delegate to: `huaweicloud-billing-ops`
-- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops` (when present)
-- Task is VPC/subnet creation → delegate to: `huaweicloud-vpc-ops` (when present)
-- Task is ELB listener/backend setup → delegate to: `huaweicloud-elb-ops` (when present)
-- Task is CES alarm/dashboard setup → delegate to: `huaweicloud-ces-ops` (when present)
+- Task is IAM permission model only → delegate to: `huaweicloud-iam-ops`
+- Task is VPC/subnet creation → delegate to: `huaweicloud-vpc-ops`
+- Task is ELB listener/backend setup → delegate to: `huaweicloud-elb-ops`
+- Task is CES alarm/dashboard setup → delegate to: `huaweicloud-ces-ops`
 
 ### Delegation Rules
 

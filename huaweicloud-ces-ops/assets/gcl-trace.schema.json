@@ -3,62 +3,142 @@
   "$id": "https://hcloud-skills.local/huaweicloud-ces-ops/assets/gcl-trace.schema.json",
   "title": "Huawei Cloud GCL Trace",
   "type": "object",
-  "required": ["trace_schema_version", "skill", "request", "rubric_version", "masked_fields", "iterations", "final"],
+  "required": [
+    "trace_schema_version",
+    "skill",
+    "request",
+    "rubric_version",
+    "masked_fields",
+    "iterations",
+    "final"
+  ],
   "properties": {
-    "trace_schema_version": { "const": "v1" },
-    "skill": { "type": "string" },
-    "request": { "type": "string" },
+    "trace_schema_version": {
+      "const": "v1"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "request": {
+      "type": "string"
+    },
     "operation_intent": {
-      "type": ["object", "null"],
-      "required": ["operation", "resource_scope", "expected_state", "safety_class"],
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "operation",
+        "resource_scope",
+        "expected_state",
+        "safety_class"
+      ],
       "properties": {
-        "operation": { "type": "string", "minLength": 1 },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
         "resource_scope": {
           "type": "array",
           "items": {
             "type": "string",
             "anyOf": [
-              { "pattern": "^\\*+$" },
-              { "pattern": "^<masked>$" },
-              { "pattern": "^[A-Za-z][A-Za-z0-9-]*-\\*+$" }
+              {
+                "pattern": "^\\*+$"
+              },
+              {
+                "pattern": "^<masked>$"
+              },
+              {
+                "pattern": "^[A-Za-z][A-Za-z0-9-]*-\\*+$"
+              }
             ]
           }
         },
-        "expected_state": { "type": "string", "minLength": 1 },
+        "expected_state": {
+          "type": "string",
+          "minLength": 1
+        },
         "safety_class": {
           "type": "string",
-          "enum": ["read-only", "mutating", "destructive"]
+          "enum": [
+            "read-only",
+            "mutating",
+            "destructive"
+          ]
         }
       },
       "additionalProperties": true
     },
-    "rubric_version": { "type": "string" },
+    "rubric_version": {
+      "type": "string"
+    },
     "masked_fields": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "iterations": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["iter", "generator", "critic", "decision"],
+        "required": [
+          "iter",
+          "generator",
+          "critic",
+          "decision"
+        ],
         "properties": {
-          "iter": { "type": "integer", "minimum": 1 },
+          "iter": {
+            "type": "integer",
+            "minimum": 1
+          },
           "generator": {
             "type": "object",
-            "required": ["command", "exit_code", "result_excerpt", "stdout_len", "stderr_len", "args"],
+            "required": [
+              "command",
+              "exit_code",
+              "result_excerpt",
+              "stdout_len",
+              "stderr_len",
+              "args"
+            ],
             "properties": {
-              "command": { "type": "string" },
-              "exit_code": { "type": "integer" },
-              "result_excerpt": { "type": "string" },
-              "stdout_len": { "type": "integer", "minimum": 0 },
-              "stderr_len": { "type": "integer", "minimum": 0 },
+              "command": {
+                "type": "string"
+              },
+              "exit_code": {
+                "type": "integer"
+              },
+              "result_excerpt": {
+                "type": "string"
+              },
+              "stdout_len": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "stderr_len": {
+                "type": "integer",
+                "minimum": 0
+              },
               "args": {
                 "type": "object",
-                "required": ["iter", "critic_feedback"],
+                "required": [
+                  "iter",
+                  "critic_feedback"
+                ],
                 "properties": {
-                  "iter": { "type": "integer", "minimum": 1 },
-                  "critic_feedback": { "type": ["string", "null"] }
+                  "iter": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "critic_feedback": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
                 },
                 "additionalProperties": true
               }
@@ -67,50 +147,172 @@
           },
           "critic": {
             "type": "object",
-            "required": ["scores", "suggestions", "blocking"],
+            "required": [
+              "scores",
+              "suggestions",
+              "blocking"
+            ],
             "properties": {
               "scores": {
                 "type": "object",
-                "required": ["correctness", "safety", "idempotency", "traceability", "spec_compliance"],
+                "required": [
+                  "correctness",
+                  "safety",
+                  "idempotency",
+                  "traceability",
+                  "spec_compliance"
+                ],
                 "properties": {
-                  "correctness": { "type": "number", "minimum": 0, "maximum": 1 },
-                  "safety": { "type": "number", "minimum": 0, "maximum": 1 },
-                  "idempotency": { "type": "number", "minimum": 0, "maximum": 1 },
-                  "traceability": { "type": "number", "minimum": 0, "maximum": 1 },
-                  "spec_compliance": { "type": "number", "minimum": 0, "maximum": 1 }
+                  "correctness": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "safety": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "idempotency": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "traceability": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "spec_compliance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
                 },
                 "additionalProperties": true
               },
               "suggestions": {
                 "type": "array",
-                "items": { "type": "string" }
+                "items": {
+                  "type": "string"
+                }
               },
-              "blocking": { "type": "boolean" }
+              "blocking": {
+                "type": "boolean"
+              }
             },
             "additionalProperties": true
           },
-          "decision": { "type": "string", "enum": ["PASS", "RETRY", "SAFETY_FAIL"] }
+          "decision": {
+            "type": "string",
+            "enum": [
+              "PASS",
+              "RETRY",
+              "SAFETY_FAIL"
+            ]
+          }
         },
         "additionalProperties": true
       }
     },
     "final": {
       "type": "object",
-      "required": ["status", "iter", "output", "failure_pattern"],
+      "required": [
+        "status",
+        "iter",
+        "output",
+        "failure_pattern"
+      ],
       "properties": {
-        "status": { "type": "string", "enum": ["PASS", "MAX_ITER", "SAFETY_FAIL"] },
-        "iter": { "type": "integer", "minimum": 1 },
-        "output": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "MAX_ITER",
+            "SAFETY_FAIL"
+          ]
+        },
+        "iter": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "unresolved": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "failure_pattern": {
-          "type": ["object", "null"],
+          "type": [
+            "object",
+            "null"
+          ],
           "additionalProperties": true
+        },
+        "critic_type": {
+          "type": "string",
+          "enum": [
+            "structural",
+            "external"
+          ],
+          "description": "Which Critic produced the scores. structural is a deterministic proxy and MUST NOT be used for production or human acceptance."
+        },
+        "dimensions": {
+          "type": "object",
+          "description": "L4: folded per-step structural critic scores (safety=min, others=mean)."
+        },
+        "overall": {
+          "type": "number",
+          "description": "L4: overall critic score derived from dimensions."
         }
       },
       "additionalProperties": true
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "gcl",
+        "l4"
+      ],
+      "description": "Trace writer. Absent means gcl (traces written before this field existed)."
+    },
+    "fault": {
+      "type": "string",
+      "description": "L4 orchestrator input fault; also the smoke marker for l4 traces."
+    },
+    "step_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "L4 executed step count. 0 marks an L4 smoke trace."
+    },
+    "hallucination_detection": {
+      "type": "object",
+      "description": "L1/L2/L3 hallucination check result, persisted on every run so a skipped check is distinguishable from a clean one.",
+      "properties": {
+        "l2": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "violation",
+                "skipped_no_schema",
+                "skipped_no_output",
+                "invalid_output",
+                "schema_unreadable",
+                "validator_error"
+              ]
+            }
+          }
+        }
+      }
     }
   },
   "additionalProperties": true

@@ -18,7 +18,7 @@
 | 1 | `hcloud eip describe` — current `bandwidth.size` (Mbps) | Resize via `hcloud eip update-bandwidth` |
 | 2 | If 按流量 — is egress approaching 100 Mbps? | Note: 100 Mbps is the **hard ceiling** of `traffic` mode |
 | 3 | CES metric `outgoing_bytes / bandwidth_size > 0.9` for >5 min | Trigger AIOps pattern → `references/advanced/aiops-patterns.md` |
-| 4 | DDoS? | Delegate to `huaweicloud-ddos-ops` / `huaweicloud-hss-ops` |
+| 4 | DDoS? | Delegate to `huaweicloud-waf-ops` / `huaweicloud-hss-ops` |
 
 ### P3 — `EipAllocateFailed` on Allocate
 
@@ -53,7 +53,7 @@ Cross-skill: feed the list to `huaweicloud-billing-ops` for cost attribution.
 - Cloud DNS (DNS) TTL still caches the old A record.
 - Action: lower TTL **before** the planned release; after release, manually flush
   recursive resolvers if the domain is critical.
-- Delegate to `huaweicloud-dns-ops` (when present) or manual DNS provider.
+- Delegate to `huaweicloud-dns-ops` or manual DNS provider.
 
 ### P7 — Cross-Region EIP Bind Failure
 

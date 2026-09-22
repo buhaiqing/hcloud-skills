@@ -26,7 +26,7 @@
 
 - `huaweicloud-vpc-ops → huaweicloud-ecs-ops` for SG rule impact analysis
 - `huaweicloud-vpc-ops → huaweicloud-elb-ops` for EIP re-binding
-- `huaweicloud-vpc-ops → huaweicloud-nat-ops` for NAT gateway changes
+- `huaweicloud-vpc-ops` owns NAT gateway changes in-skill — no cross-skill delegation
 - `huaweicloud-vpc-ops → huaweicloud-iam-ops` for cross-account peering
 
 > **Security-Sensitive**: every destructive operation above MUST pass the

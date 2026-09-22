@@ -58,7 +58,7 @@ func main() {
 | Set up OBS monitoring alarms | `huaweicloud-ces-ops` | bucket, metric, thresholds | `{alarm_rule_id}` |
 | Create VPC Endpoint for OBS | `huaweicloud-vpc-ops` | VPC, subnet, service | `{endpoint_id}` |
 | Configure OBS access logging→LTS | `huaweicloud-lts-ops` | Log group/stream, bucket | `{log_group_id}` |
-| Set up OBS event notifications | `huaweicloud-smn-ops` (when present) | Topic, event type | `{topic_arn}` |
+| Set up OBS event notifications | `huaweicloud-functiongraph-ops` | function URN, event type (OBS emits the event; no SMN/notification skill in this repo) | `{function_urn}` |
 
 ### Extended Delegation (P1)
 

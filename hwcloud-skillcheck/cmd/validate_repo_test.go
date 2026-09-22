@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -311,6 +312,201 @@ func TestRunValidateProductAssessmentCLI(t *testing.T) {
 	}
 	if err := runValidateProductAssessment([]string{"--root", root}); err != nil {
 		t.Fatalf("valid assessment should pass, got: %v", err)
+	}
+}
+
+// --- validate frontmatter: delegates_to ---
+
+// skillMDFixture renders a minimally valid SKILL.md whose frontmatter declares
+// the given delegates_to targets (the key is omitted when there are none).
+func skillMDFixture(name string, delegates ...string) string {
+	md := "---\nname: " + name + "\n"
+	if len(delegates) > 0 {
+		md += "delegates_to:\n"
+		for _, d := range delegates {
+			md += "  - " + d + "\n"
+		}
+	}
+	return md + "description: x\ncompatibility: x\nlicense: Apache-2.0\n" +
+		"metadata:\n  version: 1.0.0\n  last_updated: 2026-06-01\n  cli_applicability: cli-first\n---\n# body\n"
+}
+
+// writeSkillFixture materialises <root>/<name>/SKILL.md for the CLI-level tests.
+func writeSkillFixture(t *testing.T, root, name string, delegates ...string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillMDFixture(name, delegates...)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected into a pipe and returns the
+// captured text, so tests can assert on per-violation gate output (the gate
+// returns only an aggregate count).
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+
+	fn()
+
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestValidateDelegatesTo(t *testing.T) {
+	skillDirs := map[string]bool{
+		"huaweicloud-ecs-ops": true,
+		"huaweicloud-vpc-ops": true,
+		"huaweicloud-ces-ops": true,
+	}
+	tests := []struct {
+		name     string
+		skillDir string
+		content  string
+		want     []string
+	}{
+		{
+			name:     "no delegates_to key",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  skillMDFixture("huaweicloud-ecs-ops"),
+		},
+		{
+			name:     "existing targets only",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  skillMDFixture("huaweicloud-ecs-ops", "huaweicloud-vpc-ops", "huaweicloud-ces-ops"),
+		},
+		{
+			name:     "empty list",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  "---\nname: huaweicloud-ecs-ops\ndelegates_to:\ndescription: x\n---\n",
+		},
+		{
+			name:     "missing skill reported",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  skillMDFixture("huaweicloud-ecs-ops", "huaweicloud-evs-ops"),
+			want:     []string{"huaweicloud-ecs-ops: delegates_to references missing skill huaweicloud-evs-ops"},
+		},
+		{
+			name:     "only the missing target is reported",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  skillMDFixture("huaweicloud-ecs-ops", "huaweicloud-vpc-ops", "huaweicloud-evs-ops", "huaweicloud-ces-ops"),
+			want:     []string{"huaweicloud-ecs-ops: delegates_to references missing skill huaweicloud-evs-ops"},
+		},
+		{
+			name:     "several missing targets each reported",
+			skillDir: "huaweicloud-waf-ops",
+			content:  skillMDFixture("huaweicloud-waf-ops", "huaweicloud-scm-ops", "huaweicloud-antiddos-ops", "huaweicloud-ecs-ops"),
+			want: []string{
+				"huaweicloud-waf-ops: delegates_to references missing skill huaweicloud-scm-ops",
+				"huaweicloud-waf-ops: delegates_to references missing skill huaweicloud-antiddos-ops",
+			},
+		},
+		{
+			name:     "unparseable frontmatter is not double-reported",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  "# no frontmatter here\n",
+		},
+		{
+			name:     "scalar target accepted",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  "---\nname: huaweicloud-ecs-ops\ndelegates_to: huaweicloud-vpc-ops\ndescription: x\n---\n",
+		},
+		{
+			name:     "non-string entry rejected",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  "---\nname: huaweicloud-ecs-ops\ndelegates_to:\n  - 42\ndescription: x\n---\n",
+			want:     []string{"huaweicloud-ecs-ops: delegates_to entry 1 is not a skill name"},
+		},
+		{
+			name:     "mapping rejected",
+			skillDir: "huaweicloud-ecs-ops",
+			content:  "---\nname: huaweicloud-ecs-ops\ndelegates_to:\n  target: huaweicloud-vpc-ops\ndescription: x\n---\n",
+			want:     []string{"huaweicloud-ecs-ops: delegates_to must be a list of skill names"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validateDelegatesTo([]byte(tt.content), tt.skillDir, skillDirs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range tt.want {
+				if got[i] != tt.want[i] {
+					t.Errorf("error %d: got %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRunValidateFrontmatterDelegatesCLI exercises the gate end to end on a
+// tempdir repo: a valid delegate keeps the run green, a ghost entry fails it
+// and names only the ghost.
+func TestRunValidateFrontmatterDelegatesCLI(t *testing.T) {
+	tests := []struct {
+		name      string
+		delegates []string
+		wantFail  bool
+		wantMsg   string
+	}{
+		{
+			name:      "valid delegate passes",
+			delegates: []string{"huaweicloud-vpc-ops"},
+		},
+		{
+			name:      "ghost delegate fails",
+			delegates: []string{"huaweicloud-vpc-ops", "huaweicloud-evs-ops"},
+			wantFail:  true,
+			wantMsg:   "huaweicloud-ecs-ops: delegates_to references missing skill huaweicloud-evs-ops",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeSkillFixture(t, root, "huaweicloud-ecs-ops", tt.delegates...)
+			writeSkillFixture(t, root, "huaweicloud-vpc-ops", "huaweicloud-ecs-ops")
+
+			var err error
+			stderr := captureStderr(t, func() {
+				err = runValidateFrontmatter([]string{"--root", root})
+			})
+
+			if !tt.wantFail {
+				if err != nil {
+					t.Fatalf("resolvable delegates should pass, got %v (stderr: %s)", err, stderr)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("dangling delegates_to entry should fail the gate")
+			}
+			if !containsStr(stderr, tt.wantMsg) {
+				t.Errorf("stderr missing %q, got:\n%s", tt.wantMsg, stderr)
+			}
+			if containsStr(stderr, "missing skill huaweicloud-vpc-ops") {
+				t.Errorf("existing delegate must not be reported, got:\n%s", stderr)
+			}
+		})
 	}
 }
 

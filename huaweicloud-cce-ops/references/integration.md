@@ -97,11 +97,11 @@ func main() {
 |----------------|---------------|-------------|--------|
 | Create CCE cluster | `huaweicloud-cce-ops` | `huaweicloud-vpc-ops` | Need VPC, subnet, security group first |
 | Create CCE cluster | `huaweicloud-cce-ops` | `huaweicloud-ecs-ops` | ECS flavor selection and pricing details |
-| CCE persistent storage | `huaweicloud-cce-ops` | `huaweicloud-evs-ops` | EVS volume types, performance tiers |
+| CCE persistent storage | `huaweicloud-cce-ops` | `huaweicloud-ecs-ops` | EVS-backed PV types and performance tiers (no dedicated EVS skill in this repo) |
 | CCE LoadBalancer service | `huaweicloud-cce-ops` | `huaweicloud-elb-ops` | ELB configuration, listener setup |
 | CCE monitoring/alarm | `huaweicloud-cce-ops` | `huaweicloud-ces-ops` | CES metric queries, alarm rules |
 | CCE log collection | `huaweicloud-cce-ops` | `huaweicloud-lts-ops` | LTS log groups, log streams |
-| CCE container images | `huaweicloud-cce-ops` | `huaweicloud-swr-ops` | Container image registry (when present) |
+| CCE container images | `huaweicloud-cce-ops` | `huaweicloud-swr-ops` | Container image registry |
 | CCE node security | `huaweicloud-cce-ops` | — | Node security groups are CCE-owned; handle internally |
 | CCE billing/cost | `huaweicloud-cce-ops` | `huaweicloud-billing-ops` | Cost center, billing queries |
 | CCE IAM permissions | `huaweicloud-cce-ops` | `huaweicloud-iam-ops` | IAM role/policy management |

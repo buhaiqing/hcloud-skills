@@ -37,4 +37,4 @@
 | Web 攻击防护 | `huaweicloud-waf-ops` | 联动 Web 层防护 |
 | 费用异常 | `huaweicloud-billing-ops` | 防护配额计费 |
 | 权限/策略 | `huaweicloud-iam-ops` | 检查 AK/SK 与策略 |
-| DDoS/攻击源 | `huaweicloud-antiddos-ops`(若启用) | 清洗攻击流量 |
+| DDoS/攻击源 | 无 Anti-DDoS skill;`huaweicloud-waf-ops`(仅 L7) | 清洗需控制台/API,需升级 |

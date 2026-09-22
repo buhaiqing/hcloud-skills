@@ -38,6 +38,4 @@
 | 费用异常 | `huaweicloud-billing-ops` | 防护计费 |
 | 权限/策略 | `huaweicloud-iam-ops` | 检查 WAF 调用权限 |
 | 网络/子网 | `huaweicloud-vpc-ops` | 检查回源网络 |
-| 证书管理 | `huaweicloud-scm-ops`(若启用) | 证书续期 |
 | 指标监控 | `huaweicloud-ces-ops` | 查看 WAF 指标 |
-| DDoS 清洗 | `huaweicloud-antiddos-ops`(若启用) | 大流量攻击清洗 |

@@ -5,9 +5,9 @@
 | Scenario | Primary skill | Delegate to | Reason |
 |---|---|---|---|
 | Allocate EIP, bind to ECS | `huaweicloud-eip-ops` | `huaweicloud-ecs-ops` (target verify) | EIP needs ECS `RUNNING` + port_id |
-| EIP + NAT Gateway | `huaweicloud-eip-ops` | `huaweicloud-nat-ops` | EIP first, then create NAT + SNAT |
+| EIP + NAT Gateway | `huaweicloud-eip-ops` | `huaweicloud-vpc-ops` | EIP first, then create NAT + SNAT |
 | EIP + ELB (Enhanced) | `huaweicloud-eip-ops` | `huaweicloud-elb-ops` | EIP binds to ELB listener |
-| EIP + DDoS mitigation | `huaweicloud-ddos-ops` (when present) | `huaweicloud-eip-ops` | DDoS first, EIP bound to protected IP |
+| EIP + DDoS mitigation | no Anti-DDoS skill in this repo | `huaweicloud-eip-ops` | Volumetric cleaning is console/API; EIP is bound to the protected IP afterwards |
 | Idle EIP cost | `huaweicloud-billing-ops` | `huaweicloud-eip-ops` (list) | EIP list, billing attribution |
 | Bandwidth alarm | `huaweicloud-ces-ops` | `huaweicloud-eip-ops` (resize) | CES detects, EIP resizes |
 | EIP exposure check | `huaweicloud-hss-ops` | `huaweicloud-vpc-ops` (SG) | HSS scans, VPC fixes SG |
@@ -18,7 +18,7 @@
 
 - Do NOT change the security group from `huaweicloud-eip-ops` — delegate to
   `huaweicloud-vpc-ops`. Mixing EIP and SG in one flow obscures blast radius.
-- Do NOT mutate NAT / SNAT / DNAT from this skill — delegate to `huaweicloud-nat-ops`.
+- Do NOT mutate NAT / SNAT / DNAT from this skill — delegate to `huaweicloud-vpc-ops`.
 - Do NOT touch DDoS policies from this skill — even if a release "frees" the
   protected IP, the DDoS policy must be cleaned separately.
 

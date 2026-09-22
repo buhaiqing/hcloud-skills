@@ -33,6 +33,13 @@ delegation:
     fallback: "<fallback skill if primary unavailable>"
 ```
 
+> **Skill names MUST exist.** Every skill named in a delegation — including
+> `fallback` — has to match a `huaweicloud-*-ops/` directory that is actually shipped.
+> `hwcloud-skillcheck validate frontmatter` fails the build on a `delegates_to` entry
+> that names no shipped skill, and a body-level pointer to a missing skill sends the
+> runtime delegate expansion to a skill that cannot be loaded. Never invent a skill
+> name to express intent; route to the nearest real skill instead.
+
 ### 1.2 Example (ECS → RDS)
 
 ```yaml
@@ -44,7 +51,7 @@ delegation:
       threshold: "95"
       duration: "5m"
     priority: P0
-    fallback: "huaweicloud-dbaas-ops"
+    fallback: "huaweicloud-ces-ops"
 ```
 
 ---

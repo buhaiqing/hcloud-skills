@@ -118,7 +118,7 @@ This skill maps operations to Huawei Cloud's Well-Architected Framework five pil
 ### SHOULD NOT Use This Skill When
 
 - Task is purely billing / account management → delegate to: `huaweicloud-billing-ops`
-- Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops` (when present)
+- Task is IAM / permission model only → delegate to: `huaweicloud-iam-ops`
 - Task is about other database services (GaussDB, DCS) → delegate to: `huaweicloud-gaussdb-ops` or `huaweicloud-dcs-ops`
 
 ### Delegation Rules

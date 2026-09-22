@@ -389,10 +389,11 @@ Services: `hcloud-skills` (interactive), `hcloud-worker` (non-interactive), `hcl
 - Loops bounded: every run has `max_iterations` + masked trace
 
 ```bash
-hwcloud-skillcheck validate --root .
-hwcloud-skillcheck gcl run --root . --skill huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
+hwcloud-skillcheck validate --root .             # Go total-entry: frontmatter (incl. dangling `delegates_to` targets) + eval-queries + product-assessment + advanced-coverage + audit-results
+hwcloud-skillcheck gcl run --root huaweicloud-billing-ops --request "smoke" --command 'printf ok' --max-iter 1 --structural-critic-only
+hwcloud-skillcheck aggregate trace --root . --since-hours 168
+hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-quality-summary-healthy.json
 ```
-
 
 ## Self-Healing Loop & Experience Learning (L4)
 
@@ -408,7 +409,7 @@ hwcloud-skillcheck learning trace aggregate --skill <name> --root .
 hwcloud-skillcheck learning trace report --skill <name> --root .
 ```
 
-**硬约束**：`risk_level: critical` 的 playbooks 禁止自动执行；`failure_patterns.json` append-only。
+**硬约束**：`risk_level: critical` 的 playbooks 禁止自动执行；`failure_patterns.json` append-only；每次 GCL campaign 后必须跑 `hwcloud-skillcheck learning trace aggregate` 闭环。
 
 ## CodeGraph Integration — 代码变动即时同步
 
