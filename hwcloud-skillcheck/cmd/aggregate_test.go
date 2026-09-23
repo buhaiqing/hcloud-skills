@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -691,5 +692,131 @@ func TestAggregateTraceWarnsOnZeroEvidence(t *testing.T) {
 	// The rejected trace is named individually too.
 	if !strings.Contains(stderr, "orchestrator-trace-crafted.json") {
 		t.Errorf("the rejected trace file must be named; stderr:\n%s", stderr)
+	}
+}
+
+// --- Learning trace aggregate CLI: SkippedSkillMismatch + EmptyLoop alarm ---
+
+// seedFailurePatterns writes a minimal failure_patterns.json so runTraceAggregate
+// has a target file (the same shape cmd/learning.go expects). It mirrors the
+// one used by internal/learning tests but lives in cmd/ so the CLI surface can
+// be tested without crossing package boundaries.
+func seedFailurePatterns(t *testing.T, root, skill string) {
+	t.Helper()
+	dir := filepath.Join(root, skill, "assets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}
+	b, _ := json.Marshal(data)
+	if err := os.WriteFile(filepath.Join(dir, "failure_patterns.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRunTraceAggregateReportsSkillMismatch pins the new CLI line: a trace
+// whose `skill` does not match --skill surfaces as Skipped (skill mismatch)
+// in the aggregate output, not as a silent zero. The pre-fix CLI reported
+// Scanned=0 with no explanation, hiding the writer-attribution bug.
+func TestRunTraceAggregateReportsSkillMismatch(t *testing.T) {
+	root := t.TempDir()
+	const skill = "huaweicloud-ecs-ops"
+	seedFailurePatterns(t, root, skill)
+
+	audit := filepath.Join(root, "audit-results")
+	if err := os.MkdirAll(audit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Real gcl-shaped evidence trace, but with skill="unknown" — the exact
+	// pre-fix shape. Other skill-matched trace proves the filter still
+	// works alongside the mismatch counter.
+	writeTraceJSON(t, root, "gcl-trace-misattr.json",
+		traceFixture("unknown", "PASS", 1, 1.0))
+	writeTraceJSON(t, root, "gcl-trace-good.json",
+		traceFixture(skill, "PASS", 1, 1.0))
+
+	var stdout strings.Builder
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&stdout, r)
+		close(done)
+	}()
+	runErr := runTraceAggregate([]string{"--root", root, "--skill", skill, "--dry-run"})
+	_ = w.Close()
+	<-done
+	os.Stdout = origStdout
+	if runErr != nil {
+		t.Fatalf("runTraceAggregate error: %v", runErr)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Skipped (skill mismatch, --skill filter): 1") {
+		t.Errorf("aggregate output must name SkippedSkillMismatch=1; got:\n%s", out)
+	}
+	if !strings.Contains(out, "Traces scanned: 1") {
+		t.Errorf("aggregate output must show Scanned=1 (the matching trace); got:\n%s", out)
+	}
+}
+
+// TestRunTraceAggregateEmptyLoopWarns pins the operator-facing half of the
+// alarm: when every trace in audit-results/ has skill="unknown" (or another
+// value not matching --skill), the CLI prints an extra stderr WARN saying
+// the loop consumed 0 traces. This is what makes the silent-attribute bug
+// loud to whoever runs `learning trace aggregate` next.
+func TestRunTraceAggregateEmptyLoopWarns(t *testing.T) {
+	root := t.TempDir()
+	const skill = "huaweicloud-ecs-ops"
+	seedFailurePatterns(t, root, skill)
+
+	audit := filepath.Join(root, "audit-results")
+	if err := os.MkdirAll(audit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTraceJSON(t, root, "gcl-trace-1.json", traceFixture("unknown", "PASS", 1, 1.0))
+	writeTraceJSON(t, root, "gcl-trace-2.json", traceFixture("unknown", "PASS", 1, 1.0))
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	origStdout, origStderr := os.Stdout, os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout, os.Stderr = wOut, wErr
+	doneOut := make(chan struct{})
+	doneErr := make(chan struct{})
+	go func() { _, _ = io.Copy(&stdout, rOut); close(doneOut) }()
+	go func() { _, _ = io.Copy(&stderr, rErr); close(doneErr) }()
+	runErr := runTraceAggregate([]string{"--root", root, "--skill", skill, "--dry-run"})
+	_ = wOut.Close()
+	_ = wErr.Close()
+	<-doneOut
+	<-doneErr
+	os.Stdout = origStdout
+	os.Stderr = origStderr
+	if runErr != nil {
+		t.Fatalf("runTraceAggregate error: %v", runErr)
+	}
+	if !strings.Contains(stdout.String(), "Skipped (skill mismatch, --skill filter): 2") {
+		t.Errorf("aggregate stdout must show SkippedSkillMismatch=2; got:\n%s", stdout.String())
+	}
+	// Both the package-level Aggregate WARN and the CLI-level empty-loop
+	// WARN must reach stderr — the operator gets the diagnosis from the
+	// former and the one-liner summary from the latter.
+	for _, want := range []string{
+		"WARN: learning loop consumed 0 traces for this run",
+		"failure_patterns.json will NOT grow",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr must contain %q; got:\n%s", want, stderr.String())
+		}
 	}
 }

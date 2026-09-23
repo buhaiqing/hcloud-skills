@@ -3,6 +3,8 @@
 package learning
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -765,4 +767,212 @@ func TestAggregate_SafetyFailStaysCounted(t *testing.T) {
 	if res.NewCount != 1 {
 		t.Errorf("NewCount=%d, want 1 (its failure pattern is learnable)", res.NewCount)
 	}
+}
+
+// --- Loop-health observability (skill-mismatch counter + EmptyLoop WARN) ---
+
+// TestAggregate_CountsSkillMismatch pins the new SkippedSkillMismatch counter:
+// a writer-attributed trace whose `skill` does not match --skill is now
+// counted instead of silently dropped, so a misconfigured writer surfaces in
+// the CLI summary. The pre-fix code did `if trace["skill"] != skill { continue }`
+// ahead of `res.Scanned++`, which produced source_traces_analyzed=0 across
+// every skill and hid the bug.
+func TestAggregate_CountsSkillMismatch(t *testing.T) {
+	root := t.TempDir()
+	audit := filepath.Join(root, "audit-results")
+	mustMkdir(t, audit)
+	const skill = "huaweicloud-ecs-ops"
+	// Real, evidence-classified trace but with skill="unknown" — the exact
+	// shape the L4 writer used to emit before orchestrator.resolveTraceSkill.
+	writeTrace(t, filepath.Join(audit, "gcl-trace-misattr.json"), "unknown")
+	// One trace for the skill we actually asked for, to prove the matcher
+	// still picks it up.
+	writeTraceWithFailure(t, filepath.Join(audit, "gcl-trace-good.json"),
+		skill, "runtime", "OOMKilled", "hcloud ecs list-servers")
+
+	mustMkdir(t, filepath.Join(root, skill, "assets"))
+	if err := writeJSON(filepath.Join(root, skill, "assets", "failure_patterns.json"), map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}); err != nil {
+		t.Fatalf("seed failure_patterns.json: %v", err)
+	}
+
+	res, err := Aggregate(root, skill, nil, true) // dry-run — no write side-effects
+	if err != nil {
+		t.Fatalf("Aggregate error: %v", err)
+	}
+	if res.SkippedSkillMismatch != 1 {
+		t.Errorf("SkippedSkillMismatch=%d, want 1 (the unknown trace)", res.SkippedSkillMismatch)
+	}
+	if res.Scanned != 1 {
+		t.Errorf("Scanned=%d, want 1 (only the matching trace contributes)", res.Scanned)
+	}
+	if res.NewCount != 1 {
+		t.Errorf("NewCount=%d, want 1", res.NewCount)
+	}
+}
+
+// TestAggregate_EmptyLoopWarnsOnAllMismatch pins the EmptyLoop alarm: a
+// non-empty trace set whose every file was dropped at the skill-mismatch gate
+// must (a) set AggregateResult.EmptyLoop, (b) emit exactly one WARN to stderr
+// naming skill / counter / possible causes, and (c) do so under dry-run so a
+// preview of an empty loop is loud before any file is written.
+func TestAggregate_EmptyLoopWarnsOnAllMismatch(t *testing.T) {
+	root := t.TempDir()
+	audit := filepath.Join(root, "audit-results")
+	mustMkdir(t, audit)
+	const skill = "huaweicloud-ecs-ops"
+	// Three traces, all with skill="unknown" — the silent-attribute shape.
+	writeTrace(t, filepath.Join(audit, "gcl-trace-1.json"), "unknown")
+	writeTrace(t, filepath.Join(audit, "gcl-trace-2.json"), "unknown")
+	writeTrace(t, filepath.Join(audit, "gcl-trace-3.json"), "unknown")
+
+	mustMkdir(t, filepath.Join(root, skill, "assets"))
+	if err := writeJSON(filepath.Join(root, skill, "assets", "failure_patterns.json"), map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}); err != nil {
+		t.Fatalf("seed failure_patterns.json: %v", err)
+	}
+
+	stderr := captureStderr(t, func() {
+		res, err := Aggregate(root, skill, nil, true) // dry-run, no write
+		if err != nil {
+			t.Fatalf("Aggregate error: %v", err)
+		}
+		if !res.EmptyLoop {
+			t.Errorf("EmptyLoop=false, want true (every trace was skill-mismatched)")
+		}
+		if res.SkippedSkillMismatch != 3 {
+			t.Errorf("SkippedSkillMismatch=%d, want 3", res.SkippedSkillMismatch)
+		}
+		if res.Scanned != 0 {
+			t.Errorf("Scanned=%d, want 0", res.Scanned)
+		}
+	})
+
+	// The WARN must name the skill and the counter that explains the miss,
+	// and must not be silent under dry-run.
+	for _, want := range []string{
+		"WARN:",
+		`skill "huaweicloud-ecs-ops"`,
+		"skipped_skill_mismatch=3",
+		"failure_patterns.json will NOT grow",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr must contain %q; got:\n%s", want, stderr)
+		}
+	}
+}
+
+// TestAggregate_EmptyLoopSilentOnNoFiles asserts the alarm does NOT fire
+// when there are simply no trace files at all — that is "nothing to do", not
+// "loop broken". This is what makes EmptyLoop a usable signal: it only
+// lights up when a non-empty input produced nothing.
+func TestAggregate_EmptyLoopSilentOnNoFiles(t *testing.T) {
+	root := t.TempDir()
+	mustMkdir(t, filepath.Join(root, "audit-results")) // exists, empty
+	const skill = "huaweicloud-ecs-ops"
+	mustMkdir(t, filepath.Join(root, skill, "assets"))
+	if err := writeJSON(filepath.Join(root, skill, "assets", "failure_patterns.json"), map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}); err != nil {
+		t.Fatalf("seed failure_patterns.json: %v", err)
+	}
+
+	stderr := captureStderr(t, func() {
+		res, err := Aggregate(root, skill, nil, true)
+		if err != nil {
+			t.Fatalf("Aggregate error: %v", err)
+		}
+		if res.EmptyLoop {
+			t.Errorf("EmptyLoop=true on an empty trace directory, want false")
+		}
+	})
+	if strings.Contains(stderr, "WARN: learning loop consumed 0 traces") {
+		t.Errorf("EmptyLoop WARN must NOT fire on an empty audit-results/; got:\n%s", stderr)
+	}
+}
+
+// TestAggregate_EmptyLoopAlsoFiresOnAllSmoke mirrors the alarm's other
+// common shape: every file is classified as smoke, so even when --skill is
+// correct and the writer is correct, source_traces_analyzed still does not
+// grow. The operator needs the same warning to act on it.
+func TestAggregate_EmptyLoopAlsoFiresOnAllSmoke(t *testing.T) {
+	root := t.TempDir()
+	audit := filepath.Join(root, "audit-results")
+	mustMkdir(t, audit)
+	const skill = "huaweicloud-ecs-ops"
+	// Smoke by request token — IsSmokeTrace must classify it as smoke.
+	writeTraceWithRequest(t, filepath.Join(audit, "gcl-trace-smoke.json"),
+		skill, "smoke", terminalFinal("PASS", nil))
+
+	mustMkdir(t, filepath.Join(root, skill, "assets"))
+	if err := writeJSON(filepath.Join(root, skill, "assets", "failure_patterns.json"), map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skill,
+		"patterns": []any{},
+		"meta":     map[string]any{"total_patterns": 0, "source_traces_analyzed": 0},
+	}); err != nil {
+		t.Fatalf("seed failure_patterns.json: %v", err)
+	}
+
+	stderr := captureStderr(t, func() {
+		res, err := Aggregate(root, skill, nil, true)
+		if err != nil {
+			t.Fatalf("Aggregate error: %v", err)
+		}
+		if !res.EmptyLoop {
+			t.Errorf("EmptyLoop=false, want true (every trace was smoke)")
+		}
+		if res.SkippedSmoke != 1 {
+			t.Errorf("SkippedSmoke=%d, want 1", res.SkippedSmoke)
+		}
+	})
+	if !strings.Contains(stderr, "skipped_smoke=1") {
+		t.Errorf("EmptyLoop WARN must name skipped_smoke when smoke is the cause; got:\n%s", stderr)
+	}
+}
+
+// writeTraceWithRequest is the request-token variant of writeTraceWithFailure
+// (the latter hardcodes a failure pattern; smoke traces have a PASS terminal).
+func writeTraceWithRequest(t *testing.T, p string, skill, request string, final map[string]any) {
+	t.Helper()
+	trace := schemaValidTrace(skill, final)
+	trace["request"] = request
+	if err := writeJSON(p, trace); err != nil {
+		t.Fatalf("write trace: %v", err)
+	}
+}
+
+// captureStderr redirects os.Stderr to a buffer for the duration of fn, then
+// restores the original writer. Used to assert that Aggregate's EmptyLoop WARN
+// reaches stderr without the test runner losing its own diagnostics.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = orig }()
+	done := make(chan struct{})
+	var buf bytes.Buffer
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(done)
+	}()
+	fn()
+	_ = w.Close()
+	<-done
+	return buf.String()
 }

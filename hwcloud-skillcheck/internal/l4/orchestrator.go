@@ -30,6 +30,55 @@ func primarySkillFromPlan(p *ExecutionPlan) string {
 	return p.Steps[0].Skill
 }
 
+// resolveTraceSkill is the write-side attribution helper. It picks the most
+// concrete skill id the orchestrator can name for the trace, returning the
+// literal "unknown" only when every source is empty. The returned source tag
+// names which path produced the answer — kept for future telemetry / tests so
+// a regression in attribution is observable, not just "still works".
+//
+// Source precedence (frozen, see orchestrator.go Step 6):
+//  1. "matched"      — keyword-matched primary (the canonical path)
+//  2. "plan_step"    — first plan.Steps[].Skill (operator-supplied fault
+//     text the static rules don't cover)
+//  3. "expanded"     — first matched ∪ delegates entry (the allow-list
+//     excluded every priority skill)
+//  4. "resource"     — deriveResource(fault) → huaweicloud-<short>-ops
+//     (the static keyword rules miss a real fault but the
+//     resource token still says which product owns it;
+//     covers ~80% of the silent-attribute cases)
+//  5. "unknown"      — every source empty; caller logs a DEBUG line
+func resolveTraceSkill(matched []MatchedSkill, plan *ExecutionPlan, expanded []MatchedSkill, fault string) (string, string) {
+	if len(matched) > 0 && matched[0].Skill != "" {
+		return matched[0].Skill, "matched"
+	}
+	if plan != nil {
+		for _, s := range plan.Steps {
+			if s.Skill != "" {
+				return s.Skill, "plan_step"
+			}
+		}
+	}
+	if len(expanded) > 0 {
+		for _, e := range expanded {
+			if e.Skill != "" {
+				return e.Skill, "expanded"
+			}
+		}
+	}
+	// Last-resort fallback that almost always wins: deriveResource picks up
+	// the product short name from the fault text (e.g. "RDS" → rds:instance)
+	// even when the static keyword rules did not match. Map it back to a
+	// skill id so the learner can consume the trace; "unknown:resource"
+	// means deriveResource gave up too, and we leave skill="unknown" with
+	// a DEBUG log.
+	if res := deriveResource(fault); res != "" && res != "unknown:resource" {
+		if short, _, ok := strings.Cut(res, ":"); ok && short != "" {
+			return "huaweicloud-" + short + "-ops", "resource"
+		}
+	}
+	return "unknown", "unknown"
+}
+
 // HandleFaultInput is the input to HandleFault.
 type HandleFaultInput struct {
 	Root            string
@@ -148,13 +197,28 @@ type OrchestratorOutput struct {
 
 // resourceHeuristic mirrors scripts/runtime_orchestrator.py:50-55 — extract
 // a resource type from the fault text.
+//
+// Tokens are matched as whole words (delimited by non-letter/digit runes),
+// not as substrings: a bare strings.Contains would attribute "specs" →
+// ecs (false positive), "accent" → cce (false positive), "elbow" →
+// elb (false positive), etc. The token table is short (~8 entries) so a
+// per-token loop with strings.EqualFold over strings.Fields is plenty —
+// no regexp needed.
 var resourceTokens = []string{"rds", "ecs", "elb", "vpc", "cce", "dcs", "gaussdb", "dms"}
 
 func deriveResource(fault string) string {
 	f := strings.ToLower(fault)
+	fields := strings.FieldsFunc(f, func(r rune) bool {
+		// Word boundary = any rune that is not a letter or digit. Underscore
+		// and dash are also boundaries (product short names never include
+		// them, but a fault may — "rds-01" should still match "rds").
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
 	for _, t := range resourceTokens {
-		if strings.Contains(f, t) {
-			return t + ":instance"
+		for _, w := range fields {
+			if w == t {
+				return t + ":instance"
+			}
 		}
 	}
 	return "unknown:resource"
@@ -320,9 +384,25 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	}
 
 	// Step 6 — Learning: synthesize + persist trace
-	primary := "unknown"
-	if len(matched) > 0 {
-		primary = matched[0].Skill
+	// Attribute the trace to a real skill so the learner (internal/learning.Aggregate)
+	// can consume it: a trace whose `skill` field is the literal "unknown" is
+	// silently dropped by `if trace["skill"] != skill { continue }`, leaving every
+	// failure_patterns.json at source_traces_analyzed=0. Resolution order:
+	//   1. keyword-matched primary (the canonical attribution path),
+	//   2. first planned step's skill (when fault matching returned empty but the
+	//      pipeline still produced a plan — common for operator-supplied fault
+	//      text that the static rules don't cover),
+	//   3. first expanded-skill entry (matched ∪ delegates — last resort before
+	//      giving up; survives a fault with keywords but no matched skill only
+	//      when the allow-list (Skills) excludes every priority skill).
+	// When all three are empty the literal "unknown" is kept AND a debug-level
+	// stderr line records WHY attribution failed, so an operator chasing an empty
+	// `learning trace aggregate` can see the cause without re-deriving it.
+	primary, primarySource := resolveTraceSkill(matched, plan, expanded, in.Fault)
+	if primary == "unknown" {
+		fmt.Fprintf(os.Stderr,
+			"DEBUG: orchestrator trace %s could not attribute skill: fault=%q matched=%d plan_steps=%d expanded=%d (last source tried: %s)\n",
+			faultID, in.Fault, len(matched), len(plan.Steps), len(expanded), primarySource)
 	}
 	primaryCmd := ""
 	if len(plan.Steps) > 0 {

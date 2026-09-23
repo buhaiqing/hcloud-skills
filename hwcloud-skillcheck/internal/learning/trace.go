@@ -661,6 +661,10 @@ func ScanTraces(root, skill string, sinceHours *int) []TraceFile {
 			continue
 		}
 		if data["skill"] != skill {
+			// ScanTraces has no AggregateResult to bump — the caller learns
+			// the miss from the empty slice. The CLI summary path (cmd/
+			// aggregate.go aggregateTraces) counts these directly off the
+			// raw file path, so the operator still sees them.
 			continue
 		}
 		if class, errs := ClassifyTrace(raw, data); class == TraceInvalid {
@@ -693,6 +697,14 @@ type AggregateResult struct {
 	// and therefore from meta.source_traces_analyzed — a smoke trace proves
 	// nothing about the skill, so counting it would fake loop health.
 	SkippedSmoke int
+	// SkippedSkillMismatch counts traces dropped because their top-level
+	// `skill` field did not match the --skill filter. The previous behavior
+	// was a silent `continue` ahead of res.Scanned++, which produced
+	// source_traces_analyzed=0 for every skill when the writer's attribution
+	// was wrong (the L4 writer used the literal "unknown" whenever a fault
+	// matched no keyword rule). Counting it makes a misconfigured writer
+	// visible in the CLI summary instead of hiding behind "everything is 0".
+	SkippedSkillMismatch int
 	// InvalidTraces counts traces dropped by canonical-schema validation (see
 	// ClassifyTrace). They are excluded from Scanned, from every metric, and
 	// from failure-pattern merging: a trace-shaped file that does not conform
@@ -703,6 +715,15 @@ type AggregateResult struct {
 	// crafted traces visible in the CLI output instead of only in the log.
 	RejectedPatterns int
 	WrittenTo        string
+	// EmptyLoop is set when this Aggregate call did not increment
+	// source_traces_analyzed at all (res.Scanned == 0) AND there was at
+	// least one trace file under audit-results/ that the loop considered.
+	// The trigger for an operator-visible WARN: a non-empty trace set that
+	// produced zero learnable signal means the learning loop is broken —
+	// most commonly because every trace carried skill="unknown" and
+	// SkippedSkillMismatch swallowed them all. The flag is independent of
+	// dry-run so a preview of an empty loop is also loud.
+	EmptyLoop bool
 }
 
 // Aggregate runs the loop: scan → classify → extract → dedup → merge → write.
@@ -752,6 +773,13 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 	// the end of each iteration, so the GC can reclaim them.
 	tracesDir := filepath.Join(root, "audit-results")
 	entries, dirErr := os.ReadDir(tracesDir)
+	// traceFilesConsidered counts every file the loop examined — used by
+	// the EmptyLoop alarm to distinguish "no trace files at all" (the
+	// audit-results/ directory was empty or absent; nothing to do, no
+	// alarm) from "trace files exist but none contributed" (the silent
+	// attribute bug — this is the case that produced the
+	// source_traces_analyzed=0 deadlock).
+	traceFilesConsidered := 0
 	if dirErr == nil {
 		now := time.Now().UTC()
 		// Sorted for deterministic iteration order — matches the prior
@@ -762,6 +790,7 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 			if e.IsDir() || !IsTraceFileName(e.Name()) {
 				continue
 			}
+			traceFilesConsidered++
 			fp := filepath.Join(tracesDir, e.Name())
 			if sinceHours != nil {
 				info, sErr := os.Stat(fp)
@@ -781,6 +810,13 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 				continue
 			}
 			if trace["skill"] != skill {
+				// Writer-side attribution (l4.HandleFault resolveTraceSkill)
+				// or a typo in --skill made this trace invisible to the
+				// learner. Count it so a burst of misattributed traces is
+				// visible in the CLI summary, and the operator can see
+				// "loop health = 0 because writer output the wrong skill"
+				// instead of just "loop health = 0".
+				res.SkippedSkillMismatch++
 				continue
 			}
 			// Classification order is frozen: parse (done above) →
@@ -846,6 +882,22 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 		meta["source_traces_analyzed"] = res.Scanned
 	}
 	data["patterns"] = patterns
+
+	// EmptyLoop alarm: a non-empty trace set that consumed zero signal is
+	// the exact shape the silent-attribute bug produced — and the L4 writer
+	// emitted skill="unknown" on every fault that matched no keyword rule,
+	// so SkippedSkillMismatch would have absorbed them all. Firing this in
+	// dry-run too means a preview of an empty loop is loud before any
+	// failure_patterns.json is touched. The message names the four common
+	// causes (zero trace files, all skill-mismatch, all smoke, all
+	// schema-invalid) so the operator does not have to guess.
+	if traceFilesConsidered > 0 && res.Scanned == 0 {
+		res.EmptyLoop = true
+		fmt.Fprintf(os.Stderr,
+			"WARN: learning loop consumed 0 traces for skill %q (considered %d file(s) under %s; skipped_skill_mismatch=%d, skipped_smoke=%d, invalid_trace=%d). failure_patterns.json will NOT grow this run. Possible causes: writer emits skill=\"unknown\"; --skill typo; every trace was smoke/safety-irrelevant; every trace is schema-invalid. Inspect with `hwcloud-skillcheck aggregate trace --root %s`.\n",
+			skill, traceFilesConsidered, tracesDir,
+			res.SkippedSkillMismatch, res.SkippedSmoke, res.InvalidTraces, root)
+	}
 
 	if dryRun {
 		return res, nil

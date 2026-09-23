@@ -1,6 +1,7 @@
 package l4
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -329,5 +330,164 @@ func TestMatchPreExecutionRisk_SkipsNilSignature(t *testing.T) {
 	rm := got.(map[string]any)
 	if rm["matched_pattern_id"] != "FP-OK" {
 		t.Fatalf("want FP-OK, got %v", rm["matched_pattern_id"])
+	}
+}
+
+// --- Skill attribution (resolveTraceSkill) ---
+
+// TestResolveTraceSkill_MatchedPrimary pins the canonical path: keyword
+// matching returned a primary, and that primary wins over plan/expanded
+// alternatives. Source tag is "matched".
+func TestResolveTraceSkill_MatchedPrimary(t *testing.T) {
+	matched := []MatchedSkill{{Skill: "huaweicloud-rds-ops", Confidence: 0.9}}
+	plan := &ExecutionPlan{Steps: []PlanStep{{Skill: "huaweicloud-vpc-ops", Action: "list-routes"}}}
+	expanded := []MatchedSkill{{Skill: "huaweicloud-vpc-ops"}, {Skill: "huaweicloud-rds-ops"}}
+
+	got, src := resolveTraceSkill(matched, plan, expanded, "anything goes when matched wins")
+	if got != "huaweicloud-rds-ops" {
+		t.Errorf("got %q, want huaweicloud-rds-ops (matched wins)", got)
+	}
+	if src != "matched" {
+		t.Errorf("source=%q, want matched", src)
+	}
+}
+
+// TestResolveTraceSkill_FallsBackToPlanStep covers the case the silent
+// attribute bug used to produce: a fault whose keywords match no rule (so
+// matched is empty) but the planner still built a plan — most commonly
+// because the operator supplied a fault string outside the static rules.
+// The trace MUST still be attributed to a real skill, not the literal
+// "unknown", otherwise the learner drops it.
+func TestResolveTraceSkill_FallsBackToPlanStep(t *testing.T) {
+	// matched is empty (fault matched no rule), but plan has a step.
+	plan := &ExecutionPlan{Steps: []PlanStep{{Skill: "huaweicloud-vpc-ops", Action: "list-routes"}}}
+	expanded := []MatchedSkill{{Skill: "huaweicloud-ces-ops"}}
+
+	got, src := resolveTraceSkill(nil, plan, expanded, "any fault")
+	if got != "huaweicloud-vpc-ops" {
+		t.Errorf("got %q, want huaweicloud-vpc-ops (plan step wins when matched empty)", got)
+	}
+	if src != "plan_step" {
+		t.Errorf("source=%q, want plan_step", src)
+	}
+}
+
+// TestResolveTraceSkill_FallsBackToExpanded covers the rarer fallback: a
+// fault that matched keywords but the allow-list (Skills) excluded every
+// priority skill, so plan ended up empty even though expanded (matched ∪
+// delegates) had something.
+func TestResolveTraceSkill_FallsBackToExpanded(t *testing.T) {
+	expanded := []MatchedSkill{{Skill: "huaweicloud-vpc-ops", Confidence: delegateConfidence}}
+
+	got, src := resolveTraceSkill(nil, nil, expanded, "any fault")
+	if got != "huaweicloud-vpc-ops" {
+		t.Errorf("got %q, want huaweicloud-vpc-ops (expanded wins when matched+plan empty)", got)
+	}
+	if src != "expanded" {
+		t.Errorf("source=%q, want expanded", src)
+	}
+}
+
+// TestResolveTraceSkill_UnknownWhenAllEmpty pins the only path that still
+// emits the literal "unknown": every source is empty (no keyword match, no
+// plan step, no expanded entry). The orchestrator emits a DEBUG stderr
+// line so the operator can see WHY attribution failed; the learner still
+// cannot consume the trace, but the cause is recorded in the run log.
+func TestResolveTraceSkill_UnknownWhenAllEmpty(t *testing.T) {
+	got, src := resolveTraceSkill(nil, nil, nil, "completely unrelated text with no resource token")
+	if got != "unknown" {
+		t.Errorf("got %q, want unknown", got)
+	}
+	if src != "unknown" {
+		t.Errorf("source=%q, want unknown", src)
+	}
+}
+
+// TestResolveTraceSkill_ResourceFallback pins the new 4th fallback that
+// catches the silent-attribute cases the static keyword rules miss: a fault
+// like "alchemist exception in RDS" carries no keyword the rules know, but
+// deriveResource("...RDS...") still returns "rds:instance" and we map it
+// back to huaweicloud-rds-ops. Source tag is "resource".
+func TestResolveTraceSkill_ResourceFallback(t *testing.T) {
+	got, src := resolveTraceSkill(nil, nil, nil, "unexpected alchemist exception in RDS connection")
+	if got != "huaweicloud-rds-ops" {
+		t.Errorf("got %q, want huaweicloud-rds-ops (resource fallback)", got)
+	}
+	if src != "resource" {
+		t.Errorf("source=%q, want resource", src)
+	}
+}
+
+// TestDeriveResource_RejectsSubstringMatches pins the word-boundary
+// contract: a token that appears ONLY as a substring of a longer word
+// must NOT count. Pre-fix, strings.Contains let "specs" → ecs and
+// "accent" → cce (false-positive attributions that poisoned the
+// fault→skill mapping). These are the minimal regression guards.
+func TestDeriveResource_RejectsSubstringMatches(t *testing.T) {
+	cases := []struct {
+		fault string
+		want  string
+	}{
+		// Substring false-positives that pre-fix deriveResource matched.
+		{"review the specs doc", "unknown:resource"},
+		{"user accent was wrong", "unknown:resource"},
+		{"ELB token bucket blew up", "elb:instance"}, // "ELB" alone matches as a word
+		// Legitimate matches still work.
+		{"RDS CPU at 99%", "rds:instance"},
+		{"check the ECS instance", "ecs:instance"},
+		{"vpc peering broken", "vpc:instance"},
+	}
+	for _, tc := range cases {
+		got := deriveResource(tc.fault)
+		if got != tc.want {
+			t.Errorf("deriveResource(%q)=%q, want %q", tc.fault, got, tc.want)
+		}
+	}
+}
+
+// TestHandleFault_TraceSkillAttributedFromPlanStep exercises the full
+// HandleFault path with a fault the static rules do not cover. Pre-fix
+// this produced skill="unknown" on the persisted trace, which the learner
+// dropped at the skill-mismatch gate. Post-fix the orchestrator falls back
+// to plan.Steps[0].Skill so the trace reaches the right skill's
+// failure_patterns.json.
+func TestHandleFault_TraceSkillAttributedFromPlanStep(t *testing.T) {
+	root := t.TempDir()
+	// "unexpected alchemist exception in RDS" — no keyword rule covers the
+	// fault phrase, but deriveResource still picks up "RDS" and the
+	// resource-fallback source must win. This is the exact shape the
+	// silent-attribute bug used to write "unknown" on.
+	out := HandleFault(HandleFaultInput{
+		Root:  root,
+		Fault: "unexpected alchemist exception in RDS connection",
+		Risk:  "low",
+	}, nil)
+
+	raw, err := readFile(out.Learning.TracePersisted)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	// Persisted trace MUST NOT carry the literal "unknown" when there is a
+	// concrete skill to attribute to. The orchestrator falls back through
+	// plan.Steps[0].Skill, expanded, and finally deriveResource before
+	// giving up, so for any fault that mentions a known product token a
+	// real skill id wins.
+	var trace map[string]any
+	if err := json.Unmarshal(raw, &trace); err != nil {
+		t.Fatalf("parse trace: %v", err)
+	}
+	skill, _ := trace["skill"].(string)
+	if skill == "" || skill == "unknown" {
+		t.Errorf("trace skill=%q, want a concrete attribution (the silent-attribute bug)", skill)
+	}
+	// The trace must carry one of the canonical prefixes used by the static
+	// skill registry — sanity-check the attribution shape, not just the
+	// absence of "unknown".
+	if !strings.HasPrefix(skill, "huaweicloud-") || !strings.HasSuffix(skill, "-ops") {
+		t.Errorf("trace skill=%q, want huaweicloud-*-ops form", skill)
+	}
+	// The specific shape the resource fallback must produce.
+	if skill != "huaweicloud-rds-ops" {
+		t.Errorf("trace skill=%q, want huaweicloud-rds-ops (resource fallback from 'RDS' token)", skill)
 	}
 }

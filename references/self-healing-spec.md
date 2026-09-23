@@ -203,7 +203,7 @@ def self_heal(alarm_event, skill_id):
 ### 5.2 学习流程
 
 ```
-audit-results/gcl-trace-*.json
+audit-results/gcl-trace-*.json + orchestrator-trace-*.json
         │
         ▼
 ┌─────────────────────┐
@@ -220,7 +220,21 @@ audit-results/gcl-trace-*.json
         └── 7. Generate learning report (stdout)
 ```
 
-### 5.3 GCL Runner 集成
+### 5.3 Loop Health Observability
+
+聚合输出暴露两个独立计数器与一个响警位，帮助定位"学习循环空转"的根因：
+
+| 字段 | 来源 | 含义 |
+|------|------|------|
+| `SkippedSkillMismatch` | `trace["skill"] != --skill` 的 trace 数 | 写入端 skill 归因失败（典型：L4 writer 输出 `"unknown"`），或 `--skill` 拼错 |
+| `Scanned` | 进入合并的 evidence trace 数 | 真正喂给 failure_patterns.json 的 trace |
+| `EmptyLoop` | `Scanned == 0 && audit-results/ 有 trace 文件` | 上述两者之一吞掉所有 trace 时点亮；aggregate 会在 stderr 发出 WARN，dry-run 也含 |
+
+响警消息列出常见四种可能根因（writer 输出 `unknown`、`--skill` 拼错、全部 smoke、全部 schema-invalid），并指向 `aggregate trace` 子命令作为诊断入口。**`source_traces_analyzed` 永远不应在有 trace 文件的仓库里长期为 0**——若为 0，先看 `SkippedSkillMismatch`，再看 `SkippedSmoke` / `InvalidTraces`。
+
+**边界声明**：写入端 P0 fix 之前已落地的存量历史 trace 永久 `schema-invalid`（缺 `final`、`source` 错位、归因为字面量 `unknown` 等），不可被回溯消费；skill 归因修复仅对修复后写入的新 trace 生效，旧 trace 需用脚本一次性重写或留作历史窗。
+
+### 5.4 GCL Runner 集成
 
 `hwcloud-skillcheck gcl run` 在执行前查询 failure_patterns.json：
 

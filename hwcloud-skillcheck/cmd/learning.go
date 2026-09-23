@@ -91,8 +91,16 @@ func runTraceAggregate(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n  Skipped (smoke, no verification signal): %d\n  Skipped (invalid trace, schema): %d\n  Rejected (untrusted pattern): %d\n",
-		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount, res.SkippedSmoke, res.InvalidTraces, res.RejectedPatterns)
+	fmt.Printf("Traces scanned: %d\n  New patterns: %d\n  Updated patterns: %d\n  Skipped (no failure): %d\n  Skipped (skill mismatch, --skill filter): %d\n  Skipped (smoke, no verification signal): %d\n  Skipped (invalid trace, schema): %d\n  Rejected (untrusted pattern): %d\n",
+		res.Scanned, res.NewCount, res.UpdatedCount, res.SkippedCount,
+		res.SkippedSkillMismatch, res.SkippedSmoke, res.InvalidTraces, res.RejectedPatterns)
+	// Empty-loop alarm duplicates the WARN emitted by Aggregate itself so it
+	// stays visible even when stderr is redirected away; matching the
+	// Aggregate-level message keeps the operator-facing copy in one place.
+	if res.EmptyLoop {
+		fmt.Fprintln(os.Stderr,
+			"WARN: learning loop consumed 0 traces for this run — failure_patterns.json will NOT grow. See Aggregate-level WARN for likely causes.")
+	}
 	if res.WrittenTo != "" {
 		fmt.Printf("\nWritten: %s\n", res.WrittenTo)
 	}
