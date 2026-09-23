@@ -82,6 +82,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate frontmatter --root <dir>                validate SKILL.md frontmatter")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate eval-queries --root <dir>               validate assets/eval_queries.json")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate product-assessment --root <dir>         validate well-architected-assessment.md examples")
+	fmt.Fprintln(w, "  hwcloud-skillcheck validate agents --root <dir>                    validate AGENTS.md mechanical invariants (line budget, CA count, CA numbering)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate gcl-conformance --root <dir>           validate GCL artifact set (rubric/prompt/quality gate)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate generator-contract --root <dir>         validate skill-generator GCL template contract")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate safety-class --root <dir>               validate operation_intent.safety_class enum contract")
@@ -127,6 +128,8 @@ func runValidate(args []string) error {
 		return runValidateEvalQueries(args[1:])
 	case "product-assessment":
 		return runValidateProductAssessment(args[1:])
+	case "agents":
+		return runValidateAgents(args[1:])
 	case "gcl-conformance":
 		return runValidateGCL(args)
 	case "generator-contract":
@@ -165,6 +168,7 @@ func runValidateAll(args []string) error {
 		{"validate frontmatter", func(a []string) error { return runValidateFrontmatter(a) }},
 		{"validate eval-queries", func(a []string) error { return runValidateEvalQueries(a) }},
 		{"validate product-assessment", func(a []string) error { return runValidateProductAssessment(a) }},
+		{"validate agents", func(a []string) error { return runValidateAgents(a) }},
 		{"check example-config", func(a []string) error { return runCheckExampleConfig(a) }},
 		{"check markdown-links", func(a []string) error { return runCheckMarkdownLinks(a) }},
 		{"check references-links", func(a []string) error { return runCheckReferencesLinks(a) }},

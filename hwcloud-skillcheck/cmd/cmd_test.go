@@ -273,6 +273,15 @@ func TestValidateAllTotalEntryClean(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "references", "guide.md"), []byte("# Guide\nSee [runbook](../references/well-architected-assessment.md).\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// AGENTS.md at repo root: validate agents gate requires it. Two CA
+	// entries form a contiguous, gap-free sequence well within the budget
+	// so the new step passes alongside the others.
+	agentsMD := "# AGENTS.md\n\nplaceholder body for fixture.\n\n" +
+		"### CA-1. fixture rule\n**Rule**: ok.\n\n" +
+		"### CA-2. fixture rule\n**Rule**: ok.\n\n"
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(agentsMD), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := runValidateAll([]string{"--root", root}); err != nil {
 		t.Fatalf("total-entry should pass for a clean skill, got: %v", err)
