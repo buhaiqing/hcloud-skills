@@ -64,6 +64,8 @@ func Execute() error {
 		return runTrust(args)
 	case "metrics":
 		return runMetrics(args)
+	case "trend":
+		return runTrend(args)
 	case "-h", "--help", "help":
 		printRootHelp(os.Stdout)
 		return nil
@@ -111,6 +113,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck memory inspect --root <dir>                     inspect L4 outcome and context memory")
 	fmt.Fprintln(w, "  hwcloud-skillcheck trust stats --root <dir>                       trust_source{from=...} cutover counters (ADR-0009)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck metrics [--addr 127.0.0.1:9090] [--root <dir>]  Prometheus scrape of L4 healing/trust counters")
+	fmt.Fprintln(w, "  hwcloud-skillcheck trend report --root <dir> [--window-days N] [--json]  cross-trace recurrence report (GCL + L4)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck validate --root <dir>                            run all A-class checks (total entry)")
 }
 
