@@ -33,6 +33,14 @@
 
 **For any issue found: fix immediately, then re-verify.** Do not report and stop — fix and verify the fix passes.
 
+## Round 3 — Rubric Auto-Proposal (Closed Loop)
+
+Reflection findings must feed back into the rubric so the next skill review catches the same defect class without waiting for a human to notice.
+
+1. Append every Round 1/2 finding as one JSONL row to `audit-results/reflection-findings.jsonl` (schema: see `scripts/reflection_findings.py` docstring — `ts/round/finding_type/detail/source_skill/rubric_item/proposed_action`).
+2. After accumulating findings, run `python3 scripts/reflection_findings.py propose --file <jsonl> --min-hits 3 [--rubric <path>]`.
+3. Any `finding_type` with `hits ≥ --min-hits` AND `rubric_item == null` (and not already covered in `--rubric`) is emitted as a proposal; review and merge accepted proposals back into the Round 1/2 rubric so the next reflection pass enforces them.
+
 - A single shot gun covers everything: `hwcloud-skillcheck check --pre-commit`. This is what the git hook and CI both invoke — running it locally is equivalent to pushing.
 - The git pre-commit hook is fully covered by `hwcloud-skillcheck check --pre-commit`; CI runs the same command. Markdown-only commits stay fast because Go build/test gates skip when `.go` and the `hwcloud-skillcheck/` tree are unchanged.
 - New scripts MUST:
