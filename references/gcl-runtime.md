@@ -45,7 +45,7 @@ Current GCL gate thresholds lack calibration data. The table below states the pr
 | confidence (low / mid / high) | 0.70 / 0.85 / 0.95 | 无历史逃逸数据回填，暂定；分档间距 0.15 系经验常数，未经回归校验 |
 | auto_execute (low / mid / high) | 0.70 / 0.85 / 0.95 | 同上，未对真实误执行数据回测 |
 
-阈值变更须附逃逸案例或复发率证据；任何阈值调整都不应超过当前值±0.05，直至收集到 ≥3 个独立 campaign 的 trace 复发率样本。
+上表字面值已被 `hwcloud-skillcheck validate doc-contracts` 逐字节 pin，校准前视为**冻结**：不得调整，也不存在 ±0.05 的微调额度（无逃逸样本时的微调等于把臆测写进门禁）。解除冻结需同时满足：① 附逃逸案例或复发率证据；② ≥3 个独立 campaign 的 trace 复发率样本；③ **同一 commit 内**同时更新本表与 `cmd/validate_doc_contracts.go` 的对应锚点。只改其一会让 pre-commit/CI 门禁变红——这是有意的：两处分离的任何改动都视为契约破坏。
 
 ## GCL changelog
 

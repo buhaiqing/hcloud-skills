@@ -114,6 +114,8 @@ func runValidateDocContracts(args []string) error {
 
 	if _, statErr := os.Stat(filepath.Join(rootDir, filepath.FromSlash(docContractsMarker))); statErr != nil {
 		fmt.Printf("SKIP: doc-contracts not applicable (no %s under %s)\n", docContractsMarker, rootDir)
+		fmt.Println("WARN: if this repo owns the reference contracts, the marker is missing — " +
+			"treat that as a gate removal, not a skip")
 		return nil
 	}
 

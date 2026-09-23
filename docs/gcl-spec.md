@@ -23,6 +23,8 @@ Most valuable in high-side-effect cloud operations (`delete`, `stop`, `restore`,
 | **Generator (G)** | Execute the cloud operation | user request + previous Critic feedback | result + execution trace | modifying rubric; self-scoring |
 | **Critic (C)** | Independently audit output | generator result + trace + rubric + sanitized operation intent | scores + suggestions | calling `hcloud`, SDK clients, or mutating resources |
 | **Orchestrator (O)** | Loop control | context + Critic scores + budget | continue / final result | executing or scoring on its own |
+| **Fixer (Fx)** | Apply adjudicated findings | finding ledger + Critic delta scope | patch confined to the cited findings | widening scope; waiving its own patch |
+| **Adjudicator (A)** | Rule on Critic findings and campaign termination | critic findings + diff + frozen contracts | finding ledger (verdict + file set per finding) | implementing findings (separation of duties) |
 
 **Hard constraint:** Generator and Critic MUST run in isolated prompt contexts. Shared-context G+C is banned.
 
@@ -45,6 +47,8 @@ Minimum dimensions:
 | **Spec Compliance** | Conforms to `core-concepts.md` / `cli-usage.md` constraints | 0 / 0.5 / 1 | ≥ 0.5 |
 
 **Safety = 0 → ABORT immediately**, regardless of total score.
+
+The thresholds above are a **derived summary**. Source of record is `references/gcl-runtime.md` §Threshold Calibration, whose literals are pinned by `hwcloud-skillcheck validate doc-contracts`; changing a value therefore requires updating the doc and the gate anchor in the same commit. The gate pins the frozen source only — this table and the AGENTS.md copy are kept honest by review, not mechanically; if that gap ever matters, derive them with a generator instead of hand-editing.
 
 ### 3.1 Conditional Critic Check — Cross-Language Migration Equivalence
 
@@ -102,6 +106,39 @@ User Request
 ```
 
 The Orchestrator owns `operation_intent` generation. Critic MUST NOT see raw user wording; it may use `{{output.operation_intent}}`.
+
+### 4.1 Fix-Round Re-Review Gate (mandatory)
+
+Anything applied **after** a Critic verdict — Fixer output, Adjudicator edits, waiver bookkeeping — is un-reviewed input. The Critic guarantee covers only what a Critic actually saw; letting a fix round reach a commit un-reviewed silently downgrades a multi-Critic gate to self-review. Roles Fixer and Adjudicator are defined in §2.
+
+| Situation | Required action before commit |
+|---|---|
+| First-pass PASS, no fix round | n/a |
+| Fix-round changes **inside** already-adjudicated finding scope | Critic re-review of the fix-round **diff delta** (not the whole batch), **or** a recorded waiver |
+| Fix-round changes to schema / thresholds / frozen contracts / new files | **Full Critic re-review; waiver NOT allowed** |
+
+**In-scope is mechanically decidable.** The Adjudicator's finding ledger maps finding ID → file set. It lives in the campaign record written by `learning campaign record` (**pending — lands in 2.4.0**); until that command exists, the ledger goes in the campaign commit trailers:
+
+```text
+Findings: F1 scripts/probe.py:106 | F2 scripts/probe.py:113
+Evidence: go test -race ./cmd/  # passed
+```
+
+A fix-round change counts as in-scope only when all three hold:
+
+1. every changed `file:line` appears in that ledger;
+2. no changed file is a schema, threshold, contract, or gate source (`*schema*`, rubric/threshold docs, `validate_*`, spec files);
+3. every hunk maps to exactly one finding ID — a hunk serving no finding is out of scope.
+
+**A waiver** requires all of:
+
+1. the three in-scope tests above pass;
+2. each change is mechanically verified, and the waiver cites the exact command plus its pass result;
+3. each waived hunk cites `finding_id` and `file:line`.
+
+Record the outcome in the same ledger (or campaign record) with `post_fix_rereview: reviewed | waived`. `hwcloud-skillcheck learning campaign record` (**pending — lands in 2.4.0**) will store that field and **reject `waived` unless at least one evidence item (finding ID, `file:line`, verification command) is present**; once it lands, waived campaigns are listed by `hwcloud-skillcheck aggregate trace`, so a waiver cannot stay invisible. Until then the trailer block above is the record of truth, and a waiver without evidence is a §10 anti-pattern.
+
+Scope may be narrowed to the adjudicated findings: a delta re-review of the changed hunks is sufficient, a full-batch re-review is not required. Process defects are not style preferences — an unreviewed fix round is a gate bypass regardless of how small the diff looks.
 
 ## 5. Termination
 
@@ -602,6 +639,7 @@ Production GCL MUST use externally supplied isolated Critic scores via `--critic
 - Critic mutates resources
 - Structural critic used as production quality pass
 - Printing/logging credentials
+- Fix-round changes merged without Critic re-review or a recorded waiver (§4.1)
 
 ## 11. Monitoring Integration
 
@@ -630,6 +668,7 @@ GCL quality summaries are owned by `huaweicloud-ces-ops`:
 | 2.1.0 | 2026-09-20 | P0 loop-closure fixes. Trace provenance + two-family consumption: `final.critic_type` (`structural`/`external`), top-level `source` (`gcl`/`l4`), L4 `orchestrator-trace-*.json` now schema-compatible and consumed by `aggregate`/`learning` (real structural-critic scores replace hardcoded literals; MAX_ITER runs persist a `final` block), smoke traces counted in `skipped_smoke` and excluded from every metric, new `by_source` / `l2_skipped_no_schema` summary fields. `--structural-critic-only` implemented (was a no-op) and mutually exclusive with `--critic-cmd`. `delegates_to` dangling targets are now a hard `validate` failure. L2 skips (`skipped_no_schema`) are reported and persisted instead of silently passing (§15). |
 
 | 2.2.0 | 2026-09-20 | Trace-trust hardening after the round-2 safety Critic. Traces are validated against the canonical schema before they contribute (`invalid_trace`); L4 traces now carry the schema-required fields; `SAFETY_FAIL` is never smoke; `critic_type` is normalized into `by_critic_type`; trace-derived failure patterns are validated (category vocabulary, regex compiles and is not empty-matching, length/control-char caps) and stored with `provenance: trace` + `verified: false`, rejected ones counted; `aggregate trace --require-evidence` is the new hard evidence gate; `hallucination_detection` and `final.failure_pattern` joined `MaskedFields` (flag names kept, flag values redacted); a hallucination-detector error is reported instead of silently yielding "no block". |
+| 2.3.0 | 2026-09-24 | Fix-round re-review gate (§4.1). Motivated by two findings from a self-review of the `dec-5c39df83502e` campaign: its round-2 fixes reached commits after main-agent verification only, and a same-day silent revert of `references/gcl-runtime.md` + `references/skill-update-rule.md` was invisible to `go test` / `ruff` / `validate`. Fix rounds now require a Critic re-review of the diff delta or a recorded waiver: `post_fix_rereview: reviewed | waived`, with `waived` requiring a finding ID + `file:line` + verification command; the recording command `learning campaign record` is **pending (2.4.0)** — until then the commit-trailer ledger in §4.1 is the record of truth. Waivers are forbidden for schema / threshold / frozen-contract edits. Threshold values are frozen until ≥3 campaign recurrence samples; unfreezing requires doc + gate anchor changed in the same commit. Shipped in 2.3.0, addressing the silent-revert risk only: `hwcloud-skillcheck validate doc-contracts` pins 21 literal anchors across 4 reference docs — 1 section header (`## Threshold Calibration`), 7 GCL threshold literals (5 pass bars + 2 tier bands), 4 Round 3 closed-loop literals, 4 `CA-A11.`–`CA-A14.` archive headings (bare `### CA-N.` is rejected as an active-numbering collision), 4 `self-healing-spec` §5.1–5.4 headings, and 1 closed-loop field literal (`source_traces_analyzed`). The gate applies only to roots carrying the tooling marker `docs/gcl-spec.md`, so external skill repos are skipped rather than failed, and a missing marker is reported as a gate removal. |
 
 ## 14. Hallucination Detection
 

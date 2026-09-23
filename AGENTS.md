@@ -159,6 +159,8 @@ hwcloud-skillcheck status --skill <name> --root .
 | Traceability | ≥ 0.5 | 重试 |
 | Spec Compliance | ≥ 0.5 | 重试 |
 
+> **阈值权威**：`references/gcl-runtime.md` §Threshold Calibration 为**冻结源**，上表为派生摘要；字面值由 `validate doc-contracts` 逐字节 pin，变更须同 commit 同步文档与门禁锚点。
+
 #### 子 Agent 失败处理
 
 | 失败类型 | 处理 |
