@@ -31,6 +31,22 @@ hwcloud-skillcheck gcl alarm-wire --root . --plan-file scripts/fixtures/gcl-qual
 
 Build-time 2-round self-reflection and runtime GCL are independent gates. A clean self-reflection does not exempt runtime scoring; a passing GCL rubric does not exempt sloppy skill updates.
 
+## Threshold Calibration
+
+Current GCL gate thresholds lack calibration data. The table below states the present values verbatim and flags the missing evidence future re-tuning must supply. Do **not** change any number without attaching escape-case data or recurrence-rate evidence.
+
+| Gate / knob | Current value | Calibration basis |
+|---|---|---|
+| Correctness (GCL pass bar) | ≥ 0.5 | 无历史逃逸数据回填，暂定；0.5 意味半分放行（half-pass），待 trace 复发率数据回流后重校准 |
+| Safety | = 1.0 | 无历史逃逸数据回填，0 容忍；违反即中止，符合安全门惯例 |
+| Idempotency | ≥ 0.5 | 无历史逃逸数据回填，暂定；同上 0.5 半分放行缺口 |
+| Traceability | ≥ 0.5 | 无历史逃逸数据回填，暂定；同上 0.5 半分放行缺口 |
+| Spec Compliance | ≥ 0.5 | 无历史逃逸数据回填，暂定；同上 0.5 半分放行缺口 |
+| confidence (low / mid / high) | 0.70 / 0.85 / 0.95 | 无历史逃逸数据回填，暂定；分档间距 0.15 系经验常数，未经回归校验 |
+| auto_execute (low / mid / high) | 0.70 / 0.85 / 0.95 | 同上，未对真实误执行数据回测 |
+
+阈值变更须附逃逸案例或复发率证据；任何阈值调整都不应超过当前值±0.05，直至收集到 ≥3 个独立 campaign 的 trace 复发率样本。
+
 ## GCL changelog
 
 | Version | Date | Change |
