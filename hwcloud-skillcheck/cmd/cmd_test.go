@@ -213,9 +213,10 @@ func TestValidateAllTotalEntryInvokesChecks(t *testing.T) {
 }
 
 // TestValidateAllTotalEntryClean verifies the total-entry passes when every
-// skill satisfies all 7 A-class checks. A fully-compliant skill fixture is
+// skill satisfies all A-class checks. A fully-compliant skill fixture is
 // scaffolded so each step (frontmatter, eval-queries, product-assessment,
-// example-config, markdown-links, references-links, advanced-coverage) passes.
+// agents, doc-contracts, example-config, markdown-links, references-links,
+// advanced-coverage) passes.
 func TestValidateAllTotalEntryClean(t *testing.T) {
 	root := t.TempDir()
 	skill := "huaweicloud-ecs-ops"
@@ -282,6 +283,10 @@ func TestValidateAllTotalEntryClean(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte(agentsMD), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The four reference docs doc-contracts pins are mandatory, so the
+	// total-entry fixture must carry minimal bodies holding every literal
+	// anchor; otherwise the new step fails for fixture reasons, not real ones.
+	writeDocFixtures(t, root)
 
 	if err := runValidateAll([]string{"--root", root}); err != nil {
 		t.Fatalf("total-entry should pass for a clean skill, got: %v", err)
