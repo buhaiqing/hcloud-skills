@@ -30,7 +30,7 @@ jobs:
       #   [3] validate (hard — frontmatter+eval-queries+product-assessment+
       #       markdown-links+example-config+advanced-coverage)
       #   [4] audit-results (hard)   [5] aggregate trace (hard)
-      #   [6] learning gen (hard)   [7] l4 handle smoke (hard)
+      #   [6] learning gen --check (hard, zero-write seed drift gate)   [7] l4 handle smoke (hard)
       #   [8] golden run (soft)   [9] check lanes (hard)
       #   [10] ab compare (soft)   [11] advanced-coverage (hard)
       #   [12] drift guard (hard — sync+check; sync bootstraps .agents/skills/

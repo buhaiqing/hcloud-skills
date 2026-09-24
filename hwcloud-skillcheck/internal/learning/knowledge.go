@@ -1,7 +1,6 @@
 // Package learning owns the per-skill knowledge base: trace aggregation
 // (trace.go), the generated seed assets (knowledge.go), and playbook loading
-// plus fix-outcome feedback (playbook.go). Seed files are the definition
-// baseline written by `learning gen`; runtime overlays hold learned state.
+// plus fix-outcome feedback (playbook.go).
 //
 // Seed files (failure_patterns.seed.json / remediation-playbooks.seed.json) are
 // the canonical definition baseline written by `learning gen`. Runtime overlay

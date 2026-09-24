@@ -293,15 +293,16 @@ Exit codes: `0` clean, `1` one or more `gofmt` / `go vet` issues.
 
 ## `hwcloud-skillcheck learning` Subcommands
 
-The `learning` family rebuilds per-skill `failure_patterns.json` and the generator `common-pitfalls.md` from GCL trace history. The default target skills are the top-frequency ones (RDS / VPC / ELB / CCE).
+The `learning` family maintains the seed/overlay knowledge files and the generator `common-pitfalls.md` from GCL trace history. The default target skills are the top-frequency ones (RDS / VPC / ELB / CCE).
 
-### `hwcloud-skillcheck learning gen --root <dir>`
+### `hwcloud-skillcheck learning gen [--check] --root <dir>`
 
-Regenerates `failure_patterns.json` plus `remediation-playbooks.json` for every top-frequency skill under `--root`. Idempotent: re-running produces the same artifact bytes when no input traces have changed.
+Regenerates the tracked seed files (`failure_patterns.seed.json` + `remediation-playbooks.seed.json`) for every product skill under `--root`. Runtime overlays (`failure_patterns.json` / `remediation-playbooks.json`) are never written by the generator. Idempotent: re-running produces the same seed bytes. With `--check` the command only verifies on-disk seeds against the in-memory generator (writes nothing; a missing repo marker `docs/gcl-spec.md` ⇒ vacuous pass) — this is the pre-commit/CI gate mode.
 
 | Flag | Description |
 |------|-------------|
 | `--root <dir>` | Repo root (default `.`) |
+| `--check` | Verify seeds match the generator; write nothing |
 
 Exit codes: `0` artifacts written, `1` generation error.
 
@@ -338,7 +339,7 @@ Prints a human-readable summary of the failure knowledge base for `--skill`: tot
 | `--json` | Emit JSON instead of human-readable text |
 
 ```
-hwcloud-skillcheck learning gen                                   --root .
+hwcloud-skillcheck learning gen --check                        --root .
 hwcloud-skillcheck learning trace aggregate --root . --skill huaweicloud-rds-ops --since-hours 24
 hwcloud-skillcheck learning trace learn     --root . --skill huaweicloud-rds-ops --trace audit-results/gcl-trace-20260727-120000.json
 hwcloud-skillcheck learning trace report    --root . --skill huaweicloud-rds-ops --json

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/learning"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -313,30 +314,35 @@ func preFetchFailurePatterns(root string, skills []string) map[string][]map[stri
 	return cache
 }
 
-// readFailurePatternsForSkill loads <root>/<skill>/assets/failure_patterns.json.
+// readFailurePatternsForSkill loads the merged seed+overlay view for a skill
+// via learning.LoadFailurePatterns (seed/runtime KB split, spec #T6): fresh
+// clones carry only the tracked seed file (failure_patterns.json is gitignored),
+// so the pre-execution risk gate must read through the loader. The skill-id
+// guard below stays first: the loader joins paths without re-validating.
 func readFailurePatternsForSkill(root, skill string) ([]map[string]any, error) {
 	if skill == "" || strings.Contains(skill, "..") || strings.ContainsAny(skill, `/\`) {
 		return nil, fmt.Errorf("invalid skill id %q", skill)
 	}
+	// Preserve the pre-split best-effort contract: a skill with no knowledge
+	// file at all (neither seed nor overlay) is omitted; an explicitly empty
+	// document is served as such.
 	skillID := skill
 	if !strings.HasPrefix(skill, "huaweicloud-") {
 		skillID = "huaweicloud-" + skill + "-ops"
 	}
-	path := filepath.Join(root, skillID, "assets", "failure_patterns.json")
-	clean := filepath.Clean(path)
-	rootClean := filepath.Clean(root)
-	if !strings.HasPrefix(clean, rootClean+string(os.PathSeparator)) && clean != rootClean {
-		return nil, fmt.Errorf("skill path escapes root: %s", skill)
+	dir := filepath.Join(root, skillID, "assets")
+	if _, errSeed := os.Stat(filepath.Join(dir, "failure_patterns.seed.json")); errSeed != nil {
+		if _, errOv := os.Stat(filepath.Join(dir, "failure_patterns.json")); errOv != nil {
+			return nil, fmt.Errorf("no failure-pattern knowledge for %q", skill)
+		}
 	}
-	raw, err := os.ReadFile(clean)
-	if err != nil {
-		return nil, err
+	data := learning.LoadFailurePatterns(root, skill)
+	pats, _ := data["patterns"].([]any)
+	out := make([]map[string]any, 0, len(pats))
+	for _, p := range pats {
+		if pm, ok := p.(map[string]any); ok {
+			out = append(out, pm)
+		}
 	}
-	var data struct {
-		Patterns []map[string]any `json:"patterns"`
-	}
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return nil, err
-	}
-	return data.Patterns, nil
+	return out, nil
 }

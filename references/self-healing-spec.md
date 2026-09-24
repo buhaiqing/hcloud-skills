@@ -1,7 +1,7 @@
 # Self-Healing Loop Specification (L4)
 
 > **Purpose**: 定义所有 `huaweicloud-*-ops` skill 的自愈闭环标准 — 从被动响应到主动修复。
-> **Scope**: 每个 skill 的 `../huaweicloud-ecs-ops/assets/remediation-playbooks.json` + `assets/failure_patterns.json`
+> **Scope**: 每个 skill 的 seed/overlay 双文件 — `assets/{remediation-playbooks,failure_patterns}.seed.json`（定义权威，`learning gen` 写入）+ 同名无 `.seed` 后缀文件（运行时 overlay），loader 读时合并；权威划分见 `docs/superpowers/specs/2026-09-24-seed-runtime-kb-split-design.md`
 > **Version**: 1.0.0
 
 ---
@@ -28,7 +28,7 @@ Alarm/Anomaly ──▶ Detect ──▶ Diagnose ──▶ Match Playbook ─�
 
 ## 2. Remediation Playbook Schema
 
-每个 skill 维护 `../huaweicloud-ecs-ops/assets/remediation-playbooks.json`：
+每个 skill 维护 seed（`remediation-playbooks.seed.json`，定义权威）+ overlay（`remediation-playbooks.json`，metadata 运行时回写），loader 读时合并；下为合并后结构：
 
 ```json
 {
@@ -99,7 +99,7 @@ confidence = base_confidence
 
 ## 3. Failure Patterns Schema (Experience Learning)
 
-每个 skill 维护 `assets/failure_patterns.json`：
+每个 skill 维护 seed（`failure_patterns.seed.json`，定义权威）+ overlay（`assets/failure_patterns.json`，运行时统计，gitignored），loader 读时合并；下为合并后结构：
 
 ```json
 {
@@ -257,8 +257,8 @@ if risk:
 
 `huaweicloud-skill-generator` 生成新 skill 时须：
 
-1. 创建 `../huaweicloud-ecs-ops/assets/remediation-playbooks.json`（至少 3 个 playbook）
-2. 创建 `assets/failure_patterns.json`（从 troubleshooting.md 提取种子）
+1. 创建 seed `../huaweicloud-ecs-ops/assets/remediation-playbooks.seed.json`（至少 3 个 playbook，生成器写入）
+2. 创建 seed `assets/failure_patterns.seed.json`（从 troubleshooting.md 提取种子）
 3. 在 SKILL.md 中引用：`[Self-Healing Playbooks](../huaweicloud-ecs-ops/assets/remediation-playbooks.json)`
 
 ---

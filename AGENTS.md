@@ -96,8 +96,8 @@ END IF
 | 状态 | 位置 | 当前查询方式 |
 |------|------|-------------|
 | GCL Trace | `audit-results/gcl-trace-*.json` | `hwcloud-skillcheck aggregate trace --root .` |
-| Failure Patterns | `assets/failure_patterns.json` | `hwcloud-skillcheck learning trace report --skill <name> --root .` |
-| Remediation Playbooks | `assets/remediation-playbooks.json` | 同上 |
+| Failure Patterns | seed `assets/failure_patterns.seed.json` + overlay `assets/failure_patterns.json` | `hwcloud-skillcheck learning trace report --skill <name> --root .` |
+| Remediation Playbooks | seed `assets/remediation-playbooks.seed.json` + overlay `assets/remediation-playbooks.json` | 同上 |
 | Context Memory | `.l4-memory/context.json` | 直接读取 |
 | Outcome Memory | `.l4-memory/outcomes.jsonl` | 直接读取 |
 
