@@ -59,7 +59,12 @@ PATH_ANCHOR = re.compile(
 # [A-Za-z0-9_./-] + leading dot). The lookaround ensures the closing backtick
 # is the first backtick after the opening one — no embedded whitespace.
 _BACKTICK_PURE_PATH = re.compile(
-    r"`(?!\s)(?:\.{0,2}/)?[A-Za-z0-9_][A-Za-z0-9_./-]*`",
+    # ordinary path: optional ./ or ../ prefix, then an alphanumeric segment
+    r"`(?!\s)(?:\.{0,2}/)?[A-Za-z0-9_][A-Za-z0-9_./-]*`"
+    # dotfile (`.gitignore`, `.pre-commit-config.yaml`): the first character is
+    # a dot, which the branch above can never match — without this alternative
+    # the validator's dotfile arm was unreachable dead code.
+    r"|`\.[A-Za-z0-9_][A-Za-z0-9_.-]*`",
     re.ASCII,
 )
 # Pre-compile a path-content validator: a pure-path span must be one of:
@@ -75,7 +80,20 @@ _BACKTICK_PATH_VALIDATOR = re.compile(
     re.ASCII,
 )
 SHELL_CMD = re.compile(r"```(?:bash|sh|shell)\n(.*?)```", re.DOTALL)
-NUMERIC_THRESHOLD = re.compile(r"[<>]=?\s*\d+(?:\.\d+)?|=\s*1\.0+|=\s*0(?:\.5)?")
+# Numeric / threshold anchors. ASCII comparison operators are only half the
+# vocabulary: CJK rules lean on ≥/≤ and on quantifiers ("最多 3 轮", "达到
+# 80%"), and missing those made the probe under-report verifiable rules against
+# the hand-labelled gold set. CJK alternatives are literal text (not \w
+# classes), so re.ASCII cannot affect them.
+NUMERIC_THRESHOLD = re.compile(
+    r"[<>]=?\s*\d+(?:\.\d+)?"
+    r"|=\s*1\.0+"
+    r"|=\s*0(?:\.5)?"
+    r"|[≥≤]\s*\d+(?:\.\d+)?"
+    r"|\d+(?:\.\d+)?\s*%"
+    r"|(?:至少|最多|达到|超过|不低于|不高于|连续)\s*\d+",
+    re.ASCII,
+)
 REGEX_PATTERN = re.compile(r"`([^`]*\\[a-z][^`]*?)`")  # backticked regex-ish
 BACKTICK_FRAGMENT = re.compile(r"`([^`\n]+)`")
 
@@ -96,9 +114,16 @@ def _looks_like_command_fragment(text: str) -> bool:
             continue
         if frag[0] in ".<>[]{}\\|^$":
             continue  # regex-ish or path
-        # Must contain at least one lowercase / dash token followed by space
-        # (re.ASCII prevents Chinese characters from masquerading as \w.)
-        if re.match(r"^[A-Za-z_][\w.-]*\s+\S", frag, re.ASCII):
+        # A command named inside a prohibition ("不假设 `go get` 能跑") is not an
+        # instruction to run it; counting it made non-mechanical rules look
+        # verifiable.
+        if _negated_before(text, m.start()):
+            continue
+        # A space alone is not command-shaped: `module cache` and `spec plan`
+        # are prose. The head token must be a known command, which also keeps
+        # flag-less forms like `go run` working.
+        head = frag.split()[0]
+        if head in COMMAND_HEADS:
             return True
     return False
 
@@ -110,7 +135,9 @@ def _looks_like_command_fragment(text: str) -> bool:
 # avoid spurious matches inside unrelated Chinese text.
 EXEC_VERB = re.compile(
     r"(?:\b(?:MUST|SHOULD|MUST NOT|SHOULD NOT|NEVER|ALWAYS|REQUIRED|PROHIBITED)\b"
-    r"|(?:必须|应该|禁止))",
+    # 必须/应该/禁止 are modal; 先确认/审计/逐行 are process imperatives that
+    # still need a human, so they classify manual rather than vague.
+    r"|(?:必须|应该|禁止|先确认|先审计|审计|逐行|逐条))",
     re.IGNORECASE,
 )
 # Section reference (process anchor): "follow the rule in section ...", "see X.Y",
@@ -134,6 +161,39 @@ EXEC_DENY_SUBSTR = ("|", ">", "<", "&&", "||", "rm ", "mv ", "sed -i", "tee ", "
 
 CLASS_ORDER = ("verifiable", "manual", "vague")
 
+# Command heads recognised in backticked fragments. An explicit list beats
+# shape heuristics: "module cache" and "spec plan" have the same shape as
+# "go run", and the gold set showed shape matching produced false positives on
+# both sides.
+COMMAND_HEADS = frozenset({
+    "go", "git", "ruff", "pytest", "python", "python3", "pip", "npm", "npx",
+    "pnpm", "yarn", "make", "cargo", "docker", "kubectl", "helm", "hcloud",
+    "hwcloud-skillcheck", "gh", "jq", "yq", "tar", "ssh", "rsync", "curl",
+    "wc", "grep", "rg", "sed", "awk", "find", "ls", "cat", "echo", "mkdir",
+    "cp", "mv", "rm", "chmod", "systemctl", "journalctl", "psql", "mysql",
+})
+
+# Prohibitions and pointer prefixes: a nearby negation or "see ..." turns the
+# following token into prose rather than an instruction or an anchor.
+_NEGATION_BEFORE = re.compile(
+    r"(?:不|勿|禁止|无法|不可|不能|避免|never|avoid|do not)\s*[\w\s\"'`]*$",
+    re.IGNORECASE | re.ASCII,
+)
+_POINTER_BEFORE = re.compile(
+    r"(?:见|参见|参考|详见|see)\s*[\w\s\"'`]*$",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _negated_before(text: str, start: int) -> bool:
+    """True when a prohibition immediately precedes the token at `start`."""
+    return bool(_NEGATION_BEFORE.search(text[max(0, start - 24):start]))
+
+
+def _pointer_before(text: str, start: int) -> bool:
+    """True when a "see ..." pointer immediately precedes the token at `start`."""
+    return bool(_POINTER_BEFORE.search(text[max(0, start - 24):start]))
+
 
 def _has_backticked_path(text: str) -> bool:
     """True iff at least one `` `...` `` span contains a *pure* path token.
@@ -146,7 +206,23 @@ def _has_backticked_path(text: str) -> bool:
     """
     for m in _BACKTICK_PURE_PATH.finditer(text):
         span = m.group()[1:-1]  # strip backticks
+        # A path introduced by "见 ... / see ..." is a documentation pointer,
+        # not a requirement to check the file.
+        if _pointer_before(text, m.start()):
+            continue
         if _BACKTICK_PATH_VALIDATOR.match(span):
+            return True
+    return False
+
+
+def _has_declared_path(text: str) -> bool:
+    """PATH_ANCHOR match that is not a documentation pointer.
+
+    `见 references/cadl-spec.md` names where to read, not a file requirement,
+    so it must not make a rule mechanically checkable.
+    """
+    for m in PATH_ANCHOR.finditer(text):
+        if not _pointer_before(text, m.start()):
             return True
     return False
 
@@ -160,20 +236,24 @@ def _detect_anchors(text: str) -> dict[str, Any]:
         "has_threshold": False,
         "verification_cmd": "",
     }
+    # The rule's own heading names its topic, not a check to run: `go test` in
+    # a title ("CA-6 go test / CI 里 os.Args[0] 不可信") is context, so anchors
+    # are detected on the body only.
+    body = re.sub(r"^#{1,4}\s+.*\n?", "", text, count=1)
     bash_blocks = SHELL_CMD.findall(text)
     if bash_blocks:
         anchors["has_command"] = True
         anchors["verification_cmd"] = bash_blocks[0].strip().rstrip("\n")
-    if _has_backticked_path(text) or PATH_ANCHOR.search(text):
+    if _has_backticked_path(body) or _has_declared_path(body):
         anchors["has_path"] = True
-    if REGEX_PATTERN.search(text):
+    if REGEX_PATTERN.search(body):
         anchors["has_regex"] = True
-    if NUMERIC_THRESHOLD.search(text):
+    if NUMERIC_THRESHOLD.search(body):
         anchors["has_threshold"] = True
     # Multi-token backticked fragments are not just paths/regex — they often
     # name a CLI surface (e.g. `ruff check`, `go test ./...`) which makes
     # the rule mechanically checkable even without a full fenced block.
-    if _looks_like_command_fragment(text):
+    if _looks_like_command_fragment(body):
         anchors["has_command"] = True
     return anchors
 
@@ -217,8 +297,16 @@ def split_rules(md_text: str) -> list[dict[str, Any]]:
             start = i
             body = [line]
             i += 1
-            while i < n and not re.match(r"^#{1,4}\s+", lines[i]):
-                body.append(lines[i])
+            # Headings inside fenced code blocks are not boundaries: a bash
+            # comment like `# 返回 JSON: {...}` used to truncate the rule body.
+            in_fence = False
+            while i < n:
+                candidate = lines[i]
+                if candidate.lstrip().startswith("```"):
+                    in_fence = not in_fence
+                elif not in_fence and re.match(r"^#{1,4}\s+", candidate):
+                    break
+                body.append(candidate)
                 i += 1
             rules.append({
                 "id": f"H{i}",

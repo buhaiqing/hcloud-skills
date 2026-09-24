@@ -24,7 +24,11 @@ PROBE = HERE / "rule_compliance_probe.py"
 
 sys.path.insert(0, str(HERE))
 from rule_compliance_probe import (
+    CLASS_ORDER,
+    _detect_anchors,
     analyze,
+    classify,
+    split_rules,
 )
 from rule_compliance_probe import (
     main as probe_main,
@@ -203,6 +207,75 @@ class EndToEndCLI(unittest.TestCase):
         data = json.loads(completed.stdout)
         self.assertEqual(data["total_rules"], 13)
         self.assertIn("verifiable_rate", data)
+
+
+GOLD = Path(__file__).resolve().parent / "fixtures" / "rule_probe_gold.jsonl"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_gold() -> dict[str, str]:
+    gold: dict[str, str] = {}
+    for line in GOLD.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        gold[row["title"]] = row["gold"]
+    return gold
+
+
+class GoldSetAccuracy(unittest.TestCase):
+    """The probe's own accuracy against a hand-labelled gold set.
+
+    Without this, `verifiable_rate` is a number nobody can falsify — the exact
+    failure mode this metric was built to prevent. Floors (not exact equality)
+    leave room for documentation edits; a drop below them means the classifier
+    regressed, not that AGENTS.md changed.
+    """
+
+    ACCURACY_FLOOR = 0.85
+    VERIFIABLE_PRECISION_FLOOR = 0.80
+
+    def test_accuracy_against_gold_set(self):
+        agents_md = REPO_ROOT / "AGENTS.md"
+        if not agents_md.exists():
+            self.skipTest("AGENTS.md not present in this checkout")
+        rules = split_rules(agents_md.read_text(encoding="utf-8"))
+        for rule in rules:  # split_rules leaves anchor detection to the caller
+            rule["anchors"] = _detect_anchors(rule["text"])
+        predicted = {r["title"]: classify(r) for r in rules}
+        gold = _load_gold()
+
+        missing = sorted(set(gold) - set(predicted))
+        self.assertFalse(
+            missing,
+            "gold set is stale — these titles no longer parse (retitle or relabel): "
+            + ", ".join(missing),
+        )
+
+        matrix: dict[str, dict[str, int]] = {
+            g: {p: 0 for p in CLASS_ORDER} for g in CLASS_ORDER
+        }
+        for title, want in gold.items():
+            matrix[want][predicted[title]] += 1
+        total = sum(sum(row.values()) for row in matrix.values())
+        correct = sum(matrix[c][c] for c in CLASS_ORDER)
+        accuracy = correct / total
+        self.assertGreaterEqual(
+            accuracy, self.ACCURACY_FLOOR,
+            f"accuracy {accuracy:.3f} below floor {self.ACCURACY_FLOOR}; matrix={matrix}",
+        )
+
+        predicted_verifiable = sum(matrix[g]["verifiable"] for g in CLASS_ORDER)
+        precision = matrix["verifiable"]["verifiable"] / predicted_verifiable
+        self.assertGreaterEqual(
+            precision, self.VERIFIABLE_PRECISION_FLOOR,
+            f"verifiable precision {precision:.3f} below floor "
+            f"{self.VERIFIABLE_PRECISION_FLOOR}; matrix={matrix}",
+        )
+        sys.stderr.write(
+            f"\n[gold] accuracy={accuracy:.3f} ({correct}/{total}) "
+            f"verifiable_precision={precision:.3f} matrix={matrix}\n"
+        )
 
 
 if __name__ == "__main__":

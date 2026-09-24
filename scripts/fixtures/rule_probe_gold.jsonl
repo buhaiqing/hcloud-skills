@@ -1,0 +1,36 @@
+{"title": "GCL Auto-Execution Gate（强制 — 每次编码/配置任务前判定）", "gold": "manual", "reason": "指向 gcl-rules.md + 强制门禁，无内联可执行锚点"}
+{"title": "触发判定（满足任一即触发 GCL）", "gold": "verifiable", "reason": ">5 行阈值 + .yml/.go 扩展名 + glob 路径"}
+{"title": "风险分级（Risk Triage）", "gold": "verifiable", "reason": "files_changed<=1 / lines_changed<5 等数值条件"}
+{"title": "循环预算（Loop Budget — 硬限制）", "gold": "verifiable", "reason": "达到 80%/100% 硬停阈值 + 工具/token 上限表"}
+{"title": "状态管理统一（State Query Layer）", "gold": "verifiable", "reason": "audit-results/*.json 路径 + hwcloud-skillcheck 命令"}
+{"title": "执行决策树", "gold": "verifiable", "reason": "spawn ≥2 Critics + 最多 3 轮 数值约束"}
+{"title": "模型选型（硬约束）", "gold": "verifiable", "reason": "Critics (≥2) 硬约束"}
+{"title": "GCL 门禁阈值", "gold": "verifiable", "reason": "≥0.5 / =1.0 门禁阈值"}
+{"title": "子 Agent 失败处理", "gold": "verifiable", "reason": ">10min + 连续 2 次失败阈值"}
+{"title": "Pre-commit Gate（本地提交前 — 强制，不可跳过）", "gold": "verifiable", "reason": "go test -race 等完整命令 + 路径"}
+{"title": "Primary", "gold": "manual", "reason": "偏好 hcloud CLI 的决策，无机械锚点"}
+{"title": "Fallback", "gold": "verifiable", "reason": "go run 命令 + SDK 模块路径"}
+{"title": "FinOps", "gold": "vague", "reason": "纯 FinOps 支柱列举，无锚点"}
+{"title": "SecOps", "gold": "vague", "reason": "纯 SecOps 支柱列举，无锚点"}
+{"title": "AIOps", "gold": "verifiable", "reason": "≥4 anomaly patterns 数值要求"}
+{"title": "P0 (Must Pass)", "gold": "verifiable", "reason": "≥10 错误码 + assets/eval_queries.json 路径"}
+{"title": "P1 (Should Pass)", "gold": "verifiable", "reason": "integration.md 路径要求"}
+{"title": "GCL", "gold": "vague", "reason": "术语定义，无锚点"}
+{"title": "L4 Orchestrator", "gold": "vague", "reason": "术语定义，无锚点"}
+{"title": "Outcome Memory", "gold": "vague", "reason": "术语定义，无锚点"}
+{"title": "CADL", "gold": "vague", "reason": "术语定义 + 见 references/cadl-spec.md 指针（探针判 manual，属已知偏差）"}
+{"title": "Dual-Copy Trap", "gold": "vague", "reason": "术语定义，无锚点"}
+{"title": "版本升级规则", "gold": "verifiable", "reason": "task release 命令 + version-upgrade.md 路径"}
+{"title": "Post-push Gate（推送后 — CI 验证）", "gold": "verifiable", "reason": "gh run watch / go test 命令 + deployment-guide 路径"}
+{"title": "CA-1. 承诺 reuse 前先验 import graph", "gold": "manual", "reason": "复用前需人判断 import cycle，无锚点"}
+{"title": "CA-2. Edit-tool 多轮 patch = 语法孤儿", "gold": "verifiable", "reason": "git checkout 命令 + ≥2 次阈值"}
+{"title": "CA-3. Spec 审批门在人类，不在 agent", "gold": "manual", "reason": "依赖人类 approve，无可 grep 锚点"}
+{"title": "CA-4. 「GREEN 但不符合 spec」= 语义债", "gold": "manual", "reason": "识别假绿的判断，无锚点"}
+{"title": "CA-5. Sandbox 无公网 — 设计 offline-first", "gold": "manual", "reason": "go get 仅反面提及（探针判 vague，属已知偏差）"}
+{"title": "CA-6. `go test` / CI 里 `os.Args[0]` 不可信", "gold": "manual", "reason": "go test 在标题作上下文，body 为编码技巧"}
+{"title": "CA-7. CLI `--root` 必须 cwd-tolerant", "gold": "verifiable", "reason": "SKILL.md 标志文件 + grep 锚点"}
+{"title": "CA-8. CLI 产出物默认不进 git", "gold": "verifiable", "reason": ".gitignore 文件锚点"}
+{"title": "CA-9. 多 workflow 重叠 → 按 trigger 职责拆分", "gold": "manual", "reason": "审计/拆分设计流程，无锚点"}
+{"title": "CA-10. Dual-Copy Trap（generator 双副本）", "gold": "verifiable", "reason": "drift sync 命令 + 根副本路径"}
+{"title": "CA-11. GCL 是每次编码任务的强制前置步骤", "gold": "manual", "reason": "流程引用为主；How to apply 里的 ≥2 Critics 数字使探针判 verifiable，属已知偏差"}
+{"title": "CA-12. Critic 模型必须强于 Generator", "gold": "verifiable", "reason": "Critic ≥2 个数值阈值"}
