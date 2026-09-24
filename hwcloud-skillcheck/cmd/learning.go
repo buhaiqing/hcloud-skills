@@ -26,10 +26,12 @@ func runLearning(args []string) error {
 		return runLearningGen(args[1:])
 	case "trace":
 		return runLearningTrace(args[1:])
+	case "campaign":
+		return runLearningCampaign(args[1:])
 	case "pitfall-report":
 		return runPitfallReport(args[1:])
 	default:
-		return fmt.Errorf("unknown learning subcommand: %s; use gen|trace|pitfall-report", args[0])
+		return fmt.Errorf("unknown learning subcommand: %s; use gen|trace|campaign|pitfall-report", args[0])
 	}
 }
 
@@ -38,6 +40,7 @@ const learningHelp = `hwcloud-skillcheck learning — knowledge base + GCL trace
 Usage:
   hwcloud-skillcheck learning gen [--root <dir>]
   hwcloud-skillcheck learning trace <aggregate|learn|report> [--root <dir>] [--skill <id>] [--since-hours N] [--dry-run] [--json]
+  hwcloud-skillcheck learning campaign record --root <dir> --id <experiment-id> --outcome <success|failure|blocked> --metrics <metrics.json> [--dry-run]
   hwcloud-skillcheck learning pitfall-report [--root <dir>]
 `
 

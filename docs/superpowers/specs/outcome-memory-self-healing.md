@@ -209,6 +209,13 @@ type OutcomeRecord struct {
     Risk        string    `json:"risk"`
     RBACDecision string   `json:"rbac_decision"`
     GCLDecision  string   `json:"gcl_decision"`
+    // GCL campaign process metrics; see §5.1. Pointers distinguish a measured
+    // 0.0 from "not measured" under omitempty. Legacy rows predate these
+    // fields and may carry a 16-hex id instead of the uuid v4 §5 requires.
+    GCLExperimentID         string   `json:"gcl_experiment_id,omitempty"`
+    DispatchFailureRate     *float64 `json:"dispatch_failure_rate,omitempty"`
+    FixReworkRate           *float64 `json:"fix_rework_rate,omitempty"`
+    PostFixRereviewCoverage *float64 `json:"post_fix_rereview_coverage,omitempty"`
 }
 
 // HealingDecision is the return value of pre/post hooks.
@@ -217,6 +224,55 @@ type HealingDecision struct {
     Reason string `json:"reason,omitempty"`
 }
 ```
+
+### 5.1 GCL Campaign Process Metrics
+
+A GCL campaign also measures the improvement loop, not only the code it ships.
+Three flat rates ride on the outcome row so a later session can falsify
+"the GCL worked":
+
+| Field | Rate | Numerator | Denominator |
+|---|---|---|---|
+| `dispatch_failure_rate` | subagent dispatch reliability | failed dispatches | total dispatches |
+| `fix_rework_rate` | first-pass quality | first-round files modified again in a later fix round | first-round write set size |
+| `post_fix_rereview_coverage` | gate discipline | fix rounds re-reviewed | fix rounds |
+
+Plus `gcl_experiment_id`, linking the row to
+`audit-results/gcl-campaigns/<id>.json` — the raw counts, waivers, and
+timestamps that every rate is derived from.
+
+**Critic-signal quality has no rate on purpose.** A single
+`critic_false_positive_rate` would merge two opposite signals: a Critic being
+wrong, and an Adjudicator wrongly overturning a correct Critic. The raw counts
+(`critic.findings`, `critic.acknowledged_false_positive`,
+`adjudicator.overturns`) stay in the campaign artifact until their numerators
+are unambiguous; the report prints them side by side.
+
+Rates are `*float64`: a measured `0.0` must stay distinguishable from "not
+measured" (`omitempty` would drop a plain `0`). Denominators must be `> 0` and
+numerators must be `<= denominator` — a bad count is rejected, never clamped,
+because a clamped metric cannot be falsified.
+
+```bash
+# record: raw counts in, derived rates + campaign artifact + outcome row out
+hwcloud-skillcheck learning campaign record --root . --id <experiment-id> \
+  --outcome success --metrics campaign-metrics.json [--dry-run]
+
+# read: the falsifiability loop — one command shows the measured history
+hwcloud-skillcheck learning campaign report --root . [--json]
+```
+
+`post_fix_rereview` is `reviewed | waived`; `waived` is rejected unless **every**
+waiver carries `finding_id`, `file_line`, `command`, and `result`
+(docs/gcl-spec.md §4.1). The report recomputes rates from raw counts, so an
+edited artifact cannot disagree with its own report; an impossible count pair
+renders as `-1` rather than hiding the campaigns around it.
+
+**Retention**: campaign artifacts live under gitignored `audit-results/` and
+outcome rows are pruned after 90 days. These numbers are inheritable by later
+sessions **on the same working copy within 90 days** — a fresh clone, CI, or
+another machine starts from zero. Cross-machine continuity needs a deliberate
+export, not an implicit promise.
 
 ## 6. Interface
 

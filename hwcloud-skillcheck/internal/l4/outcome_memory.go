@@ -28,6 +28,22 @@ type OutcomeRecord struct {
 	Risk         string `json:"risk"`
 	RBACDecision string `json:"rbac_decision"`
 	GCLDecision  string `json:"gcl_decision"`
+
+	// GCL campaign process metrics. A GCL campaign measures the improvement
+	// loop, not just the code it ships: how often dispatches failed, how much
+	// of the batch was rewritten in later fix rounds, and how many fix rounds
+	// got re-reviewed. Without these, "the GCL worked" is unfalsifiable across
+	// sessions.
+	//
+	// Rates are pointers so a legitimately measured 0.0 stays distinguishable
+	// from "not measured" under omitempty. Critic-signal quality is
+	// intentionally absent: a single false-positive rate would conflate a Critic
+	// being wrong with an Adjudicator wrongly overturning a Critic, so those
+	// counts stay raw in audit-results/gcl-campaigns/<id>.json instead.
+	GCLExperimentID         string   `json:"gcl_experiment_id,omitempty"`
+	DispatchFailureRate     *float64 `json:"dispatch_failure_rate,omitempty"`
+	FixReworkRate           *float64 `json:"fix_rework_rate,omitempty"`
+	PostFixRereviewCoverage *float64 `json:"post_fix_rereview_coverage,omitempty"`
 }
 
 // outcomeKeyCacheSize is the per-(skill, action) RecentOutcomes window
