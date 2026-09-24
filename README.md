@@ -266,8 +266,8 @@ hwcloud-skillcheck check --pre-commit --check-only --test-retries 2 --root .
 The gates in order: gofmt, go vet, validate (frontmatter + eval-queries +
 product-assessment + agents + doc-contracts + example-config + markdown-links
 + references-links + advanced-coverage),
-audit-results, aggregate trace, learning gen, l4 handle smoke, golden run
-(soft), check lanes, ab compare (soft), advanced-coverage, drift guard, go
+audit-results, aggregate trace, learning gen --check (zero-write seed drift),
+l4 handle smoke, golden run (soft), check lanes, ab compare (soft), advanced-coverage, drift guard, go
 test, and (CI-only) drift sync --dry-run / gcl alarm-wire / critic-score.
 
 > **Note**: `--check-only` skips the binary rebuild (CI builds it separately)
