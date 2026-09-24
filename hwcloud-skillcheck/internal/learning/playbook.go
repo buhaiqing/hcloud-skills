@@ -41,70 +41,142 @@ func skillAssetID(skill string) string {
 	return "huaweicloud-" + skill + "-ops"
 }
 
-// LoadPlaybooks reads remediation-playbooks.json for a skill. A missing file or
-// malformed JSON returns an empty slice (never an error), matching the graceful
-// behavior of LoadFailurePatterns.
+// LoadPlaybooks reads the merged seed+overlay view for a skill (seed/runtime
+// KB split, spec #T3): definitions come from the tracked seed
+// (remediation-playbooks.seed.json), metadata (success_rate etc.) from the
+// runtime overlay (remediation-playbooks.json). Without a seed file the
+// overlay alone is the document — legacy skills keep their exact pre-split
+// behavior. A missing overlay+seed or an invalid overlay returns an empty
+// slice (never an error), matching LoadFailurePatterns' graceful contract.
 func LoadPlaybooks(root, skill string) ([]RemediationPlaybook, error) {
-	path := filepath.Join(root, skillAssetID(skill), "assets", "remediation-playbooks.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil // missing → empty, no error
-	}
-	var env struct {
+	dir := filepath.Join(root, skillAssetID(skill), "assets")
+	type envT struct {
 		Playbooks []RemediationPlaybook `json:"playbooks"`
 	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil, nil // invalid JSON → empty, no error
+	readDoc := func(name string) (*envT, bool) { // (parsed-or-nil, file present)
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, false
+		}
+		var env envT
+		if json.Unmarshal(raw, &env) != nil {
+			return nil, true // present but invalid
+		}
+		return &env, true
 	}
-	return env.Playbooks, nil
+	overlay, overlayPresent := readDoc("remediation-playbooks.json")
+	if overlayPresent && overlay == nil {
+		return nil, nil // invalid overlay JSON → empty, no error (contract)
+	}
+	seed, _ := readDoc("remediation-playbooks.seed.json")
+	if seed == nil { // no seed (or corrupt seed → fail open to overlay, its last good view)
+		if overlay == nil {
+			return nil, nil
+		}
+		return overlay.Playbooks, nil
+	}
+	ovByID := map[string]RemediationPlaybook{}
+	if overlay != nil {
+		for _, ov := range overlay.Playbooks {
+			ovByID[ov.ID] = ov
+		}
+	}
+	seedIDs := map[string]bool{}
+	out := make([]RemediationPlaybook, 0, len(seed.Playbooks))
+	for _, sp := range seed.Playbooks {
+		seedIDs[sp.ID] = true
+		if ov, ok := ovByID[sp.ID]; ok && ov.Metadata != nil {
+			sp.Metadata = ov.Metadata // stats from overlay, defs from seed
+		}
+		out = append(out, sp)
+	}
+	if overlay != nil {
+		for _, ov := range overlay.Playbooks {
+			if !seedIDs[ov.ID] {
+				out = append(out, ov)
+			}
+		}
+	}
+	return out, nil
 }
 
 // RecordPlaybookOutcome updates a remediation playbook's metadata.success_rate
 // after an autonomous fix attempt (L4 self-evolution closed loop). A successful
 // fix nudges success_rate up via EWMA; a failed fix de-ranks it (so the autofix
-// executor's auto_execute_threshold eventually blocks it). Unknown playbook ID
-// is a graceful no-op.
+// executor's auto_execute_threshold eventually blocks it). The write goes to
+// the runtime overlay only (seed/runtime split, spec #T4): entries present in
+// the overlay are updated in place (structure preserved); a seed-known ID with
+// no overlay entry gets an {id, metadata} partial appended; an ID unknown to
+// both seed and overlay is a graceful no-op.
 func RecordPlaybookOutcome(root, skill, playbookID string, success bool) error {
-	path := filepath.Join(root, skillAssetID(skill), "assets", "remediation-playbooks.json")
-	raw, err := os.ReadFile(path)
+	skillID := skillAssetID(skill)
+	dir := filepath.Join(root, skillID, "assets")
+	path := filepath.Join(dir, "remediation-playbooks.json")
+	env := struct {
+		Playbooks []map[string]any `json:"playbooks"`
+	}{Playbooks: []map[string]any{}}
+	if raw, err := os.ReadFile(path); err == nil {
+		if json.Unmarshal(raw, &env) != nil {
+			return nil // invalid overlay → no-op (contract)
+		}
+	}
+	var target map[string]any
+	for _, pb := range env.Playbooks {
+		if id, _ := pb["id"].(string); id == playbookID {
+			target = pb
+			break
+		}
+	}
+	if target == nil {
+		if !seedKnowsPlaybook(dir, playbookID) {
+			return nil // unknown ID → graceful no-op
+		}
+		target = map[string]any{"id": playbookID}
+		env.Playbooks = append(env.Playbooks, target)
+	}
+	md, _ := target["metadata"].(map[string]any)
+	if md == nil {
+		md = map[string]any{}
+		target["metadata"] = md
+	}
+	rate := toFloat(md["success_rate"])
+	if success {
+		// EWMA nudge toward 1.0.
+		rate = rate*0.9 + 0.1
+	} else {
+		// EWMA de-rank toward 0.0.
+		rate *= 0.9
+	}
+	if rate > 1.0 {
+		rate = 1.0
+	}
+	md["success_rate"] = rate
+	md["last_updated"] = NowISO()
+	return writeJSON(path, map[string]any{
+		"$schema":   "remediation-playbooks/v1",
+		"skill_id":  skillID,
+		"playbooks": env.Playbooks,
+	})
+}
+
+// seedKnowsPlaybook reports whether the tracked seed file lists playbookID.
+func seedKnowsPlaybook(dir, playbookID string) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, "remediation-playbooks.seed.json"))
 	if err != nil {
-		return nil
+		return false
 	}
 	var env struct {
-		Playbooks []map[string]any `json:"playbooks"`
+		Playbooks []struct {
+			ID string `json:"id"`
+		} `json:"playbooks"`
 	}
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return nil
+	if json.Unmarshal(raw, &env) != nil {
+		return false
 	}
 	for _, pb := range env.Playbooks {
-		if id, _ := pb["id"].(string); id != playbookID {
-			continue
+		if pb.ID == playbookID {
+			return true
 		}
-		md, _ := pb["metadata"].(map[string]any)
-		if md == nil {
-			md = map[string]any{}
-			pb["metadata"] = md
-		}
-		rate := toFloat(md["success_rate"])
-		if success {
-			// EWMA nudge toward 1.0.
-			rate = rate*0.9 + 0.1
-		} else {
-			// EWMA de-rank toward 0.0.
-			rate *= 0.9
-		}
-		if rate > 1.0 {
-			rate = 1.0
-		}
-		md["success_rate"] = rate
-		md["last_updated"] = NowISO()
-		// Persist back.
-		payload := map[string]any{
-			"$schema":   "remediation-playbooks/v1",
-			"skill_id":  skillAssetID(skill),
-			"playbooks": env.Playbooks,
-		}
-		return writeJSON(path, payload)
 	}
-	return nil
+	return false
 }

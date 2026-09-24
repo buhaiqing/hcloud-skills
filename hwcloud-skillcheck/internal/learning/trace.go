@@ -912,8 +912,13 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 	return res, nil
 }
 
-// LoadFailurePatterns returns the existing failure_patterns.json or a fresh
-// scaffold (mirrors Python's load_failure_patterns()).
+// LoadFailurePatterns returns the merged view of the seed definitions
+// (failure_patterns.seed.json) and the runtime overlay (failure_patterns.json),
+// or a fresh scaffold when neither exists (seed/runtime KB split, spec #T3):
+// per ID the definitions come from the seed, stats/learned_from from the
+// overlay; overlay-only (trace-derived) entries are appended whole. With no
+// seed file the overlay alone is the document — legacy single-file skills
+// keep their exact pre-split behavior.
 func LoadFailurePatterns(root, skill string) map[string]any {
 	skillID := "huaweicloud-" + strings.ReplaceAll(skill, "huaweicloud-", "")
 	skillID = strings.ReplaceAll(skillID, "-ops", "") // tolerate bare shortname
@@ -922,37 +927,105 @@ func LoadFailurePatterns(root, skill string) map[string]any {
 	} else {
 		skillID = skill
 	}
-	path := filepath.Join(root, skillID, "assets", "failure_patterns.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
+	dir := filepath.Join(root, skillID, "assets")
+	scaffold := func() map[string]any {
 		return map[string]any{
 			"$schema":  "failure-patterns/v1",
 			"skill_id": skillID,
 			"patterns": []any{},
 			"meta": map[string]any{
-				"total_patterns":         0,
+				// float64 keeps scaffold counters type-identical to the
+				// JSON-decoded ones (encoding/json yields float64), so
+				// consumers can assert one numeric type in both worlds.
+				"total_patterns":         float64(0),
 				"last_aggregation":       NowISO(),
-				"source_traces_analyzed": 0,
+				"source_traces_analyzed": float64(0),
 			},
 		}
 	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return map[string]any{
-			"$schema":  "failure-patterns/v1",
-			"skill_id": skillID,
-			"patterns": []any{},
-			"meta": map[string]any{
-				"total_patterns":         0,
-				"last_aggregation":       NowISO(),
-				"source_traces_analyzed": 0,
-			},
+	readDoc := func(name string) map[string]any {
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil
+		}
+		var doc map[string]any
+		if json.Unmarshal(raw, &doc) != nil {
+			return nil
+		}
+		return doc
+	}
+	overlay := readDoc("failure_patterns.json")
+	seed := readDoc("failure_patterns.seed.json")
+	if seed == nil {
+		if overlay != nil {
+			return overlay
+		}
+		return scaffold()
+	}
+	seedPats, _ := seed["patterns"].([]any)
+	ovPats := []any{}
+	if overlay != nil {
+		overlay["patterns"], _ = overlay["patterns"].([]any)
+		ovPats, _ = overlay["patterns"].([]any)
+	}
+	ovByID := map[string]map[string]any{}
+	for _, p := range ovPats {
+		if pm, ok := p.(map[string]any); ok {
+			if id, _ := pm["id"].(string); id != "" {
+				ovByID[id] = pm
+			}
 		}
 	}
-	return out
+	merged := make([]any, 0, len(seedPats)+len(ovPats))
+	seedIDs := map[string]bool{}
+	for _, p := range seedPats {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := pm["id"].(string)
+		seedIDs[id] = true
+		if ov, ok := ovByID[id]; ok {
+			// Authority split: definitions from seed, runtime stats from overlay.
+			if st, ok := ov["stats"]; ok {
+				pm["stats"] = st
+			}
+			if lf, ok := ov["learned_from"]; ok {
+				pm["learned_from"] = lf
+			}
+		}
+		merged = append(merged, pm)
+	}
+	for _, p := range ovPats {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			continue
+		}
+		if id, _ := pm["id"].(string); seedIDs[id] {
+			continue
+		}
+		merged = append(merged, p) // trace-derived entry, whole
+	}
+	var meta map[string]any
+	if overlay != nil {
+		meta, _ = overlay["meta"].(map[string]any)
+	}
+	if meta == nil {
+		meta = scaffold()["meta"].(map[string]any)
+	}
+	meta["total_patterns"] = float64(len(merged))
+	return map[string]any{
+		"$schema":  "failure-patterns/v1",
+		"skill_id": skillID,
+		"patterns": merged,
+		"meta":     meta,
+	}
 }
 
-// SaveFailurePatterns persists the in-memory failure_patterns.json back to disk.
+// SaveFailurePatterns persists the merged view back to the runtime overlay
+// (failure_patterns.json). Seed-owned IDs are reduced to their runtime fields
+// so curated definitions are never duplicated into the overlay (#T4);
+// non-seed entries are written whole. The seed file is never touched.
 func SaveFailurePatterns(root, skill string, data map[string]any) (string, error) {
 	skillID := skill
 	if !strings.HasPrefix(skill, "huaweicloud-") {
@@ -962,6 +1035,58 @@ func SaveFailurePatterns(root, skill string, data map[string]any) (string, error
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	seedIDs := map[string]bool{}
+	if raw, err := os.ReadFile(filepath.Join(dir, "failure_patterns.seed.json")); err == nil {
+		var seed struct {
+			Patterns []struct {
+				ID string `json:"id"`
+			} `json:"patterns"`
+		}
+		if json.Unmarshal(raw, &seed) == nil {
+			for _, sp := range seed.Patterns {
+				seedIDs[sp.ID] = true
+			}
+		}
+	}
+	pats, _ := data["patterns"].([]any)
+	out := make([]any, 0, len(pats))
+	for _, p := range pats {
+		pm, ok := p.(map[string]any)
+		if !ok {
+			out = append(out, p)
+			continue
+		}
+		id, _ := pm["id"].(string)
+		if !seedIDs[id] {
+			out = append(out, p)
+			continue
+		}
+		partial := map[string]any{"id": id}
+		if st, ok := pm["stats"]; ok {
+			partial["stats"] = st
+		}
+		if lf, ok := pm["learned_from"]; ok {
+			switch v := lf.(type) {
+			case []any:
+				if len(v) > 0 {
+					partial["learned_from"] = v
+				}
+			case []string:
+				if len(v) > 0 {
+					partial["learned_from"] = v
+				}
+			}
+		}
+		out = append(out, partial)
+	}
+	meta, _ := data["meta"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["last_aggregation"] = NowISO()
+	meta["total_patterns"] = float64(len(pats))
+	data["patterns"] = out
+	data["meta"] = meta
 	p := filepath.Join(dir, "failure_patterns.json")
 	if err := writeJSON(p, data); err != nil {
 		return "", err

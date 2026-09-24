@@ -1,8 +1,8 @@
 // Package cmd: hwcloud-skillcheck learning subcommand.
 //
-//	hwcloud-skillcheck learning gen --root <dir>            # regenerate failure_patterns.json
-//	                                                # + remediation-playbooks.json for all
-//	                                                # top-frequency skills (RDS/VPC/ELB/CCE).
+//	hwcloud-skillcheck learning gen [--check] --root <dir>  # verify (--check, writes nothing) or
+//	                                                # regenerate the seed KB files for product skills
+//	                                                # (failure_patterns.seed.json + remediation-playbooks.seed.json).
 //	hwcloud-skillcheck learning trace aggregate --root <dir> --skill <skill> [--since-hours N] [--dry-run]
 //	hwcloud-skillcheck learning trace learn    --root <dir> --skill <skill> --trace <path> [--dry-run]
 //	hwcloud-skillcheck learning trace report   --root <dir> --skill <skill> [--json]
@@ -38,7 +38,7 @@ func runLearning(args []string) error {
 const learningHelp = `hwcloud-skillcheck learning — knowledge base + GCL trace utilities
 
 Usage:
-  hwcloud-skillcheck learning gen [--root <dir>]
+  hwcloud-skillcheck learning gen [--check] [--root <dir>]
   hwcloud-skillcheck learning trace <aggregate|learn|report> [--root <dir>] [--skill <id>] [--since-hours N] [--dry-run] [--json]
   hwcloud-skillcheck learning campaign record --root <dir> --id <experiment-id> --outcome <success|failure|blocked> --metrics <metrics.json> [--dry-run]
   hwcloud-skillcheck learning pitfall-report [--root <dir>]
@@ -47,14 +47,24 @@ Usage:
 func runLearningGen(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck learning gen")
 	root := fs.String("root", ".", "repo root (default: current directory)")
+	check := fs.Bool("check", false, "verify on-disk seed files match the generator; writes nothing")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *check {
+		// Pre-commit/CI gate: seed drift must fail loudly, and the gate must
+		// never mutate the working tree (P0-3).
+		if err := learning.CheckGeneratedAssets(*root); err != nil {
+			return err
+		}
+		fmt.Printf("learning gen --check OK: %d product seeds match under %s\n", len(learning.Products), *root)
+		return nil
 	}
 	count, err := learning.GenerateAll(*root)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("learning gen: wrote assets for %d skills under %s\n", count, *root)
+	fmt.Printf("learning gen: wrote seed assets for %d skills under %s\n", count, *root)
 	return nil
 }
 

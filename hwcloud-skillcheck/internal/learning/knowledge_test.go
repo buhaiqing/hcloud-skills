@@ -1,8 +1,8 @@
-// Package knowledge provides a Go port of scripts/gen_skill_knowledge.py.
-// It regenerates the failure_patterns.json + remediation-playbooks.json for
-// the high-frequency skills (RDS/VPC/ELB/CCE). The byte-level output must
-// match the Python baseline so downstream tooling (e.g. gcl_runner) sees
-// no diff.
+// Tests for the seed generator (WriteSkillAssets / CheckGeneratedAssets) and
+// the pitfall report. Seeds cover the four Products skills (RDS/VPC/ELB/CCE);
+// byte parity between the on-disk seeds and the in-memory render is exactly
+// what the `learning gen --check` pre-commit gate enforces (seed/runtime KB
+// split, spec #T1/#T5).
 package learning
 
 import (
@@ -29,7 +29,7 @@ func TestProductsCoversTopSkills(t *testing.T) {
 }
 
 // TestWriteSkillAssets_GeneratesBothFiles asserts the generator emits the two
-// required files with the correct envelope and content shape.
+// required seed files with the correct envelope and content shape.
 func TestWriteSkillAssets_GeneratesBothFiles(t *testing.T) {
 	root := t.TempDir()
 	// Construct a minimal fake skill dir to satisfy the writer's path layout.
@@ -38,22 +38,22 @@ func TestWriteSkillAssets_GeneratesBothFiles(t *testing.T) {
 		t.Fatalf("WriteSkillAssets(rds) error: %v", err)
 	}
 
-	fpPath := filepath.Join(root, "huaweicloud-rds-ops", "assets", "failure_patterns.json")
-	rpPath := filepath.Join(root, "huaweicloud-rds-ops", "assets", "remediation-playbooks.json")
+	fpPath := filepath.Join(root, "huaweicloud-rds-ops", "assets", "failure_patterns.seed.json")
+	rpPath := filepath.Join(root, "huaweicloud-rds-ops", "assets", "remediation-playbooks.seed.json")
 
 	var fp map[string]any
 	raw, err := readFile(fpPath)
 	if err != nil {
-		t.Fatalf("read failure_patterns.json: %v", err)
+		t.Fatalf("read failure_patterns.seed.json: %v", err)
 	}
 	if err := json.Unmarshal(raw, &fp); err != nil {
-		t.Fatalf("failure_patterns.json not valid JSON: %v", err)
+		t.Fatalf("failure_patterns.seed.json not valid JSON: %v", err)
 	}
 	if fp["$schema"] != "failure-patterns/v1" {
-		t.Errorf("failure_patterns.json schema=%v, want failure-patterns/v1", fp["$schema"])
+		t.Errorf("seed schema=%v, want failure-patterns/v1", fp["$schema"])
 	}
 	if fp["skill_id"] != "huaweicloud-rds-ops" {
-		t.Errorf("failure_patterns.json skill_id=%v, want huaweicloud-rds-ops", fp["skill_id"])
+		t.Errorf("seed skill_id=%v, want huaweicloud-rds-ops", fp["skill_id"])
 	}
 	patterns, _ := fp["patterns"].([]any)
 	if len(patterns) != 10 {
@@ -63,17 +63,24 @@ func TestWriteSkillAssets_GeneratesBothFiles(t *testing.T) {
 	if meta == nil || meta["total_patterns"].(float64) != 10 {
 		t.Errorf("meta.total_patterns missing or wrong: %+v", meta)
 	}
+	// Seed contract (#T1): runtime keys belong to the overlay, never the seed.
+	if _, ok := meta["source_traces_analyzed"]; ok {
+		t.Errorf("seed meta must not carry source_traces_analyzed: %+v", meta)
+	}
+	if _, ok := meta["last_aggregation"]; ok {
+		t.Errorf("seed meta must not carry last_aggregation: %+v", meta)
+	}
 
 	var rp map[string]any
 	raw, err = readFile(rpPath)
 	if err != nil {
-		t.Fatalf("read remediation-playbooks.json: %v", err)
+		t.Fatalf("read remediation-playbooks.seed.json: %v", err)
 	}
 	if err := json.Unmarshal(raw, &rp); err != nil {
-		t.Fatalf("remediation-playbooks.json not valid JSON: %v", err)
+		t.Fatalf("remediation-playbooks.seed.json not valid JSON: %v", err)
 	}
 	if rp["$schema"] != "remediation-playbooks/v1" {
-		t.Errorf("remediation-playbooks.json schema=%v, want remediation-playbooks/v1", rp["$schema"])
+		t.Errorf("seed schema=%v, want remediation-playbooks/v1", rp["$schema"])
 	}
 	playbooks, _ := rp["playbooks"].([]any)
 	if len(playbooks) != 4 {
@@ -89,14 +96,14 @@ func TestWriteSkillAssets_AllProducts(t *testing.T) {
 		if err := WriteSkillAssets(root, short); err != nil {
 			t.Errorf("WriteSkillAssets(%s) error: %v", short, err)
 		}
-		fpPath := filepath.Join(root, "huaweicloud-"+short+"-ops", "assets", "failure_patterns.json")
+		fpPath := filepath.Join(root, "huaweicloud-"+short+"-ops", "assets", "failure_patterns.seed.json")
 		raw, err := readFile(fpPath)
 		if err != nil {
 			t.Errorf("%s: %v", short, err)
 			continue
 		}
 		if len(raw) < 100 {
-			t.Errorf("%s: failure_patterns.json suspiciously small (%d bytes)", short, len(raw))
+			t.Errorf("%s: failure_patterns.seed.json suspiciously small (%d bytes)", short, len(raw))
 		}
 		if !strings.Contains(string(raw), `"$schema": "failure-patterns/v1"`) {
 			t.Errorf("%s: missing $schema header", short)

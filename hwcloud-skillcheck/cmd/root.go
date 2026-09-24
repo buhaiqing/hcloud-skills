@@ -101,7 +101,7 @@ func printRootHelp(w io.Writer) {
 	fmt.Fprintln(w, "  hwcloud-skillcheck lint go --root <dir> [--fix]                      gofmt + go vet the module")
 	fmt.Fprintln(w, "  hwcloud-skillcheck gcl run --root <dir> [--json] [--quiet]          run GCL quality gate on a skill")
 	fmt.Fprintln(w, "  hwcloud-skillcheck gcl alarm-wire --root <dir> [--plan-file <path>]   apply alarm thresholds to GCL trace")
-	fmt.Fprintln(w, "  hwcloud-skillcheck learning gen --root <dir>                       regenerate failure_patterns.json + remediation-playbooks.json for top skills")
+	fmt.Fprintln(w, "  hwcloud-skillcheck learning gen [--check] --root <dir>             verify/regenerate seed KB files (failure_patterns.seed.json + remediation-playbooks.seed.json)")
 	fmt.Fprintln(w, "  hwcloud-skillcheck learning trace <aggregate|learn|report> ...    GCL trace → failure_patterns.json")
 	fmt.Fprintln(w, "  hwcloud-skillcheck l4 handle --fault <text> [--root <dir>] [--json]  closed-loop L4 fault handler")
 	fmt.Fprintln(w, "  hwcloud-skillcheck drift check --root <dir>                        verify canonical/runtime skill copy equality")

@@ -181,7 +181,7 @@ func preCommitGates(cfg preCommitConfig) []preCommitGate {
 		{"hwcloud-skillcheck validate", gateValidate},
 		{"hwcloud-skillcheck check audit-results", gateAuditResults},
 		{"hwcloud-skillcheck aggregate trace", gateAggregateTrace},
-		{"hwcloud-skillcheck learning gen", gateLearningGen},
+		{"hwcloud-skillcheck learning gen --check", gateLearningGen},
 		{"hwcloud-skillcheck l4 handle smoke", gateL4Handle},
 		{"hwcloud-skillcheck golden run", gateGoldenRun}, // soft
 		{"hwcloud-skillcheck check lanes", gateCheckLanes},
@@ -229,7 +229,7 @@ func runPreCommitGates(gates []preCommitGate, rootDir string) []gateResult {
 //
 //	Stage 0: gofmt (toolchain) + go vet (toolchain) — both read source only
 //	Stage 1: validate (reads all skills, writes nothing)
-//	Stage 2: audit-results + aggregate trace + learning gen + l4 handle
+//	Stage 2: audit-results + aggregate trace + learning gen --check + l4 handle
 //	         + golden run + check lanes + ab compare + advanced-coverage
 //	         (all read-only, no shared mutable state)
 //	Stage 3: drift guard (may mutate via sync --apply in local mode)
@@ -473,7 +473,9 @@ func gateAggregateTrace(rootDir string) gateResult {
 }
 
 func gateLearningGen(rootDir string) gateResult {
-	return inProcessGate(runLearning, []string{"gen", "--root", rootDir}, false)
+	// --check: verify committed seeds against the generator, zero writes
+	// (the old write-mode gate destroyed runtime overlay state — P0-3).
+	return inProcessGate(runLearning, []string{"gen", "--check", "--root", rootDir}, false)
 }
 
 func gateL4Handle(rootDir string) gateResult {

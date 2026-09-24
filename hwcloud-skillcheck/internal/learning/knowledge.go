@@ -1,14 +1,16 @@
-// Package learning provides Go ports of:
-//   - scripts/gen_skill_knowledge.py  → WriteSkillAssets / Products
-//   - scripts/trace_learning.py        → trace.go (signature key, extract, aggregate)
+// Package learning owns the per-skill knowledge base: trace aggregation
+// (trace.go), the generated seed assets (knowledge.go), and playbook loading
+// plus fix-outcome feedback (playbook.go). Seed files are the definition
+// baseline written by `learning gen`; runtime overlays hold learned state.
 //
-// The byte-level output of WriteSkillAssets must match the Python baseline so
-// downstream tooling (gcl_runner pre_execution_risk) sees no diff.
+// Seed files (failure_patterns.seed.json / remediation-playbooks.seed.json) are
+// the canonical definition baseline written by `learning gen`. Runtime overlay
+// files (failure_patterns.json / remediation-playbooks.json) carry per-skill
+// learned stats and are appended by the learning loop. Loaders merge both.
 package learning
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,8 +19,8 @@ import (
 	"time"
 )
 
-// Pattern mirrors the failure-patterns/v1 schema. The fix block intentionally
-// omits playbook_ref — only the remediation-playbooks schema carries it.
+// Pattern mirrors the failure-patterns/v1 schema for both seed and overlay.
+// The fix block intentionally omits playbook_ref — only the remediation-playbooks schema carries it.
 type Pattern struct {
 	ID         string         `json:"id"`
 	Category   string         `json:"category"`
@@ -149,57 +151,74 @@ func NowISO() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
 }
 
-// WriteSkillAssets writes failure_patterns.json + remediation-playbooks.json
-// for one product under <root>/huaweicloud-<short>-ops/assets/.
-//
-// Field order matches scripts/gen_skill_knowledge.py output exactly:
-//
-//	failure_patterns.json: $schema, skill_id, patterns, meta  (meta last)
-//	remediation-playbooks.json: $schema, skill_id, playbooks
-func WriteSkillAssets(root, short string) error {
-	skillID := "huaweicloud-" + short + "-ops"
-	targetDir := filepath.Join(root, skillID, "assets")
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir %s: %w", targetDir, err)
-	}
+// failurePatternSeedDoc renders the failure_patterns.seed.json document for
+// one product (spec #T1): definitions plus a meta block limited to
+// total_patterns — last_aggregation / source_traces_analyzed are runtime
+// overlay counters and must never land in the seed.
+func failurePatternSeedDoc(short string) (any, error) {
 	payload, ok := Products[short]
 	if !ok {
-		return fmt.Errorf("unknown skill short=%q", short)
+		return nil, fmt.Errorf("unknown skill short=%q", short)
 	}
-	now := NowISO()
-	// failure-patterns/v1 — meta goes LAST, no playbook_ref in fix block
-	fp := struct {
+	return struct {
 		Schema   string    `json:"$schema"`
 		SkillID  string    `json:"skill_id"`
 		Patterns []Pattern `json:"patterns"`
 		Meta     any       `json:"meta"`
 	}{
 		Schema:   "failure-patterns/v1",
-		SkillID:  skillID,
+		SkillID:  "huaweicloud-" + short + "-ops",
 		Patterns: payload.Patterns,
-		Meta: map[string]any{
-			"total_patterns":         len(payload.Patterns),
-			"last_aggregation":       now,
-			"source_traces_analyzed": 0,
-		},
+		Meta:     map[string]any{"total_patterns": len(payload.Patterns)},
+	}, nil
+}
+
+// playbookSeedDoc renders the remediation-playbooks.seed.json document for one
+// product (spec #T1): the generated playbook shape, without the runtime
+// metadata block the outcome recorder accumulates.
+func playbookSeedDoc(short string) (any, error) {
+	payload, ok := Products[short]
+	if !ok {
+		return nil, fmt.Errorf("unknown skill short=%q", short)
 	}
-	// remediation-playbooks/v1
-	rp := struct {
+	return struct {
 		Schema    string     `json:"$schema"`
 		SkillID   string     `json:"skill_id"`
 		Playbooks []Playbook `json:"playbooks"`
 	}{
 		Schema:    "remediation-playbooks/v1",
-		SkillID:   skillID,
+		SkillID:   "huaweicloud-" + short + "-ops",
 		Playbooks: payload.Playbooks,
+	}, nil
+}
+
+// WriteSkillAssets writes the seed files for one product under
+// <root>/huaweicloud-<short>-ops/assets/:
+//
+//	failure_patterns.seed.json      — definitions only, seed meta (total_patterns)
+//	remediation-playbooks.seed.json — full playbook shape, no metadata
+//
+// This function is idempotent: re-running produces byte-identical output.
+// Overlay files (failure_patterns.json / remediation-playbooks.json) are
+// never written by the generator.
+func WriteSkillAssets(root, short string) error {
+	skillID := "huaweicloud-" + short + "-ops"
+	targetDir := filepath.Join(root, skillID, "assets")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", targetDir, err)
 	}
-	if err := writeJSON(filepath.Join(targetDir, "failure_patterns.json"), fp); err != nil {
+	fp, err := failurePatternSeedDoc(short)
+	if err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(targetDir, "remediation-playbooks.json"), rp); err != nil {
+	rp, err := playbookSeedDoc(short)
+	if err != nil {
 		return err
 	}
-	return nil
+	if err := writeJSON(filepath.Join(targetDir, "failure_patterns.seed.json"), fp); err != nil {
+		return err
+	}
+	return writeJSON(filepath.Join(targetDir, "remediation-playbooks.seed.json"), rp)
 }
 
 // GenerateAll writes assets for every product in Products.
@@ -219,6 +238,53 @@ func PatternIDPrefix(short string) string {
 	return strings.ToUpper(short)
 }
 
+// CheckGeneratedAssets verifies that all 4 Products seeds exist on disk and
+// byte-match the in-memory generator output. When the marker file
+// (docs/gcl-spec.md) is absent the function returns nil (vacuous pass —
+// repos that do not track gcl-spec.md are not in the Products-gated world).
+// Returns error describing the first mismatch or missing file.
+func CheckGeneratedAssets(root string) error {
+	marker := filepath.Join(root, "docs", "gcl-spec.md")
+	if _, err := os.Stat(marker); os.IsNotExist(err) {
+		return nil // vacuous pass: no marker means this repo is not gated
+	}
+	for short := range Products {
+		dir := filepath.Join(root, "huaweicloud-"+short+"-ops", "assets")
+		fp, err := failurePatternSeedDoc(short)
+		if err != nil {
+			return err
+		}
+		if err := checkSeedFile(filepath.Join(dir, "failure_patterns.seed.json"), fp); err != nil {
+			return err
+		}
+		rp, err := playbookSeedDoc(short)
+		if err != nil {
+			return err
+		}
+		if err := checkSeedFile(filepath.Join(dir, "remediation-playbooks.seed.json"), rp); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkSeedFile byte-compares one on-disk seed against its in-memory render.
+// It never writes: the gate that calls it must leave the working tree alone.
+func checkSeedFile(path string, doc any) error {
+	want, err := jsonMarshal(doc)
+	if err != nil {
+		return fmt.Errorf("render %s: %w", path, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("missing seed %s: %w", path, err)
+	}
+	if !bytes.Equal(got, want) {
+		return fmt.Errorf("drift in %s: disk does not match the generator render", path)
+	}
+	return nil
+}
+
 // PitfallReportEntry is one line in the common-pitfalls report.
 type PitfallReportEntry struct {
 	Skill      string `json:"skill"`
@@ -228,8 +294,8 @@ type PitfallReportEntry struct {
 	Prevention string `json:"prevention"`
 }
 
-// GeneratePitfallReport scans all failure_patterns.json under root,
-// aggregates prevention lessons cross-skill, and writes a markdown
+// GeneratePitfallReport scans all failure_patterns (seed + overlay merged)
+// under root, aggregates prevention lessons cross-skill, and writes a markdown
 // reference to huaweicloud-skill-generator/references/common-pitfalls.md.
 // The report is ordered by category then frequency.
 func GeneratePitfallReport(root string) (int, error) {
@@ -242,19 +308,9 @@ func GeneratePitfallReport(root string) (int, error) {
 		if !d.IsDir() || !strings.HasPrefix(d.Name(), "huaweicloud-") || !strings.HasSuffix(d.Name(), "-ops") {
 			continue
 		}
-		fpPath := filepath.Join(root, d.Name(), "assets", "failure_patterns.json")
-		raw, err := os.ReadFile(fpPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: pitfall-report skipped %s: %v\n", fpPath, err)
-			continue
-		}
-		var data map[string]any
-		if err := json.Unmarshal(raw, &data); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: pitfall-report skipped %s (parse error): %v\n", fpPath, err)
-			continue
-		}
-		patterns, _ := data["patterns"].([]any)
 		short := strings.TrimPrefix(strings.TrimPrefix(d.Name(), "huaweicloud-"), "-ops")
+		data := LoadFailurePatterns(root, d.Name()) // merges seed + overlay
+		patterns, _ := data["patterns"].([]any)
 		for _, p := range patterns {
 			pm, ok := p.(map[string]any)
 			if !ok {
