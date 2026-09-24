@@ -557,6 +557,30 @@ Trace files are append-only; do not overwrite/delete in place. `audit-results/` 
 
 ## 7. Prompt Templates
 
+### 7.1 Critic Dispatch Template (fan-out)
+
+A Critic asked to review one slice of a multi-agent batch needs four clearly
+separated sections. Collapsing them is how a review of "files outside your
+scope" turns into a false BLOCKER against another task's authorized writes.
+
+```text
+[REVIEW SCOPE]        the files / subtask ids you are responsible for
+[FROZEN INVARIANTS]   things that are BLOCKER if violated (values, schemas,
+                      forbidden states) — each with its authority
+[AUTHORIZED WRITES]   campaign-wide write sets: {path: owning subtask}
+                      you MUST check this table before reporting a scope
+                      violation; a file listed here is NOT out of bounds
+[OUT OF SCOPE]        everything else; do not review, do not report on it
+```
+
+Reviewing a file that the `[AUTHORIZED WRITES]` table assigns to another
+subtask is itself the defect: the finding must be "this is another task's
+write set", not "this violates the contract". A dispatch without an
+`[AUTHORIZED WRITES]` table cannot support a scope-violation finding at all —
+either the table is supplied or scope findings are out of bounds.
+
+### 7.2 Per-Skill Templates
+
 Each skill's `references/prompt-templates.md` MUST contain numbered sections `## 1.` through `## 7.` and include:
 
 1. Generator Prompt Template — placeholders include `{{user.request}}`, `{{output.critic_feedback}}`, `{{output.rubric}}`

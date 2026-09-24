@@ -232,7 +232,7 @@ audit-results/gcl-trace-*.json + orchestrator-trace-*.json
 
 响警消息列出常见四种可能根因（writer 输出 `unknown`、`--skill` 拼错、全部 smoke、全部 schema-invalid），并指向 `aggregate trace` 子命令作为诊断入口。**`source_traces_analyzed` 永远不应在有 trace 文件的仓库里长期为 0**——若为 0，先看 `SkippedSkillMismatch`，再看 `SkippedSmoke` / `InvalidTraces`。
 
-**边界声明**：写入端 P0 fix 之前已落地的存量历史 trace 永久 `schema-invalid`（缺 `final`、`source` 错位、归因为字面量 `unknown` 等），不可被回溯消费；skill 归因修复仅对修复后写入的新 trace 生效，旧 trace 需用脚本一次性重写或留作历史窗。
+**边界声明**：写入端 P0 fix 之前已落地的存量历史 trace 永久 `schema-invalid`（缺 `final`、`source` 错位、归因为字面量 `unknown` 等），不可被回溯消费；skill 归因修复仅对修复后写入的新 trace 生效，旧 trace 需用脚本一次性重写或留作历史窗。诊断入口：`hwcloud-skillcheck trend inventory --root .` 会按 evidence / smoke / schema-invalid / unparsable 清点全部 trace 文件并给出按 family 的分布——当 `trend report` 读出 0 traces 时，用它区分"还没有 campaign"与"语料全是不可消费的存量"。
 
 ### 5.4 GCL Runner 集成
 

@@ -20,14 +20,59 @@ import (
 // only `report` is exposed — it is the only consumer of ComputeTrendReport.
 func runTrend(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: hwcloud-skillcheck trend <report> ...")
+		return fmt.Errorf("usage: hwcloud-skillcheck trend <report|inventory> ...")
 	}
 	switch args[0] {
 	case "report":
 		return runTrendReport(args[1:])
+	case "inventory":
+		return runTrendInventory(args[1:])
 	default:
-		return fmt.Errorf("unknown trend subcommand: %s; use 'report'", args[0])
+		return fmt.Errorf("unknown trend subcommand: %s; use 'report' or 'inventory'", args[0])
 	}
+}
+
+// runTrendInventory is the diagnostic companion to `trend report`: it shows
+// what the report had to drop. A zero-trace report is ambiguous without it —
+// no campaigns yet looks identical to a corpus of legacy schema-invalid files.
+func runTrendInventory(args []string) error {
+	fs := newFlagSet("hwcloud-skillcheck trend inventory")
+	root := fs.String("root", ".", "repo root (default: current directory)")
+	jsonOut := fs.Bool("json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	inv, err := learning.ComputeTraceInventory(*root)
+	if err != nil {
+		return fmt.Errorf("trend inventory: %w", err)
+	}
+	if *jsonOut {
+		buf, err := json.MarshalIndent(inv, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal inventory: %w", err)
+		}
+		fmt.Println(string(buf))
+		return nil
+	}
+
+	fmt.Printf("=== Trace Inventory (root=%s) ===\n", *root)
+	fmt.Printf("total files      : %d\n", inv.TotalFiles)
+	fmt.Printf("evidence         : %d (attributable: %d)\n", inv.Evidence, inv.Attributable)
+	fmt.Printf("smoke            : %d\n", inv.Smoke)
+	fmt.Printf("schema-invalid   : %d\n", inv.SchemaInvalid)
+	fmt.Printf("unparsable       : %d\n", inv.Unparsable)
+	for _, family := range sortedKeys(inv.ByFamily) {
+		fmt.Printf("family %-10s: %d\n", family, inv.ByFamily[family])
+	}
+	if inv.Evidence == 0 {
+		fmt.Println("note: no evidence-class traces — trend report will read 0 traces.")
+		if inv.SchemaInvalid > 0 {
+			fmt.Printf("      %d legacy file(s) are schema-invalid and cannot be retro-consumed; "+
+				"a one-off backfill is required (see references/self-healing-spec.md §5.3).\n", inv.SchemaInvalid)
+		}
+	}
+	return nil
 }
 
 // runTrendReport prints the cross-trace recurrence summary for the
