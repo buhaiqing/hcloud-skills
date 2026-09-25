@@ -25,7 +25,7 @@ func runAggregate(args []string) error {
 	case "trace":
 		return runAggregateTrace(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck aggregate trace --root <dir> [--since-hours N] [--output FILE] [--require-traces] [--require-evidence] [--self-check]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck aggregate trace --root <dir> [--since-hours N] [--output FILE] [--require-traces] [--require-evidence] [--reject-invalid] [--self-check]")
 		return nil
 	default:
 		return fmt.Errorf("aggregate: unknown subcommand %q", args[0])
@@ -63,6 +63,7 @@ func runAggregateTrace(args []string) error {
 	selfCheck := fs.Bool("self-check", false, "aggregate the embedded trace fixture instead of the repo")
 	requireTraces := fs.Bool("require-traces", false, "fail (exit 1) instead of warning when no trace files exist")
 	requireEvidence := fs.Bool("require-evidence", false, "fail (exit 1) when no trace carried a verification signal (all smoke or schema-invalid)")
+	rejectInvalid := fs.Bool("reject-invalid", false, "fail (exit 1) when any trace is schema-invalid")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -186,16 +187,18 @@ func runAggregateTrace(args []string) error {
 	}
 
 	summary := aggregateTraces(parsed)
+	invalidTrace := intOf(summary["invalid_trace"])
+	if *rejectInvalid && invalidTrace > 0 {
+		return fmt.Errorf("aggregate: %d invalid trace(s) found (invalid_trace=%d); rejecting untrusted trace input", len(parsed), invalidTrace)
+	}
 	evidenceRuns := intOf(summary["evidence_runs"])
 	if evidenceRuns == 0 {
-		switch {
-		case *requireEvidence:
+		if *requireEvidence {
 			return fmt.Errorf("aggregate: --require-evidence set but no trace carried a verification signal (parsed=%d, skipped_smoke=%d, invalid_trace=%d)",
-				len(parsed), intOf(summary["skipped_smoke"]), intOf(summary["invalid_trace"]))
-		case *requireTraces:
-			fmt.Fprintf(os.Stderr, "WARN: %d trace file(s) parsed but none carried a verification signal (skipped_smoke=%d, invalid_trace=%d); --require-traces still passes — pass --require-evidence to fail here\n",
-				len(parsed), intOf(summary["skipped_smoke"]), intOf(summary["invalid_trace"]))
+				len(parsed), intOf(summary["skipped_smoke"]), invalidTrace)
 		}
+		fmt.Fprintf(os.Stderr, "WARN: 0 evidence: %d trace file(s) parsed but none carried a verification signal (skipped_smoke=%d, invalid_trace=%d); use --require-evidence for release validation\n",
+			len(parsed), intOf(summary["skipped_smoke"]), invalidTrace)
 	}
 
 	var out []byte
