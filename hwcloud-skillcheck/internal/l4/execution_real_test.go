@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
 )
 
 func TestRealExecutor_Success(t *testing.T) {
@@ -37,16 +39,34 @@ func TestRealExecutor_Failure(t *testing.T) {
 func TestRealExecutor_Timeout(t *testing.T) {
 	r := NewRealExecutor()
 	start := time.Now()
-	_, _, err := r.Run(`sleep 5`, 10*time.Millisecond)
+	exitCode, _, err := r.Run(`sleep 5`, 10*time.Millisecond)
 	elapsed := time.Since(start)
 	if err == nil {
 		t.Fatalf("want timeout err, got nil")
+	}
+	if exitCode != gcl.ExitTimeout {
+		t.Fatalf("want timeout exit code %d, got %d", gcl.ExitTimeout, exitCode)
 	}
 	if !strings.Contains(err.Error(), "deadline exceeded") {
 		t.Fatalf("want deadline exceeded, got %v", err)
 	}
 	if elapsed > 2*time.Second {
 		t.Fatalf("took too long: %v (expected ~10ms)", elapsed)
+	}
+}
+
+func TestRealExecutor_TimeoutOutputIsMasked(t *testing.T) {
+	const secret = "FAKE_L4_TIMEOUT_SECRET_123456789"
+	r := NewRealExecutor()
+	exitCode, out, err := r.Run("printf 'HW_SECRET_ACCESS_KEY="+secret+"\\n'; sleep 5", 10*time.Millisecond)
+	if exitCode != gcl.ExitTimeout || err == nil {
+		t.Fatalf("got exit=%d err=%v, want timeout", exitCode, err)
+	}
+	if strings.Contains(out, secret) {
+		t.Fatalf("timeout output contains unmasked secret: %q", out)
+	}
+	if !strings.Contains(out, "HW_SECRET_ACCESS_KEY=<masked>") {
+		t.Fatalf("timeout output did not preserve masked marker: %q", out)
 	}
 }
 

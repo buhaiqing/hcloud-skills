@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/security"
 )
 
 // ExecutionResult captures the outcome of running one step.
@@ -134,13 +135,15 @@ func (r *RealExecutor) Run(candidate string, timeout time.Duration) (int, string
 	stderrBuf := newLimitedBuffer(int64(max))
 	cmd.Stdout = stdoutBuf
 	cmd.Stderr = stderrBuf
+	cmd.Cancel = func() error { return cmd.Process.Kill() }
+	cmd.WaitDelay = 100 * time.Millisecond
 
 	err := cmd.Run()
-	output := stdoutBuf.String() + stderrBuf.String()
+	output := string(security.MaskSecrets([]byte(stdoutBuf.String() + stderrBuf.String())))
 
 	// Distinguish timeout from a regular non-zero exit.
 	if ctx.Err() == context.DeadlineExceeded {
-		return 0, output, ctx.Err()
+		return gcl.ExitTimeout, output, ctx.Err()
 	}
 
 	exitCode := 0
@@ -518,7 +521,7 @@ func RunExecutionLoopWithHealing(root string, task *TaskState, plan *ExecutionPl
 				ContextHash:  hashContext(candidate),
 				Outcome:      outcomeString(result.Success),
 				ErrorClass:   errorClass(result.Error),
-				ErrorMsg:     truncate(result.Error, 200),
+				ErrorMsg:     truncate(string(security.MaskSecrets([]byte(result.Error))), 200),
 				Risk:         risk,
 				RBACDecision: rbacDecisionString(rbacDec.Allowed),
 				GCLDecision:  gclBody.Decision,
