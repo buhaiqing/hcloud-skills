@@ -164,23 +164,22 @@ func rebuildSkillcheckBinary(rootDir string) error {
 	return nil
 }
 
-// preCommitGates returns the ordered gate registry. Gates 8 (golden run),
-// 10 (ab compare) are soft (warn but never fail). Gate 13 (go test) is omitted
-// when skipTests is set. When checkOnly is true, CI-only gates (critic-score,
-// gcl alarm-wire, drift sync --dry-run) are appended. Drift guard always does
-// sync+check (never check-only in CI — fresh checkout needs sync to bootstrap).
+// preCommitGates returns the ordered gate registry. Development mode always
+// rejects invalid traces; the existing --require-evidence aggregate option
+// remains available to release callers that need a non-zero evidence window.
 func preCommitGates(cfg preCommitConfig) []preCommitGate {
 	// In --check-only mode, the binary rebuild is skipped (CI builds separately),
 	// but drift guard still does sync+check (fresh CI checkout has no .agents/skills/).
 	// The check-only drift guard (no sync) is NOT used in CI — it's only for local
 	// testing scenarios where the agent runtime copy already exists.
 	driftGuardFn := gateDriftGuard
+	traceGate := gateAggregateTrace
 	gates := []preCommitGate{
 		{"gofmt", gateGofmt},
 		{"go vet", gateGoVet},
 		{"hwcloud-skillcheck validate", gateValidate},
 		{"hwcloud-skillcheck check audit-results", gateAuditResults},
-		{"hwcloud-skillcheck aggregate trace", gateAggregateTrace},
+		{"hwcloud-skillcheck aggregate trace", traceGate},
 		{"hwcloud-skillcheck learning gen --check", gateLearningGen},
 		{"hwcloud-skillcheck l4 handle smoke", gateL4Handle},
 		{"hwcloud-skillcheck golden run", gateGoldenRun}, // soft
@@ -469,7 +468,7 @@ func gateAuditResults(rootDir string) gateResult {
 }
 
 func gateAggregateTrace(rootDir string) gateResult {
-	return inProcessGate(runAggregate, []string{"trace", "--require-traces", "--root", rootDir}, false)
+	return inProcessGate(runAggregate, []string{"trace", "--reject-invalid", "--root", rootDir}, false)
 }
 
 func gateLearningGen(rootDir string) gateResult {

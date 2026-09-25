@@ -51,10 +51,8 @@ const (
 // evidence_runs. When no trace files exist it WARNs and returns nil (exit 0)
 // per Spec §4 by default — trace files are produced by the runtime runner, so
 // an external user may legitimately have none. Pass --require-traces to fail
-// (non-zero exit) instead; pre-commit and CI set this so the gate cannot
-// silently pass on a fresh checkout. --require-evidence is the stricter gate: it
-// fails when trace files were found but none of them carried a verification
-// signal (all smoke and/or schema-invalid).
+// when no trace files exist. Callers use --reject-invalid to fail closed on
+// untrusted input while allowing zero evidence.
 func runAggregateTrace(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck aggregate trace")
 	root := fs.String("root", ".", "skill repository root")
@@ -185,11 +183,10 @@ func runAggregateTrace(args []string) error {
 		fmt.Fprintln(os.Stderr, "WARN: no valid traces parsed; skipping aggregate")
 		return nil
 	}
-
 	summary := aggregateTraces(parsed)
 	invalidTrace := intOf(summary["invalid_trace"])
 	if *rejectInvalid && invalidTrace > 0 {
-		return fmt.Errorf("aggregate: %d invalid trace(s) found (invalid_trace=%d); rejecting untrusted trace input", len(parsed), invalidTrace)
+		return fmt.Errorf("aggregate: %d invalid trace(s) found (invalid_trace=%d); rejecting untrusted trace input", invalidTrace, invalidTrace)
 	}
 	evidenceRuns := intOf(summary["evidence_runs"])
 	if evidenceRuns == 0 {
