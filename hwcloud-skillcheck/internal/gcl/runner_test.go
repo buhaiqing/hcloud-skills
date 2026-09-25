@@ -230,6 +230,47 @@ func TestRun_Timeout(t *testing.T) {
 	}
 }
 
+func TestRun_TimeoutOutputCredentialLeakIsSafetyFail(t *testing.T) {
+	const fakeSecret = "FAKE_TIMEOUT_TOKEN_123456789"
+	result := Run(RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Command: "printf 'HW_SECRET_ACCESS_KEY=%s\\n' " + fakeSecret + "; sleep 2",
+		MaxIter: 1,
+		Timeout: 1,
+		Root:    t.TempDir(),
+	})
+	if result.ExitCode != ExitSafety {
+		t.Fatalf("Run exit code = %d, want %d (SAFETY_FAIL)", result.ExitCode, ExitSafety)
+	}
+	data, err := os.ReadFile(result.TracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	if strings.Contains(string(data), fakeSecret) {
+		t.Fatalf("trace contains unmasked fake credential")
+	}
+	var trace GCLTrace
+	if err := json.Unmarshal(data, &trace); err != nil {
+		t.Fatalf("trace is not valid JSON: %v", err)
+	}
+	if len(trace.Iterations) != 1 {
+		t.Fatalf("trace iterations = %d, want 1", len(trace.Iterations))
+	}
+	gen := trace.Iterations[0].Generator
+	if !gen.HasLeak {
+		t.Fatal("timed-out generator did not retain HasLeak")
+	}
+	if gen.ExitCode != ExitTimeout {
+		t.Errorf("timed-out generator exit code = %d, want %d", gen.ExitCode, ExitTimeout)
+	}
+	if gen.StdoutLen == 0 {
+		t.Error("timed-out generator stdout length is zero")
+	}
+	if gen.ResultExcerpt != "<masked>" {
+		t.Errorf("persisted generator excerpt = %q, want <masked>", gen.ResultExcerpt)
+	}
+}
+
 // ---- PersistTrace --------------------------------------------------------
 
 func TestPersistTrace(t *testing.T) {

@@ -478,7 +478,7 @@ func Run(cfg RunConfig) RunResult {
 			generator = runCommand(cfg.Command, commandTimeout)
 		}
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
-		if generator.ExitCode == ExitTimeout && commandTimeout == remaining {
+		if generator.ExitCode == ExitTimeout && commandTimeout == remaining && !generator.HasLeak {
 			return failBudget(&cfg, &trace, startTime, "wall_clock", criticType)
 		}
 
@@ -925,13 +925,12 @@ func hasCredentialLeak(text string) bool {
 	return false
 }
 
-// runCommand executes command with the given timeout (seconds) and returns
-// a masked GeneratorOutput. On timeout, exit code is -1 and ResultExcerpt
-// contains a TIMEOUT message.
+// runCommand executes command with the given timeout and returns a masked
+// GeneratorOutput. A timeout retains ExitTimeout while finalizing any partial
+// stdout/stderr through the same leak scan, masking, and truncation path.
 //
 // Mirrors run_command() in gcl_runner.py.
 func runCommand(command string, timeout time.Duration) GeneratorOutput {
-	maskedCmd := MaskSecrets([]byte(command))
 
 	// Bound the captured stdout / stderr. A noisy generator (a hung
 	// process looping, a verbose `hcloud` command, a misbehaving
@@ -982,30 +981,7 @@ func runCommand(command string, timeout time.Duration) GeneratorOutput {
 		// touch cmd.Process here — that's owned by the goroutine.
 		cancel()
 		<-done
-		return GeneratorOutput{
-			Command:       maskedCmd,
-			ExitCode:      ExitTimeout, // 124 — UNIX convention for timeout
-			ResultExcerpt: fmt.Sprintf("TIMEOUT after %s", timeout),
-			StdoutLen:     0,
-			StderrLen:     0,
-			HasLeak:       false,
-		}
-	}
-
-	stdoutStr := stdout.String()
-	stderrStr := stderr.String()
-	// combined is bounded by maxCaptureBytes per stream, so the concat
-	// costs at most 2 MiB instead of leaking the full stream size.
-	combined := stdoutStr + stderrStr
-
-	// Check for credential leaks BEFORE masking.
-	leak := hasCredentialLeak(combined) || hasCredentialLeak(command)
-
-	// Apply secret masking.
-	masked := MaskSecrets([]byte(combined))
-	excerpt := masked
-	if len(excerpt) > 2000 {
-		excerpt = masked[:2000] + "..."
+		return finalizeGeneratorOutput(command, &stdout, &stderr, ExitTimeout, timeout, true)
 	}
 
 	exitCode := 0
@@ -1015,6 +991,27 @@ func runCommand(command string, timeout time.Duration) GeneratorOutput {
 		} else {
 			exitCode = -1
 		}
+	}
+	return finalizeGeneratorOutput(command, &stdout, &stderr, exitCode, timeout, false)
+}
+
+// finalizeGeneratorOutput is the single finalization path for command output.
+// It scans raw stdout/stderr before masking and records capture metadata even
+// when the command timed out after producing partial output.
+func finalizeGeneratorOutput(command string, stdout, stderr *cappedWriter, exitCode int, timeout time.Duration, timedOut bool) GeneratorOutput {
+	maskedCmd := MaskSecrets([]byte(command))
+	stdoutStr := stdout.String()
+	stderrStr := stderr.String()
+	combined := stdoutStr + stderrStr
+
+	leak := hasCredentialLeak(combined) || hasCredentialLeak(command)
+	masked := MaskSecrets([]byte(combined))
+	excerpt := masked
+	if len(excerpt) > 2000 {
+		excerpt = masked[:2000] + "..."
+	}
+	if timedOut {
+		excerpt = fmt.Sprintf("TIMEOUT after %s\n%s", timeout, excerpt)
 	}
 
 	return GeneratorOutput{
