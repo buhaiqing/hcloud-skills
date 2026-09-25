@@ -695,6 +695,41 @@ func TestAggregateTraceWarnsOnZeroEvidence(t *testing.T) {
 	}
 }
 
+func TestAggregateTracePreCommitRejectsInvalidTraces(t *testing.T) {
+	root := t.TempDir()
+	writeTraceJSON(t, root, "orchestrator-trace-invalid.json",
+		`{"skill":"huaweicloud-ecs-ops","final":{"status":"PASS"}}`)
+
+	err := runAggregate([]string{"trace", "--root", root, "--reject-invalid"})
+	if err == nil {
+		t.Fatal("development trace gate must reject invalid_trace > 0")
+	}
+	if !strings.Contains(err.Error(), "invalid_trace=1") {
+		t.Fatalf("error must identify invalid traces, got: %v", err)
+	}
+}
+
+func TestAggregateTraceDevelopmentAllowsZeroEvidence(t *testing.T) {
+	root := t.TempDir()
+	var err error
+	stderr := captureStderr(t, func() {
+		err = runAggregate([]string{"trace", "--root", root, "--reject-invalid"})
+	})
+	if err != nil {
+		t.Fatalf("development trace gate must allow zero evidence, got: %v", err)
+	}
+	if !strings.Contains(stderr, "no trace files found") {
+		t.Fatalf("development trace gate must report zero evidence, stderr: %s", stderr)
+	}
+}
+
+func TestAggregateTraceProductionRequiresEvidence(t *testing.T) {
+	root := t.TempDir()
+	if err := runAggregate([]string{"trace", "--root", root, "--require-evidence", "--reject-invalid"}); err == nil {
+		t.Fatal("production trace gate must fail when no evidence exists")
+	}
+}
+
 // --- Learning trace aggregate CLI: SkippedSkillMismatch + EmptyLoop alarm ---
 
 // seedFailurePatterns writes a minimal failure_patterns.json so runTraceAggregate
