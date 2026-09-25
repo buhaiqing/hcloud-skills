@@ -53,7 +53,7 @@ remediation-playbooks.seed.json ←gen─     remediation-playbooks.json (tracke
 - Save: seed IDs reduced to stats/learned_from; non-seed full; `last_aggregation` bumped; seed file untouched (#T4).
 - Playbook outcome: seed-skill appends partial metadata; non-seed in-place update unchanged; unknown ID no-op (#T4).
 - Pitfall report counts seed definitions through merge (#T6); l4 pre-risk gate finds seed patterns when overlay absent (fresh-clone shape) (#T6).
-- Existing suites stay green unchanged where they model the no-seed (22-skill) world.
+- Existing suites stay green unchanged where they model the no-seed (20-skill) world.
 
 ## Out of Scope (explicit)
 

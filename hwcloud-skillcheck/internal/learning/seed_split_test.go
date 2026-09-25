@@ -207,7 +207,7 @@ func TestLoadFailurePatterns_NoSeedLegacyCompat(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Legacy full-document overlay (the 22 non-Products skills): no seed at all.
+	// Legacy full-document overlay (the 20 non-Products skills): no seed at all.
 	legacy := `{"$schema":"failure-patterns/v1","skill_id":"huaweicloud-ecs-ops","patterns":[{"id":"ECS-FP001","category":"runtime","root_cause":"legacy","stats":{"occurrence_count":2}}],"meta":{"source_traces_analyzed":9,"total_patterns":1}}`
 	if err := os.WriteFile(filepath.Join(dir, "failure_patterns.json"), []byte(legacy), 0o644); err != nil {
 		t.Fatal(err)
