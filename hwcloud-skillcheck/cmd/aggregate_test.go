@@ -723,6 +723,57 @@ func TestAggregateTraceDevelopmentAllowsZeroEvidence(t *testing.T) {
 	}
 }
 
+func TestAggregateTraceRejectsUnparseableTraces(t *testing.T) {
+	tests := []struct {
+		name       string
+		validTrace bool
+		require    bool
+	}{
+		{name: "malformed only"},
+		{name: "malformed with valid evidence", validTrace: true},
+		{name: "malformed with valid evidence and require evidence", validTrace: true, require: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTraceJSON(t, root, "gcl-trace-malformed.json", `{"skill":`)
+			if tt.validTrace {
+				writeTraceJSON(t, root, "gcl-trace-valid.json", traceFixture("huaweicloud-ecs-ops", "PASS", 1, 1.0))
+			}
+			out := filepath.Join(root, "summary.json")
+			args := []string{"trace", "--root", root, "--output", out, "--reject-invalid"}
+			if tt.require {
+				args = append(args, "--require-evidence")
+			}
+
+			err := runAggregate(args)
+			if err == nil {
+				t.Fatal("--reject-invalid must reject unparseable trace input")
+			}
+			if !strings.Contains(err.Error(), "unparseable=1") || !strings.Contains(err.Error(), "--reject-invalid") {
+				t.Fatalf("error must identify unparseable input and gate, got: %v", err)
+			}
+			if _, statErr := os.Stat(out); !os.IsNotExist(statErr) {
+				t.Fatalf("rejected aggregate must not create summary; stat error=%v", statErr)
+			}
+		})
+	}
+}
+
+func TestAggregateTraceRequireEvidenceAllowsUnparseableWithValidEvidence(t *testing.T) {
+	root := t.TempDir()
+	writeTraceJSON(t, root, "gcl-trace-malformed.json", `{"skill":`)
+	writeTraceJSON(t, root, "gcl-trace-valid.json", traceFixture("huaweicloud-ecs-ops", "PASS", 1, 1.0))
+	out := filepath.Join(root, "summary.json")
+
+	if err := runAggregate([]string{"trace", "--root", root, "--output", out, "--require-evidence"}); err != nil {
+		t.Fatalf("--require-evidence must remain orthogonal to unparseable traces, got: %v", err)
+	}
+	if got := numOf(readSummary(t, out)["evidence_runs"]); got != 1 {
+		t.Fatalf("evidence_runs=%d, want valid evidence to be aggregated", got)
+	}
+}
+
 func TestAggregateTraceProductionRequiresEvidence(t *testing.T) {
 	root := t.TempDir()
 	if err := runAggregate([]string{"trace", "--root", root, "--require-evidence", "--reject-invalid"}); err == nil {

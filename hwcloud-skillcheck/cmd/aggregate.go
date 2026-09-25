@@ -126,8 +126,9 @@ func runAggregateTrace(args []string) error {
 	// mutex — errgroup.Wait gives us happens-before across all of them.
 	// A nil slot is a file that did not parse at all.
 	var (
-		slots = make([]*consumedTrace, len(paths))
-		skips = make([]string, len(paths))
+		slots         = make([]*consumedTrace, len(paths))
+		skips         = make([]string, len(paths))
+		parseFailures = make([]string, len(paths))
 	)
 	g, gCtx := errgroup.WithContext(context.Background())
 	g.SetLimit(runtime.NumCPU())
@@ -142,7 +143,7 @@ func runAggregateTrace(args []string) error {
 			trace, raw, perr := parseAggregateTrace(p)
 			rel, _ := filepath.Rel(rootDir, p)
 			if perr != nil {
-				skips[i] = fmt.Sprintf("skip %s: %v", rel, perr)
+				parseFailures[i] = fmt.Sprintf("skip %s: %v", rel, perr)
 				return nil
 			}
 			class, schemaErrs := learning.ClassifyTrace(raw, trace)
@@ -161,11 +162,24 @@ func runAggregateTrace(args []string) error {
 		return wErr
 	}
 	// Drain skip warnings now (after all goroutines done) to avoid interleaved stderr.
-	for _, s := range skips {
+	for i, s := range skips {
 		if s != "" {
 			fmt.Fprintln(os.Stderr, "WARN:", s)
 		}
+		if parseFailures[i] != "" {
+			fmt.Fprintln(os.Stderr, "WARN:", parseFailures[i])
+		}
 	}
+	unparseable := 0
+	for _, failure := range parseFailures {
+		if failure != "" {
+			unparseable++
+		}
+	}
+	if *rejectInvalid && unparseable > 0 {
+		return fmt.Errorf("aggregate: unparseable=%d trace file(s) found; --reject-invalid rejects untrusted trace input", unparseable)
+	}
+
 	// Compact: drop nil slots left by unparseable traces.
 	parsed := make([]*consumedTrace, 0, len(slots))
 	for _, t := range slots {

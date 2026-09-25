@@ -39,7 +39,7 @@ func runCheck(args []string) error {
 	case "precommit", "--pre-commit", "pre-commit":
 		return runCheckPreCommit(args[1:])
 	case "-h", "--help", "help":
-		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck check <example-config|markdown-links|references-links|audit-results|lanes|merge-verify|--pre-commit> --root <dir> [--require-evidence]")
+		fmt.Fprintln(os.Stdout, "hwcloud-skillcheck check <example-config|markdown-links|references-links|audit-results|lanes|merge-verify|--pre-commit> --root <dir>")
 		return nil
 	default:
 		return fmt.Errorf("check: unknown subcommand %q", args[0])
