@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/learning"
@@ -16,11 +17,19 @@ import (
 func TestGateLearningGen_CheckMode(t *testing.T) {
 	// No repo marker → vacuous pass (state-tolerant contract on empty roots).
 	root := t.TempDir()
-	_ = captureStdout(t, func() {
+	// The printed wording is part of the contract: a vacuous pass must not
+	// claim the seeds were verified.
+	out := captureStdout(t, func() {
 		if got := gateLearningGen(root); !got.passed {
 			t.Errorf("marker-less root must pass, got detail=%q", got.detail)
 		}
 	})
+	if !strings.Contains(out, "no seed verified") {
+		t.Errorf("vacuous pass must say nothing was verified, got %q", out)
+	}
+	if strings.Contains(out, "product seeds match") {
+		t.Errorf("vacuous pass must not claim seeds match, got %q", out)
+	}
 
 	// Marker present but seeds absent → hard fail.
 	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
@@ -39,11 +48,14 @@ func TestGateLearningGen_CheckMode(t *testing.T) {
 	if _, err := learning.GenerateAll(root); err != nil {
 		t.Fatalf("GenerateAll: %v", err)
 	}
-	_ = captureStdout(t, func() {
+	out = captureStdout(t, func() {
 		if got := gateLearningGen(root); !got.passed {
 			t.Errorf("matching seeds must pass, got detail=%q", got.detail)
 		}
 	})
+	if !strings.Contains(out, "product seeds match") {
+		t.Errorf("matching seeds must report the match, got %q", out)
+	}
 
 	// Drifted seed → fail.
 	p := filepath.Join(root, "huaweicloud-rds-ops", "assets", "failure_patterns.seed.json")
