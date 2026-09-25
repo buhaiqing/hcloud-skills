@@ -143,6 +143,7 @@ func autofixBridger(root string) l4.AutofixFunc {
 				ID:            pb.ID,
 				RiskLevel:     pb.Remediation.RiskLevel,
 				Threshold:     pb.Remediation.AutoExecuteThreshold,
+				Trigger:       pb.Trigger,
 				SuccessRate:   playbookSuccessRate(pb),
 				Preconditions: pb.Remediation.Preconditions,
 				Execute:       pb.Remediation.Execute,

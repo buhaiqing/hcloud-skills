@@ -6,8 +6,12 @@ import (
 	"regexp"
 )
 
-// placeholderRe matches {{output.key}} and {{env.KEY}} placeholders.
+// placeholderRe matches supported {{output.key}} and {{env.KEY}} placeholders.
 var placeholderRe = regexp.MustCompile(`\{\{(output|env)\.([^}]+)\}\}`)
+
+// Any remaining opening delimiter is unresolved, including unknown, typo, or
+// malformed forms. RenderOutput is intentionally fail-closed.
+var unresolvedPlaceholderRe = regexp.MustCompile(`\{\{`)
 
 // RenderOutput substitutes {{output.key}} and {{env.KEY}} placeholders in a
 // playbook command string.
@@ -51,7 +55,7 @@ func RenderOutput(tmpl string, outputs map[string]string) (string, bool, error) 
 	if firstErr != nil {
 		return rendered, false, firstErr
 	}
-	if placeholderRe.MatchString(rendered) {
+	if unresolvedPlaceholderRe.MatchString(rendered) {
 		return rendered, false, fmt.Errorf("unresolved placeholder remains: %q", rendered)
 	}
 	return rendered, true, nil

@@ -63,6 +63,19 @@ func TestRenderOutput_NoPlaceholderPassthrough(t *testing.T) {
 	}
 }
 
+func TestRenderOutput_RejectsUnknownPlaceholders(t *testing.T) {
+	for _, tmpl := range []string{
+		"hcloud X --name {{user.name}}",
+		"hcloud X --region {{ctx.region}}",
+		"hcloud X --id {{output}}",
+		"hcloud X --id {{outputs.id}}",
+	} {
+		_, ok, err := RenderOutput(tmpl, map[string]string{"id": "i-fake"})
+		if err == nil || ok {
+			t.Errorf("RenderOutput(%q) = ok %v, err %v; want fail-closed", tmpl, ok, err)
+		}
+	}
+}
 func TestEvalPreconditions_AllPass(t *testing.T) {
 	// runFn returns (0, "", nil) for any command → all preconditions pass.
 	run := func(cmd string) (int, string, error) { return 0, "", nil }
