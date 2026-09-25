@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // maskPattern is the raw string form of "<masked>" as it appears in a JSON file.
@@ -268,6 +269,24 @@ func TestRun_TimeoutOutputCredentialLeakIsSafetyFail(t *testing.T) {
 	}
 	if gen.ResultExcerpt != "<masked>" {
 		t.Errorf("persisted generator excerpt = %q, want <masked>", gen.ResultExcerpt)
+	}
+}
+
+func TestRun_WallClockTimeoutCredentialLeakIsSafetyFail(t *testing.T) {
+	const fakeSecret = "FAKE_WALLCLOCK_TIMEOUT_TOKEN_123456789"
+	result := Run(RunConfig{
+		Skill:   "huaweicloud-ecs-ops",
+		Command: "printf 'HW_SECRET_ACCESS_KEY=" + fakeSecret + "\\n'; sleep 1",
+		MaxIter: 1,
+		Timeout: 1,
+		Budget:  ResourceBudget{WallClock: 20 * time.Millisecond},
+		Root:    t.TempDir(),
+	})
+	if result.ExitCode != ExitSafety {
+		t.Fatalf("Run exit code = %d, want %d (SAFETY_FAIL)", result.ExitCode, ExitSafety)
+	}
+	if result.BudgetExceeded != "" {
+		t.Fatalf("wall-clock budget must not mask a credential leak: %q", result.BudgetExceeded)
 	}
 }
 
