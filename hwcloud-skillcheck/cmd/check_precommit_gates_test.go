@@ -103,6 +103,17 @@ func TestStateTolerantGates_PassOnEmptyRoot(t *testing.T) {
 	}
 }
 
+func TestGateAggregateTraceRejectsInvalidInput(t *testing.T) {
+	root := t.TempDir()
+	writeTraceJSON(t, root, "orchestrator-trace-invalid.json", `{"skill":"huaweicloud-ecs-ops","final":{"status":"PASS"}}`)
+
+	var got gateResult
+	_ = captureStdout(t, func() { got = gateAggregateTrace(root) })
+	if got.passed || !strings.Contains(got.detail, "invalid_trace=1") {
+		t.Fatalf("aggregate pre-commit gate must reject invalid traces, got %+v", got)
+	}
+}
+
 // TestSoftGates_AreSoft confirms golden run + ab compare carry soft=true so a
 // failure never flips the exit code (regression guard for the || true parity).
 func TestSoftGates_AreSoft(t *testing.T) {

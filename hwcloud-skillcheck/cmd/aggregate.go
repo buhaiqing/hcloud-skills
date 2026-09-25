@@ -45,14 +45,15 @@ const (
 // Every candidate is classified in the frozen order parse → schema-invalid →
 // smoke → evidence (learning.ClassifyTrace): only evidence traces move a
 // metric, and evidence_runs is exactly their number (pass_rate's denominator).
-// A trace that fails canonical-schema validation is untrusted input, so it is
-// counted in invalid_trace, WARNed by file name, and excluded from pass_rate,
-// rubric averages, by_skill, by_source, by_critic_type, and
-// evidence_runs. When no trace files exist it WARNs and returns nil (exit 0)
-// per Spec §4 by default — trace files are produced by the runtime runner, so
-// an external user may legitimately have none. Pass --require-traces to fail
-// when no trace files exist. Callers use --reject-invalid to fail closed on
-// untrusted input while allowing zero evidence.
+// A trace that fails read/JSON parsing is counted as unparseable; a trace that
+// fails canonical-schema validation is counted in invalid_trace. Both are
+// untrusted input, WARNed by file name, and excluded from pass_rate, rubric
+// averages, by_skill, by_source, by_critic_type, and evidence_runs. When no
+// trace files exist it WARNs and returns nil (exit 0) per Spec §4 by default —
+// trace files are produced by the runtime runner, so an external user may
+// legitimately have none. Pass --require-traces to fail when no trace files
+// exist. Callers use --reject-invalid to fail closed on untrusted input while
+// allowing zero evidence.
 func runAggregateTrace(args []string) error {
 	fs := newFlagSet("hwcloud-skillcheck aggregate trace")
 	root := fs.String("root", ".", "skill repository root")
@@ -61,7 +62,7 @@ func runAggregateTrace(args []string) error {
 	selfCheck := fs.Bool("self-check", false, "aggregate the embedded trace fixture instead of the repo")
 	requireTraces := fs.Bool("require-traces", false, "fail (exit 1) instead of warning when no trace files exist")
 	requireEvidence := fs.Bool("require-evidence", false, "fail (exit 1) when no trace carried a verification signal (all smoke or schema-invalid)")
-	rejectInvalid := fs.Bool("reject-invalid", false, "fail (exit 1) when any trace is schema-invalid")
+	rejectInvalid := fs.Bool("reject-invalid", false, "fail (exit 1) when any trace is schema-invalid or unparseable")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

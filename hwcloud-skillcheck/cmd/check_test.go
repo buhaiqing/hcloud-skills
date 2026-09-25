@@ -25,6 +25,20 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
+func TestHelpAdvertisesOnlyImplementedTraceGates(t *testing.T) {
+	checkHelp := captureStdout(t, func() { _ = runCheck([]string{"--help"}) })
+	if strings.Contains(checkHelp, "--require-evidence") {
+		t.Fatalf("check help must not advertise the aggregate-only --require-evidence flag: %s", checkHelp)
+	}
+
+	aggregateHelp := captureStdout(t, func() { _ = runAggregate([]string{"--help"}) })
+	for _, flag := range []string{"--require-evidence", "--reject-invalid"} {
+		if !strings.Contains(aggregateHelp, flag) {
+			t.Errorf("aggregate help must advertise %s: %s", flag, aggregateHelp)
+		}
+	}
+}
+
 // --- check example-config ---
 
 func writeExampleConfig(t *testing.T, root, skill, content string) {
