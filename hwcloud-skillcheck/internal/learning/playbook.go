@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // RemediationPlaybook is the strongly-typed runtime shape of a
@@ -111,7 +112,20 @@ func LoadPlaybooks(root, skill string) ([]RemediationPlaybook, error) {
 func RecordPlaybookOutcome(root, skill, playbookID string, success bool) error {
 	skillID := skillAssetID(skill)
 	dir := filepath.Join(root, skillID, "assets")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
 	path := filepath.Join(dir, "remediation-playbooks.json")
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+
 	env := struct {
 		Playbooks []map[string]any `json:"playbooks"`
 	}{Playbooks: []map[string]any{}}
@@ -141,22 +155,46 @@ func RecordPlaybookOutcome(root, skill, playbookID string, success bool) error {
 	}
 	rate := toFloat(md["success_rate"])
 	if success {
-		// EWMA nudge toward 1.0.
 		rate = rate*0.9 + 0.1
 	} else {
-		// EWMA de-rank toward 0.0.
 		rate *= 0.9
 	}
-	if rate > 1.0 {
-		rate = 1.0
-	}
-	md["success_rate"] = rate
+	md["success_rate"] = min(rate, 1.0)
 	md["last_updated"] = NowISO()
-	return writeJSON(path, map[string]any{
+	return writePlaybookOverlay(path, map[string]any{
 		"$schema":   "remediation-playbooks/v1",
 		"skill_id":  skillID,
 		"playbooks": env.Playbooks,
 	})
+}
+
+func writePlaybookOverlay(path string, value any) error {
+	buf, err := marshal(value)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".remediation-playbooks-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(buf); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // seedKnowsPlaybook reports whether the tracked seed file lists playbookID.

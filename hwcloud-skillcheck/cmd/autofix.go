@@ -37,7 +37,7 @@ func runL4Autofix(args []string) error {
 		return fmt.Errorf("load playbooks: %w", err)
 	}
 
-	outputs := map[string]string{} // captured {{output.*}} values (from trace; empty for CLI)
+	outputs := map[string]string{} // captured {{output.*}} values; rendering fails closed when absent
 
 	// Bridge learning.RemediationPlaybook → l4.PlaybookSpec.
 	specs := make([]l4.PlaybookSpec, 0, len(playbooks))
@@ -47,6 +47,7 @@ func runL4Autofix(args []string) error {
 			RiskLevel:     pb.Remediation.RiskLevel,
 			Threshold:     pb.Remediation.AutoExecuteThreshold,
 			SuccessRate:   playbookSuccessRate(pb),
+			Trigger:       pb.Trigger,
 			Preconditions: pb.Remediation.Preconditions,
 			Execute:       pb.Remediation.Execute,
 			Verification:  pb.Remediation.Verification,
@@ -87,8 +88,8 @@ func runL4Autofix(args []string) error {
 		return os.WriteFile(*output, raw, 0o644)
 	}
 	if *dryRun {
-		fmt.Printf("DRY-RUN autofix for %s\n  command: %s\n  would:    %s (threshold %.2f)\n",
-			*skill, *command, res.Action, playbookThreshold(specs))
+		fmt.Printf("DRY-RUN autofix for %s\n  command: %s\n  would:    %s playbook=%s threshold=%.2f success_rate=%.2f\n",
+			*skill, *command, res.Action, res.PlaybookID, res.Threshold, res.SuccessRate)
 		return nil
 	}
 	fmt.Printf("autofix[%s]: action=%s playbook=%s success=%v\n", *skill, res.Action, res.PlaybookID, res.Success)
@@ -108,16 +109,4 @@ func playbookSuccessRate(pb learning.RemediationPlaybook) float64 {
 		return r
 	}
 	return 0.0
-}
-
-// playbookThreshold reports the max auto_execute_threshold among playbooks
-// (for dry-run display).
-func playbookThreshold(specs []l4.PlaybookSpec) float64 {
-	var max float64
-	for _, s := range specs {
-		if s.Threshold > max {
-			max = s.Threshold
-		}
-	}
-	return max
 }
