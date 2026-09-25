@@ -43,8 +43,13 @@ func TestWriteSkillAssets_DoesNotTouchOverlays(t *testing.T) {
 
 func TestCheckGeneratedAssets(t *testing.T) {
 	t.Run("no marker vacuous pass", func(t *testing.T) {
-		if err := CheckGeneratedAssets(t.TempDir()); err != nil {
+		verified, err := CheckGeneratedAssets(t.TempDir())
+		if err != nil {
 			t.Fatalf("marker-less root must pass vacuously, got %v", err)
+		}
+		// Vacuous = nothing was compared; the CLI must not claim "match".
+		if verified {
+			t.Fatal("marker-less root passes vacuously: verified must be false")
 		}
 	})
 
@@ -57,7 +62,7 @@ func TestCheckGeneratedAssets(t *testing.T) {
 	}
 
 	t.Run("marker without seeds fails", func(t *testing.T) {
-		if err := CheckGeneratedAssets(root); err == nil {
+		if _, err := CheckGeneratedAssets(root); err == nil {
 			t.Fatal("marker root without seeds must fail")
 		}
 	})
@@ -67,8 +72,8 @@ func TestCheckGeneratedAssets(t *testing.T) {
 	}
 
 	t.Run("fresh seeds match", func(t *testing.T) {
-		if err := CheckGeneratedAssets(root); err != nil {
-			t.Fatalf("fresh seeds must match, got %v", err)
+		if verified, err := CheckGeneratedAssets(root); err != nil || !verified {
+			t.Fatalf("fresh seeds must match: err=%v verified=%v", err, verified)
 		}
 	})
 
@@ -81,7 +86,7 @@ func TestCheckGeneratedAssets(t *testing.T) {
 		if err := os.WriteFile(p, append(raw, ' '), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := CheckGeneratedAssets(root); err == nil {
+		if _, err := CheckGeneratedAssets(root); err == nil {
 			t.Fatal("drifted seed must fail gen --check")
 		}
 	})
@@ -91,7 +96,7 @@ func TestCheckGeneratedAssets(t *testing.T) {
 		if err := os.Remove(p); err != nil {
 			t.Fatal(err)
 		}
-		if err := CheckGeneratedAssets(root); err == nil {
+		if _, err := CheckGeneratedAssets(root); err == nil {
 			t.Fatal("missing seed must fail gen --check")
 		}
 	})

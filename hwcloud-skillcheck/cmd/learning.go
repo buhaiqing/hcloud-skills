@@ -54,8 +54,16 @@ func runLearningGen(args []string) error {
 	if *check {
 		// Pre-commit/CI gate: seed drift must fail loudly, and the gate must
 		// never mutate the working tree (P0-3).
-		if err := learning.CheckGeneratedAssets(*root); err != nil {
+		verified, err := learning.CheckGeneratedAssets(*root)
+		if err != nil {
 			return err
+		}
+		// A missing repo marker means nothing was compared (spec #T5); saying
+		// "OK: seeds match" there would claim verification that never ran.
+		if !verified {
+			fmt.Printf("learning gen --check: vacuous pass, marker %s not found — no seed verified\n",
+				filepath.Join(*root, "docs", "gcl-spec.md"))
+			return nil
 		}
 		fmt.Printf("learning gen --check OK: %d product seeds match under %s\n", len(learning.Products), *root)
 		return nil

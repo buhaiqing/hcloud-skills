@@ -920,12 +920,9 @@ func Aggregate(root, skill string, sinceHours *int, dryRun bool) (*AggregateResu
 // seed file the overlay alone is the document — legacy single-file skills
 // keep their exact pre-split behavior.
 func LoadFailurePatterns(root, skill string) map[string]any {
-	skillID := "huaweicloud-" + strings.ReplaceAll(skill, "huaweicloud-", "")
-	skillID = strings.ReplaceAll(skillID, "-ops", "") // tolerate bare shortname
+	skillID := skill
 	if !strings.HasPrefix(skill, "huaweicloud-") {
 		skillID = "huaweicloud-" + skill + "-ops"
-	} else {
-		skillID = skill
 	}
 	dir := filepath.Join(root, skillID, "assets")
 	scaffold := func() map[string]any {

@@ -239,32 +239,32 @@ func PatternIDPrefix(short string) string {
 
 // CheckGeneratedAssets verifies that all 4 Products seeds exist on disk and
 // byte-match the in-memory generator output. When the marker file
-// (docs/gcl-spec.md) is absent the function returns nil (vacuous pass —
-// repos that do not track gcl-spec.md are not in the Products-gated world).
-// Returns error describing the first mismatch or missing file.
-func CheckGeneratedAssets(root string) error {
+// (docs/gcl-spec.md) is absent it reports verified=false with no error
+// (vacuous pass — repos that do not track gcl-spec.md are not in the
+// Products-gated world). verified=true means every seed was byte-compared.
+func CheckGeneratedAssets(root string) (verified bool, err error) {
 	marker := filepath.Join(root, "docs", "gcl-spec.md")
 	if _, err := os.Stat(marker); os.IsNotExist(err) {
-		return nil // vacuous pass: no marker means this repo is not gated
+		return false, nil // vacuous pass: no marker means this repo is not gated
 	}
 	for short := range Products {
 		dir := filepath.Join(root, "huaweicloud-"+short+"-ops", "assets")
 		fp, err := failurePatternSeedDoc(short)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if err := checkSeedFile(filepath.Join(dir, "failure_patterns.seed.json"), fp); err != nil {
-			return err
+			return false, err
 		}
 		rp, err := playbookSeedDoc(short)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if err := checkSeedFile(filepath.Join(dir, "remediation-playbooks.seed.json"), rp); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return true, nil
 }
 
 // checkSeedFile byte-compares one on-disk seed against its in-memory render.
