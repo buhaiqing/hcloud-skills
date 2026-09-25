@@ -154,11 +154,35 @@ func IsSmokeTrace(trace map[string]any) bool {
 	if status, _ := final["status"].(string); status == "SAFETY_FAIL" {
 		return false
 	}
+	if status, _ := trace["status"].(string); status == "pending" {
+		return true
+	}
+	if smoke, ok := trace["smoke"].(bool); ok && smoke {
+		return true
+	}
 	if isSmokeToken(trace["request"]) || isSmokeToken(trace["fault"]) {
 		return true
 	}
 	if n, ok := traceStepCount(trace); ok && n == 0 {
 		return true
+	}
+	if stages, ok := trace["stages"].([]any); ok {
+		executed, verified := false, false
+		for _, raw := range stages {
+			stage, _ := raw.(map[string]any)
+			name, _ := stage["stage"].(string)
+			done, _ := stage["done"].(bool)
+			switch name {
+			case "execute":
+				executed = done
+			case "verify":
+				verified = done
+			}
+		}
+		return !(executed && verified)
+	}
+	if iterations, ok := trace["iterations"].([]any); ok {
+		return len(iterations) == 0
 	}
 	return false
 }

@@ -8,12 +8,12 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"strconv"
-	"strings"
-
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/l4"
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/learning"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 func runL4(args []string) error {
@@ -111,18 +111,55 @@ func runL4Handle(args []string) error {
 		}
 		in.MetricThreshold = &v
 	}
-	out := l4.HandleFault(in, nil)
-	buf, err := json.MarshalIndent(out, "", "  ")
+	rawOut := l4.HandleFault(in, nil)
+	out, err := l4.SanitizeOrchestratorOutput(rawOut)
 	if err != nil {
 		return err
 	}
+	buf, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode l4 result: category marshal")
+	}
 	if *output != "" {
-		if err := os.WriteFile(*output, append(buf, '\n'), 0o644); err != nil {
-			return err
+		if err := writePrivateFileAtomic(*output, append(buf, '\n')); err != nil {
+			return fmt.Errorf("write l4 output: %w", err)
 		}
 		fmt.Printf("Wrote: %s\n", *output)
 	}
 	fmt.Println(string(buf))
+	return nil
+}
+
+func writePrivateFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
 	return nil
 }
 

@@ -71,6 +71,84 @@ func TestPersistAndLoadTask(t *testing.T) {
 	}
 }
 
+func TestPersistTaskRedactsSensitiveFields(t *testing.T) {
+	const secret = "FAKESECRET1234567890"
+	root := t.TempDir()
+	state := &TaskState{
+		ID:    "redaction1234567",
+		Fault: "RDS failure HW_SECRET_ACCESS_KEY=" + secret,
+		Results: []StepResult{{
+			Command: "hcloud rds list SK=" + secret,
+			Error:   "request failed HW_SECRET_ACCESS_KEY=" + secret,
+			Output:  "server returned SK=" + secret,
+		}},
+	}
+	if err := PersistTask(root, state.ID, state); err != nil {
+		t.Fatalf("PersistTask: %v", err)
+	}
+	raw, err := os.ReadFile(root + "/.l4-tasks/" + state.ID + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("persisted checkpoint contains raw secret: %s", raw)
+	}
+	loaded, err := LoadTask(root, state.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted := loaded.Results[0]
+	if !strings.Contains(persisted.Command, "<masked>") || !strings.Contains(persisted.Error, "<masked>") || !strings.Contains(persisted.Output, "<masked>") {
+		t.Fatalf("persisted result missing redaction marker: %+v", persisted)
+	}
+}
+
+func TestPersistenceSanitizerCoversStructuredAndOpaqueValues(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"assignment", "api_key=short-secret", false},
+		{"authorization", "Authorization: Bearer abcdefghijklmnop", false},
+		{"cookie", "Cookie: session=abcdefghijklmnop", false},
+		{"query", "https://host/path?access_token=abcdefghijklmnop", false},
+		{"arn", "acs:rds:cn-north-4:123:instance:rds-1234", false},
+		{"resource", "rds-1234abc", false},
+		{"opaque", "abcdefghij1234567890", true},
+		{"opaque alpha", "abcdefghijklmnop", true},
+		{"mixed sentinel", "<masked> api_token=abcdefghijklmnop", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := sanitizeStringForPersistence(tc.name, tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err=%v wantErr=%v got=%q", err, tc.wantErr, got)
+			}
+			if !tc.wantErr {
+				again, err := sanitizeStringForPersistence(tc.name, got)
+				if err != nil || again != got {
+					t.Fatalf("not idempotent: first=%q second=%q err=%v", got, again, err)
+				}
+				if strings.Contains(got, "abcdefghijklmnop") || strings.Contains(got, "short-secret") {
+					t.Fatalf("raw secret survived: %q", got)
+				}
+			}
+		})
+	}
+}
+
+func TestPersistTaskDoesNotMutateRawExecutionState(t *testing.T) {
+	state := &TaskState{ID: "rawstate1234567", Fault: "RDS api_key=abcdefghijklmnop", Steps: []TaskStep{{Action: "api_key=abcdefghijklmnop", Command: "run --token abcdefghijklmnop"}}, Results: []StepResult{{Command: "run --token abcdefghijklmnop", Output: "AKIA1234567890123456"}}}
+	original := *state
+	if err := PersistTask(t.TempDir(), state.ID, state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Fault != original.Fault || state.Steps[0].Action != original.Steps[0].Action || state.Results[0].Output != original.Results[0].Output {
+		t.Fatal("PersistTask mutated raw execution state")
+	}
+}
+
 func TestTaskStateLifecycle(t *testing.T) {
 	state := &TaskState{
 		ID:     "lifecycle123456",

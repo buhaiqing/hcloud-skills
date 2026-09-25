@@ -114,3 +114,77 @@ func TestRBAC_Integration_MixedPlan(t *testing.T) {
 		t.Fatalf("step2 want blocked_by_rbac, got %q", out.Results[1].GCLDecision)
 	}
 }
+
+// TestRiskForStep_NeverDowngradesDestructive pins the fail-closed helper:
+// caller input cannot downgrade an action-inferred high risk. Non-destructive
+// caller classifications remain authoritative so diagnose_and_remediate can
+// keep its existing low-risk autonomous loop.
+func TestRiskForStep_NeverDowngradesDestructive(t *testing.T) {
+	cases := []struct {
+		name     string
+		caller   string
+		inferred string
+		want     string
+	}{
+		{"caller_low_cannot_downgrade_destructive", "low", "high", "high"},
+		{"caller_low_diagnose_stays_low", "low", "medium", "low"},
+		{"caller_low_readonly_stays_low", "low", "low", "low"},
+		{"caller_medium_readonly_stays_medium", "medium", "low", "medium"},
+		{"caller_high_cannot_downgrade", "high", "high", "high"},
+		{"unknown_caller_destructive_stays_high", "bogus", "high", "high"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := riskForStep(tc.caller, tc.inferred); got != tc.want {
+				t.Errorf("riskForStep(%q,%q) = %q, want %q", tc.caller, tc.inferred, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOrchestrator_CallerLowCannotDowngradeDestructiveAction verifies the
+// end-to-end safety gate: even if the caller's risk is forced to "low",
+// a destructive action (delete-instances) is still blocked by RBAC inside
+// the execution loop. This is the direct regression test for the Critic
+// BLOCKER on the orchestrator's risk-overwrite fix.
+func TestOrchestrator_CallerLowCannotDowngradeDestructiveAction(t *testing.T) {
+	root := t.TempDir()
+	// Simulate the orchestrator's post-BuildTaskFromPlan fix path by
+	// applying the same per-step maxRiskLevel we now use in production.
+	step := TaskStep{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "delete-instances", Verb: "delete"}
+	step.Risk = riskForStep("low", inferRiskFromAction(step.Action))
+	if step.Risk != "high" {
+		t.Fatalf("caller=low must not downgrade delete-instances, got risk=%q", step.Risk)
+	}
+
+	task := &TaskState{
+		ID: "orch-low-destructive", Status: TaskStatusRunning, CurrentStep: 0,
+		Steps: []TaskStep{step},
+	}
+	plan := &ExecutionPlan{Steps: []PlanStep{{Step: 1, Skill: "huaweicloud-ecs-ops", Action: "delete-instances"}}}
+	exec := &StubExecutor{Outcomes: []StubStep{{ExitCode: 0}}}
+
+	out := RunExecutionLoopWithHealing(root, task, plan, nil, nil, HealingPolicy{}, exec)
+	if out.Status != TaskStatusFailed {
+		t.Fatalf("want failed (RBAC blocked destructive), got %s", out.Status)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("want 1 result, got %d", len(out.Results))
+	}
+	if out.Results[0].GCLDecision != "blocked_by_rbac" {
+		t.Fatalf("destructive must be blocked_by_rbac, got %q", out.Results[0].GCLDecision)
+	}
+	if !strings.Contains(out.Results[0].Error, "exceeds max auto-approval") {
+		t.Fatalf("want RBAC deny reason, got %q", out.Results[0].Error)
+	}
+}
+
+// TestOrchestrator_CallerLowDiagnoseStaysLow verifies the default
+// diagnose_and_remediate path remains low-risk under explicit caller=low.
+func TestOrchestrator_CallerLowDiagnoseStaysLow(t *testing.T) {
+	step := TaskStep{Step: 1, Skill: "huaweicloud-vpc-ops", Action: "diagnose_and_remediate", Verb: "diagnose"}
+	step.Risk = riskForStep("low", inferRiskFromAction(step.Action))
+	if step.Risk != "low" {
+		t.Fatalf("caller=low + diagnose_and_remediate must stay low, got risk=%q", step.Risk)
+	}
+}

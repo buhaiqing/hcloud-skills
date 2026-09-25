@@ -31,11 +31,12 @@ func runScan(args []string) error {
 }
 
 const (
-	globTrace      = "audit-results/gcl-trace-*.json"
-	globSummary    = "audit-results/gcl-quality-summary-*.json"
-	globAlarmPlan  = "audit-results/gcl-alarm-plan-*.json"
-	fixtureSummary = "scripts/fixtures/gcl-quality-summary-healthy.json"
-	fixtureAlarm   = "scripts/fixtures/gcl-alarm-plan-healthy.json"
+	globTrace             = "audit-results/gcl-trace-*.json"
+	globOrchestratorTrace = "audit-results/orchestrator-trace-*.json"
+	globSummary           = "audit-results/gcl-quality-summary-*.json"
+	globAlarmPlan         = "audit-results/gcl-alarm-plan-*.json"
+	fixtureSummary        = "scripts/fixtures/gcl-quality-summary-healthy.json"
+	fixtureAlarm          = "scripts/fixtures/gcl-alarm-plan-healthy.json"
 )
 
 // scanSecretResult describes one scanned artifact.
@@ -76,14 +77,14 @@ func runScanSecret(args []string) error {
 		return err
 	}
 
-	var glob string
+	var globs []string
 	switch kind {
 	case "trace":
-		glob = globTrace
+		globs = []string{globTrace, globOrchestratorTrace}
 	case "summary":
-		glob = globSummary
+		globs = []string{globSummary}
 	case "alarm-plan":
-		glob = globAlarmPlan
+		globs = []string{globAlarmPlan}
 	default:
 		return fmt.Errorf("scan secret: unknown artifact kind %q", kind)
 	}
@@ -98,7 +99,7 @@ func runScanSecret(args []string) error {
 		inputs = append(inputs, p)
 	}
 
-	paths := collectScanPaths(rootDir, inputs, glob, *latest)
+	paths := collectScanPaths(rootDir, inputs, globs, *latest)
 	// --include-fixture appends the healthy fixture to the scan set.
 	if len(inputs) == 0 && *includeFixture {
 		fp := filepath.Join(rootDir, fixtureFor(kind))
@@ -158,10 +159,9 @@ func fixtureFor(kind string) string {
 	}
 }
 
-// collectScanPaths resolves the file set to scan: explicit inputs (kept only if
-// they exist), otherwise the glob under root, optionally restricted to the
-// latest when --latest is set.
-func collectScanPaths(root string, inputs []string, glob string, latest bool) []string {
+// collectScanPaths resolves explicit inputs when present. Otherwise it
+// combines every artifact glob and applies --latest to the combined sorted set.
+func collectScanPaths(root string, inputs, globs []string, latest bool) []string {
 	if len(inputs) > 0 {
 		var out []string
 		for _, p := range inputs {
@@ -172,7 +172,11 @@ func collectScanPaths(root string, inputs []string, glob string, latest bool) []
 		sort.Strings(out)
 		return out
 	}
-	matches, _ := filepath.Glob(filepath.Join(root, glob))
+	var matches []string
+	for _, glob := range globs {
+		found, _ := filepath.Glob(filepath.Join(root, glob))
+		matches = append(matches, found...)
+	}
 	sort.Strings(matches)
 	if latest && len(matches) > 0 {
 		return matches[len(matches)-1:]

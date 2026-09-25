@@ -77,22 +77,35 @@ func runL4Autofix(args []string) error {
 		},
 	}
 
-	res := l4.AutoFix(specs, *command, cfg)
+	rawRes := l4.AutoFix(specs, *command, cfg)
+	res, err := l4.SanitizeAutofixResult(rawRes)
+	if err != nil {
+		return err
+	}
+	safeSkill := "<masked>"
+	if sanitized, err := l4.SanitizeExternalString(*skill); err == nil {
+		safeSkill = sanitized
+	}
+	safeCommand := "<masked>"
+	if sanitized, err := l4.SanitizeExternalString(*command); err == nil {
+		safeCommand = sanitized
+	}
 
-	// Emit result (JSON if --output, else human).
+	// Emit only the safe result projection. Output files are owner-only and
+	// atomically replaced; raw executor output never reaches either sink.
 	if *output != "" {
 		raw, err := json.MarshalIndent(res, "", "  ")
 		if err != nil {
-			return err
+			return fmt.Errorf("encode autofix result: category marshal")
 		}
-		return os.WriteFile(*output, raw, 0o644)
+		return writePrivateFileAtomic(*output, append(raw, '\n'))
 	}
 	if *dryRun {
 		fmt.Printf("DRY-RUN autofix for %s\n  command: %s\n  would:    %s playbook=%s threshold=%.2f success_rate=%.2f\n",
-			*skill, *command, res.Action, res.PlaybookID, res.Threshold, res.SuccessRate)
+			safeSkill, safeCommand, res.Action, res.PlaybookID, res.Threshold, res.SuccessRate)
 		return nil
 	}
-	fmt.Printf("autofix[%s]: action=%s playbook=%s success=%v\n", *skill, res.Action, res.PlaybookID, res.Success)
+	fmt.Printf("autofix[%s]: action=%s playbook=%s success=%v\n", safeSkill, res.Action, res.PlaybookID, res.Success)
 	if res.Error != "" {
 		fmt.Fprintf(os.Stderr, "  %s\n", res.Error)
 	}

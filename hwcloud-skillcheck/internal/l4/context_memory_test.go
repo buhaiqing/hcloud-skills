@@ -39,6 +39,27 @@ func TestContext_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestContextMemoryRedactsPreferencesAndNestedValues(t *testing.T) {
+	root := t.TempDir()
+	mem, err := NewContextMemory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.SetPreference("api_token", "abcdefghijklmnop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".l4-memory", "context.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "abcdefghijklmnop") {
+		t.Fatalf("preference leaked: %s", raw)
+	}
+}
+
 func TestContextSchema_Constant(t *testing.T) {
 	if ContextSchema != "context-memory/v1" {
 		t.Fatalf("ContextSchema = %q, want context-memory/v1", ContextSchema)
@@ -66,6 +87,31 @@ func TestContextMemory_Save_CreatesFileWithMode0600(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Fatalf("file perm = %o, want 0600", perm)
+	}
+}
+
+func TestContextMemoryFlushRedactsFaultAndError(t *testing.T) {
+	const secret = "FAKESECRET1234567890"
+	root := t.TempDir()
+	mem, err := NewContextMemory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.RecordTask(TaskSummary{TaskID: "t1", Fault: "fault HW_SECRET_ACCESS_KEY=" + secret}); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.RecordError(ErrorSummary{Action: "run SK=" + secret, ErrorMsg: "failed HW_SECRET_ACCESS_KEY=" + secret}); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".l4-memory", "context.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("context memory contains raw secret: %s", raw)
 	}
 }
 

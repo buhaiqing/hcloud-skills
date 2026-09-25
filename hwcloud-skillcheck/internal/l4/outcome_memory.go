@@ -2,12 +2,18 @@ package l4
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -19,6 +25,7 @@ type OutcomeRecord struct {
 	TaskID       string `json:"task_id"`
 	Skill        string `json:"skill"`
 	Action       string `json:"action"`
+	ActionDigest string `json:"action_digest,omitempty"`
 	ContextHash  string `json:"context_hash"`
 	Outcome      string `json:"outcome"`
 	ErrorClass   string `json:"error_class"`
@@ -50,6 +57,37 @@ type OutcomeRecord struct {
 // (Eng-T4 / T-4). Matches trustOutcomeMaxRecords so trust/healing hot paths
 // answer from memory after the first disk scan.
 const outcomeKeyCacheSize = 100
+
+var outcomeIdentityKey = func() []byte {
+	var key [32]byte
+	if _, err := rand.Read(key[:]); err != nil {
+		panic("outcome memory: system CSPRNG unavailable")
+	}
+	return key[:]
+}()
+
+func outcomeActionDigest(action string) string {
+	mac := hmac.New(sha256.New, outcomeIdentityKey)
+	_, _ = mac.Write([]byte(action))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func withOutcomeFileLock(path string, fn func() error) error {
+	lockPath := path + ".lock"
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := lock.Chmod(0o600); err != nil {
+		return err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	return fn()
+}
 
 // OutcomeMemory is an append-only outcome store backed by a single JSONL file.
 //
@@ -97,55 +135,122 @@ func outcomeCacheKey(skill, action string) string {
 // When a (skill, action) cache entry is warm, the new record is prepended
 // (newest-first) and trimmed to outcomeKeyCacheSize — no invalidation wipe.
 func (m *OutcomeMemory) Record(r OutcomeRecord) error {
+	rawAction := r.Action
+	persisted := r
+	persisted.ActionDigest = outcomeActionDigest(rawAction)
+	// ContextHash is computed from the raw command before Record and must stay
+	// byte-for-byte stable for correlation. Every other string is externally
+	// supplied and crosses the persistence boundary through this one redactor.
+	for _, field := range []struct {
+		name  string
+		value *string
+	}{
+		{"id", &persisted.ID}, {"timestamp", &persisted.Timestamp},
+		{"task id", &persisted.TaskID}, {"skill", &persisted.Skill},
+		{"action", &persisted.Action}, {"outcome", &persisted.Outcome},
+		{"error class", &persisted.ErrorClass}, {"error message", &persisted.ErrorMsg},
+		{"risk", &persisted.Risk}, {"rbac decision", &persisted.RBACDecision},
+		{"gcl decision", &persisted.GCLDecision}, {"gcl experiment id", &persisted.GCLExperimentID},
+	} {
+		safe, err := sanitizeStringForPersistence(field.name, *field.value)
+		if err != nil {
+			if field.name == "action" {
+				safe = persistenceMask
+			} else {
+				return fmt.Errorf("outcome memory: %w", err)
+			}
+		}
+		*field.value = safe
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	line, err := json.Marshal(r)
+	line, err := json.Marshal(persisted)
 	if err != nil {
 		return fmt.Errorf("outcome memory: marshal: %w", err)
 	}
-	f, err := os.OpenFile(m.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	return withOutcomeFileLock(m.path, func() error {
+		if err := os.Chmod(m.path, 0o600); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("outcome memory: chmod: %w", err)
+		}
+		if err := repairOutcomeTail(m.path); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(m.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("outcome memory: open: %w", err)
+		}
+		n, writeErr := f.Write(append(line, '\n'))
+		closeErr := f.Close()
+		if writeErr != nil {
+			return fmt.Errorf("outcome memory: write: %w", writeErr)
+		}
+		if n != len(line)+1 {
+			return fmt.Errorf("outcome memory: write: %w", io.ErrShortWrite)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("outcome memory: close: %w", closeErr)
+		}
+		k := outcomeCacheKey(persisted.Skill, persisted.ActionDigest)
+		if cached, ok := m.keyCache[k]; ok {
+			m.keyCache[k] = trimNewestFirst(append([]OutcomeRecord{persisted}, cached...), outcomeKeyCacheSize)
+		}
+		return nil
+	})
+}
+
+func repairOutcomeTail(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0o600)
 	if err != nil {
-		return fmt.Errorf("outcome memory: open: %w", err)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	}
 	defer f.Close()
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("outcome memory: write: %w", err)
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return err
 	}
-	k := outcomeCacheKey(r.Skill, r.Action)
-	if cached, ok := m.keyCache[k]; ok {
-		m.keyCache[k] = trimNewestFirst(append([]OutcomeRecord{r}, cached...), outcomeKeyCacheSize)
+	buf := make([]byte, 1)
+	if _, err := f.ReadAt(buf, info.Size()-1); err != nil {
+		return err
 	}
-	return nil
+	if buf[0] == '\n' {
+		return nil
+	}
+	raw := make([]byte, info.Size())
+	if _, err := f.ReadAt(raw, 0); err != nil {
+		return err
+	}
+	last := bytes.LastIndexByte(raw, '\n')
+	if last < 0 {
+		return f.Truncate(0)
+	}
+	return f.Truncate(int64(last + 1))
 }
 
 // FullScans returns how many times the JSONL file was fully parsed.
-// Intended for tests proving the RecentOutcomes cache avoids re-reads.
 func (m *OutcomeMemory) FullScans() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.fullScans
 }
 
-// readAll parses the entire JSONL file. Malformed lines are skipped silently.
-// Returns an empty slice (not an error) if the file does not exist yet.
 func (m *OutcomeMemory) readAll() ([]OutcomeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.readAllUnlocked()
 }
 
-// readAllUnlocked parses the JSONL file. Caller must hold m.mu.
 func (m *OutcomeMemory) readAllUnlocked() ([]OutcomeRecord, error) {
 	m.fullScans++
-	raw, err := os.ReadFile(m.path)
+	var raw []byte
+	err := withOutcomeFileLock(m.path, func() error { var err error; raw, err = os.ReadFile(m.path); return err })
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("outcome memory: read: %w", err)
-	}
-	if len(raw) == 0 {
-		return nil, nil
 	}
 	var out []OutcomeRecord
 	for _, line := range bytes.Split(raw, []byte{'\n'}) {
@@ -153,56 +258,51 @@ func (m *OutcomeMemory) readAllUnlocked() ([]OutcomeRecord, error) {
 			continue
 		}
 		var r OutcomeRecord
-		if err := json.Unmarshal(line, &r); err != nil {
-			continue // skip malformed
+		if json.Unmarshal(line, &r) == nil {
+			out = append(out, r)
 		}
-		out = append(out, r)
 	}
 	return out, nil
 }
 
-// RecentOutcomes returns up to n records matching (skill, action), most
-// recent first.
-//
-// n > 0: served from a per-key cache of the newest outcomeKeyCacheSize
-// matches (first call scans disk once; later calls + Record hit memory).
-// n <= 0: full-file scan returning every match (uncapped; not served from
-// the size-limited cache).
 func (m *OutcomeMemory) RecentOutcomes(skill, action string, n int) ([]OutcomeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
+	safeSkill, err := sanitizeStringForPersistence("lookup skill", skill)
+	if err != nil {
+		return nil, fmt.Errorf("outcome memory: %w", err)
+	}
+	digest := outcomeActionDigest(action)
+	safeAction, err := sanitizeStringForPersistence("lookup action", action)
+	if err != nil {
+		safeAction = persistenceMask
+	}
 	if n <= 0 {
 		all, err := m.readAllUnlocked()
 		if err != nil {
 			return nil, err
 		}
-		match := filterSkillAction(all, skill, action)
+		match := filterOutcomeIdentity(all, safeSkill, safeAction, digest)
 		sortNewestFirst(match)
 		return append([]OutcomeRecord(nil), match...), nil
 	}
-
-	k := outcomeCacheKey(skill, action)
-	cached, ok := m.keyCache[k]
+	key := outcomeCacheKey(safeSkill, digest)
+	cached, ok := m.keyCache[key]
 	if !ok {
 		all, err := m.readAllUnlocked()
 		if err != nil {
 			return nil, err
 		}
-		cached = filterSkillAction(all, skill, action)
+		cached = filterOutcomeIdentity(all, safeSkill, safeAction, digest)
 		sortNewestFirst(cached)
 		if len(cached) > outcomeKeyCacheSize {
 			cached = cached[:outcomeKeyCacheSize]
 		}
-		m.keyCache[k] = append([]OutcomeRecord(nil), cached...)
+		m.keyCache[key] = append([]OutcomeRecord(nil), cached...)
 	}
 	return cloneOutcomes(cached, n), nil
 }
 
-// MatchOutcomes returns records matching (skill, action, contextHash) whose
-// Timestamp is within `lookback` of now. lookback <= 0 means "no time filter".
-// Always reads from disk (hash/lookback queries are not covered by the
-// per-key recent cache).
 func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookback time.Duration) ([]OutcomeRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -210,13 +310,22 @@ func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookbac
 	if err != nil {
 		return nil, err
 	}
+	safeSkill, err := sanitizeStringForPersistence("lookup skill", skill)
+	if err != nil {
+		return nil, fmt.Errorf("outcome memory: %w", err)
+	}
+	digest := outcomeActionDigest(action)
+	safeAction, err := sanitizeStringForPersistence("lookup action", action)
+	if err != nil {
+		safeAction = persistenceMask
+	}
 	cutoff := time.Time{}
 	if lookback > 0 {
 		cutoff = time.Now().Add(-lookback)
 	}
 	var match []OutcomeRecord
 	for _, r := range all {
-		if r.Skill != skill || r.Action != action || r.ContextHash != contextHash {
+		if r.Skill != safeSkill || r.ContextHash != contextHash || !outcomeIdentityMatches(r, safeAction, digest) {
 			continue
 		}
 		if lookback > 0 {
@@ -231,96 +340,113 @@ func (m *OutcomeMemory) MatchOutcomes(skill, action, contextHash string, lookbac
 	return match, nil
 }
 
-// PruneOlderThan drops records whose Timestamp is strictly before cutoff.
-// Returns the number of records removed. Safe to call on an empty file.
-// Holds m.mu across the entire read→write→rename sequence to prevent
-// data loss: a concurrent Record() between read and rename would
-// otherwise be silently dropped when the rename overwrites the file.
-// Clears the RecentOutcomes key cache.
-func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.keyCache = map[string][]OutcomeRecord{}
-	raw, err := os.ReadFile(m.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("outcome memory: prune read: %w", err)
-	}
-	if len(raw) == 0 {
-		return 0, nil
-	}
-	// Count as a full scan (parse every line).
-	m.fullScans++
-	kept := make([]OutcomeRecord, 0, 16)
-	dropped := 0
-	for _, line := range bytes.Split(raw, []byte{'\n'}) {
-		if len(line) == 0 {
-			continue
-		}
-		var r OutcomeRecord
-		if err := json.Unmarshal(line, &r); err != nil {
-			dropped++
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339, r.Timestamp)
-		if err != nil || ts.Before(cutoff) {
-			dropped++
-			continue
-		}
-		kept = append(kept, r)
-	}
-	if dropped == 0 {
-		return 0, nil
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(m.path), "outcomes-*.jsonl.tmp")
-	if err != nil {
-		return dropped, fmt.Errorf("outcome memory: prune tmp: %w", err)
-	}
-	tmpName := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpName) }
-	for _, r := range kept {
-		line, err := json.Marshal(r)
-		if err != nil {
-			tmp.Close()
-			cleanup()
-			return dropped, fmt.Errorf("outcome memory: prune marshal: %w", err)
-		}
-		if _, err := tmp.Write(append(line, '\n')); err != nil {
-			tmp.Close()
-			cleanup()
-			return dropped, fmt.Errorf("outcome memory: prune write: %w", err)
-		}
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		cleanup()
-		return dropped, fmt.Errorf("outcome memory: prune sync: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return dropped, fmt.Errorf("outcome memory: prune close: %w", err)
-	}
-	if err := os.Chmod(tmpName, 0o600); err != nil {
-		cleanup()
-		return dropped, fmt.Errorf("outcome memory: prune chmod: %w", err)
-	}
-	if err := os.Rename(tmpName, m.path); err != nil {
-		cleanup()
-		return dropped, fmt.Errorf("outcome memory: prune rename: %w", err)
-	}
-	return dropped, nil
+func outcomeIdentityMatches(r OutcomeRecord, safeAction, digest string) bool {
+	return r.ActionDigest == digest || (r.ActionDigest == "" && r.Action == safeAction)
 }
 
-func filterSkillAction(all []OutcomeRecord, skill, action string) []OutcomeRecord {
+func filterOutcomeIdentity(all []OutcomeRecord, skill, action, digest string) []OutcomeRecord {
 	var match []OutcomeRecord
 	for _, r := range all {
-		if r.Skill == skill && r.Action == action {
+		if r.Skill == skill && outcomeIdentityMatches(r, action, digest) {
 			match = append(match, r)
 		}
 	}
 	return match
+}
+
+func (m *OutcomeMemory) PruneOlderThan(cutoff time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keyCache = map[string][]OutcomeRecord{}
+	dropped := 0
+	err := withOutcomeFileLock(m.path, func() error {
+		raw, err := os.ReadFile(m.path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("outcome memory: prune read: %w", err)
+		}
+		if len(raw) == 0 {
+			return nil
+		}
+		m.fullScans++
+		kept := make([]OutcomeRecord, 0, 16)
+		for _, line := range bytes.Split(raw, []byte{'\n'}) {
+			if len(line) == 0 {
+				continue
+			}
+			var r OutcomeRecord
+			if err := json.Unmarshal(line, &r); err != nil {
+				dropped++
+				continue
+			}
+			ts, err := time.Parse(time.RFC3339, r.Timestamp)
+			if err != nil || ts.Before(cutoff) {
+				dropped++
+				continue
+			}
+			kept = append(kept, r)
+		}
+		if dropped == 0 {
+			return nil
+		}
+		tmp, err := os.CreateTemp(filepath.Dir(m.path), "outcomes-*.jsonl.tmp")
+		if err != nil {
+			return fmt.Errorf("outcome memory: prune tmp: %w", err)
+		}
+		tmpName := tmp.Name()
+		cleanup := func() { _ = os.Remove(tmpName) }
+		if err := tmp.Chmod(0o600); err != nil {
+			tmp.Close()
+			cleanup()
+			return err
+		}
+		for _, r := range kept {
+			line, err := json.Marshal(r)
+			if err != nil {
+				tmp.Close()
+				cleanup()
+				return err
+			}
+			data := append(line, '\n')
+			n, err := tmp.Write(data)
+			if err != nil {
+				tmp.Close()
+				cleanup()
+				return err
+			}
+			if n != len(data) {
+				tmp.Close()
+				cleanup()
+				return io.ErrShortWrite
+			}
+		}
+		if err := tmp.Sync(); err != nil {
+			tmp.Close()
+			cleanup()
+			return err
+		}
+		if err := tmp.Close(); err != nil {
+			cleanup()
+			return err
+		}
+		if err := os.Rename(tmpName, m.path); err != nil {
+			cleanup()
+			return err
+		}
+		return syncDirectory(filepath.Dir(m.path))
+	})
+	return dropped, err
+}
+
+func syncDirectory(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }
 
 func sortNewestFirst(match []OutcomeRecord) {

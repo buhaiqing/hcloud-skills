@@ -37,6 +37,33 @@ func TestScanSecretTraceLatest(t *testing.T) {
 	}
 }
 
+func TestScanSecretTraceSelectsOrchestratorTrace(t *testing.T) {
+	root := t.TempDir()
+	writeTrace(t, root, "gcl-trace-20260701-clean.json", `{"skill":"huaweicloud-ecs-ops","final":{"status":"PASS"}}`)
+	writeTrace(t, root, "orchestrator-trace-leak.json", `{"skill":"huaweicloud-ecs-ops","request":"SK=ABCDEFGHIJKLMNOPQRSTUVWX","final":{"status":"PASS"}}`)
+	if err := runScan([]string{"secret", "trace", "--root", root}); err == nil {
+		t.Fatal("orchestrator trace should be selected and its secret detected")
+	}
+}
+
+func TestScanSecretTraceLatestAcrossTraceFamilies(t *testing.T) {
+	root := t.TempDir()
+	writeTrace(t, root, "gcl-trace-20260701-clean.json", `{"skill":"huaweicloud-ecs-ops","final":{"status":"PASS"}}`)
+	writeTrace(t, root, "orchestrator-trace-20260702-leak.json", `{"skill":"huaweicloud-ecs-ops","request":"SK=ABCDEFGHIJKLMNOPQRSTUVWX","final":{"status":"PASS"}}`)
+	if err := runScan([]string{"secret", "trace", "--root", root, "--latest"}); err == nil {
+		t.Fatal("--latest should select the leaking orchestrator trace")
+	}
+}
+
+func TestScanSecretTraceExplicitInputSkipsOtherFamilies(t *testing.T) {
+	root := t.TempDir()
+	writeTrace(t, root, "gcl-trace-clean.json", `{"skill":"huaweicloud-ecs-ops","final":{"status":"PASS"}}`)
+	writeTrace(t, root, "orchestrator-trace-leak.json", `{"skill":"huaweicloud-ecs-ops","request":"SK=ABCDEFGHIJKLMNOPQRSTUVWX","final":{"status":"PASS"}}`)
+	if err := runScan([]string{"secret", "trace", "--root", root, "audit-results/gcl-trace-clean.json"}); err != nil {
+		t.Fatalf("explicit input should bypass default orchestrator trace: %v", err)
+	}
+}
+
 func TestScanSecretTraceNoFiles(t *testing.T) {
 	root := t.TempDir()
 	// No trace files => ok (no error), mirroring --allow-empty default in CI.

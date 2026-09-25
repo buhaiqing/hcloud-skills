@@ -321,6 +321,21 @@ func TestPersistTrace(t *testing.T) {
 	}
 }
 
+func TestPersistTraceAtomicOwnerOnly(t *testing.T) {
+	root := t.TempDir()
+	path, err := PersistTrace(&GCLTrace{TraceSchemaVersion: "v1", Skill: "s", Request: "ok", RubricVersion: "v1", Final: &FinalResult{Status: "PASS", Iter: 1}}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("trace mode=%o, want 0600", info.Mode().Perm())
+	}
+}
+
 func TestMaskedFields(t *testing.T) {
 	// Verify that credential values are masked in the persisted trace.
 	cfg := RunConfig{

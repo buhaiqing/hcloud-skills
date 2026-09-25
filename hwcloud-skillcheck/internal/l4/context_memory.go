@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -120,9 +121,16 @@ func (m *ContextMemory) Dirty() bool {
 
 // writeLocked persists c. Caller must hold m.mu.
 func (m *ContextMemory) writeLocked(c *Context) error {
-	raw, err := json.MarshalIndent(c, "", "  ")
+	persisted, err := sanitizedContextForPersistence(c)
+	if err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("context memory: marshal: %w", err)
+	}
+	if err := os.Chmod(filepath.Dir(m.path), 0o700); err != nil {
+		return fmt.Errorf("context memory: dir chmod: %w", err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(m.path), "context-*.json.tmp")
 	if err != nil {
@@ -130,11 +138,17 @@ func (m *ContextMemory) writeLocked(c *Context) error {
 	}
 	tmpName := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpName) }
-
-	if _, err := tmp.Write(append(raw, '\n')); err != nil {
+	data := append(raw, '\n')
+	n, err := tmp.Write(data)
+	if err != nil {
 		tmp.Close()
 		cleanup()
 		return fmt.Errorf("context memory: tmp write: %w", err)
+	}
+	if n != len(data) {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("context memory: tmp write: %w", io.ErrShortWrite)
 	}
 	if err := tmp.Sync(); err != nil {
 		tmp.Close()
@@ -153,7 +167,83 @@ func (m *ContextMemory) writeLocked(c *Context) error {
 		cleanup()
 		return fmt.Errorf("context memory: rename: %w", err)
 	}
-	return nil
+	dir, err := os.Open(filepath.Dir(m.path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
+}
+
+func sanitizedContextForPersistence(c *Context) (*Context, error) {
+	if c == nil {
+		return nil, fmt.Errorf("context memory: nil context")
+	}
+	out := cloneContext(c)
+	var err error
+	for field, value := range map[string]*string{
+		"context schema": &out.Schema, "context session": &out.SessionID,
+		"context created": &out.CreatedAt, "context updated": &out.LastUpdated,
+	} {
+		if *value, err = sanitizeStringForPersistence(field, *value); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+	}
+	for i := range out.RecentTasks {
+		task := &out.RecentTasks[i]
+		if task.TaskID, err = sanitizeStringForPersistence("context.task_id", task.TaskID); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if task.Fault, err = sanitizeStringForPersistence("context.task_fault", task.Fault); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if task.StartedAt, err = sanitizeStringForPersistence("context.task_started_at", task.StartedAt); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if task.FinishedAt, err = sanitizeStringForPersistence("context.task_finished_at", task.FinishedAt); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if task.Status, err = sanitizeStringForPersistence("context.task_status", task.Status); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if task.PrimarySkill, err = sanitizeStringForPersistence("context.task_skill", task.PrimarySkill); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+	}
+	for i := range out.OpenTasks {
+		if out.OpenTasks[i], err = sanitizeStringForPersistence("context.open_task", out.OpenTasks[i]); err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+	}
+	for i := range out.RecentErrors {
+		e := &out.RecentErrors[i]
+		for field, value := range map[string]*string{
+			"error timestamp": &e.Timestamp, "error skill": &e.Skill,
+			"error action": &e.Action, "error class": &e.ErrorClass,
+			"error message": &e.ErrorMsg,
+		} {
+			if *value, err = sanitizeStringForPersistence(field, *value); err != nil {
+				return nil, fmt.Errorf("context memory: %w", err)
+			}
+		}
+	}
+	preferences := make(map[string]string, len(out.Preferences))
+	for key, value := range out.Preferences {
+		safeKey, err := sanitizeStringForPersistence("preference key", key)
+		if err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		safeValue, err := sanitizeStringForPersistence("preference value", value)
+		if err != nil {
+			return nil, fmt.Errorf("context memory: %w", err)
+		}
+		if _, exists := preferences[safeKey]; exists {
+			return nil, fmt.Errorf("context memory: redaction refused field preference: category key-collision")
+		}
+		preferences[safeKey] = safeValue
+	}
+	out.Preferences = preferences
+	return out, nil
 }
 
 // Load returns the working context. If a dirty (or previously loaded)

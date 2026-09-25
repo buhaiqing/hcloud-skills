@@ -68,7 +68,11 @@ func TestHandleFault_TraceConsumableShape(t *testing.T) {
 		t.Errorf("trace source=%q, want \"l4\"", got)
 	}
 	if got, _ := trace["fault"].(string); got != fault {
-		t.Errorf("trace fault=%q, want %q (smoke detection reads this field)", got, fault)
+		t.Errorf("trace fault=%q, want ordinary diagnostic text %q", got, fault)
+	}
+	scope := mapOf(t, trace["resource_scope"], "resource_scope")
+	if got, _ := scope["type"].(string); got != "rds" {
+		t.Errorf("resource_scope.type=%q, want rds preserved from raw resource", got)
 	}
 	if got, _ := trace["skill"].(string); got == "" {
 		t.Error("trace skill missing: cmd/aggregate.go requires it to bucket the trace")
@@ -170,6 +174,57 @@ func TestHandleFault_TraceConsumableShape(t *testing.T) {
 	learningBlock := mapOf(t, trace["learning"], "learning")
 	if got, _ := learningBlock["trace_persisted"].(string); got != out.Learning.TracePersisted {
 		t.Errorf("learning.trace_persisted=%q, want %q", got, out.Learning.TracePersisted)
+	}
+}
+
+func TestHandleFaultTraceRedactsSensitiveFields(t *testing.T) {
+	const secret = "FAKESECRET1234567890"
+	root := t.TempDir()
+	out := HandleFault(HandleFaultInput{
+		Root:     root,
+		Fault:    "RDS failure HW_SECRET_ACCESS_KEY=" + secret,
+		Resource: "rds:instance",
+		Risk:     "low",
+	}, nil)
+	raw, err := os.ReadFile(out.Learning.TracePersisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("orchestrator trace contains raw secret: %s", raw)
+	}
+}
+
+func TestHandleFaultTraceUsesExplicitSmokeMarker(t *testing.T) {
+	root := t.TempDir()
+	out := HandleFault(HandleFaultInput{Root: root, Fault: "smoke", Risk: "low"}, nil)
+	trace := readTraceMap(t, out.Learning.TracePersisted)
+	if smoke, _ := trace["smoke"].(bool); !smoke {
+		t.Fatal("trace smoke marker = false, want true")
+	}
+}
+
+func TestHandleFaultOutputUsesSafeProjection(t *testing.T) {
+	out := HandleFault(HandleFaultInput{Root: t.TempDir(), Fault: "RDS timeout api_key=abcdefghijklmnop", Resource: "rds:instance", Risk: "low"}, nil)
+	if strings.Contains(out.FaultDescription, "abcdefghijklmnop") {
+		t.Fatalf("output fault leaked token: %q", out.FaultDescription)
+	}
+	if out.Resource != "rds:<masked>" {
+		t.Fatalf("output resource=%q, want typed masked resource", out.Resource)
+	}
+}
+
+func TestPersistTaskUsesOwnerOnlyMode(t *testing.T) {
+	root := t.TempDir()
+	if err := PersistTask(root, "modecheck1234", &TaskState{Fault: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, ".l4-tasks", "modecheck1234.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("task mode=%o, want 0600", info.Mode().Perm())
 	}
 }
 
@@ -397,11 +452,8 @@ func TestHandleFault_TraceSatisfiesCanonicalSchema(t *testing.T) {
 // TestHandleFault_TraceCanonicalFieldValues pins the values the canonical
 // schema cannot (or should not) constrain by itself, so they cannot drift:
 // trace_schema_version is the schema's `const`, rubric_version must match the
-// value the GCL writer uses, and masked_fields must be the honest declaration
-// of what THIS writer masks. internal/l4 applies no masking (it persists the
-// caller's fault text verbatim and its readers rely on that: the smoke marker
-// is read from `request`/`fault`), so the list must be empty — claiming a
-// masked field the writer never masks would be a false trust signal.
+// value the GCL writer uses, and masked_fields must honestly declare every
+// free-form L4 field redacted before persistence.
 func TestHandleFault_TraceCanonicalFieldValues(t *testing.T) {
 	root := t.TempDir()
 	out := HandleFault(HandleFaultInput{
@@ -422,8 +474,20 @@ func TestHandleFault_TraceCanonicalFieldValues(t *testing.T) {
 	if !ok {
 		t.Fatalf("masked_fields=%T, want a JSON array (canonical schema requires it)", trace["masked_fields"])
 	}
-	if len(masked) != 0 {
-		t.Errorf("masked_fields=%v, want [] — internal/l4 masks nothing, so it must not claim to", masked)
+	wantMasked := map[string]bool{
+		"request": true, "fault": true, "command": true,
+		"iterations[].generator.command": true, "final.output": true,
+		"final.failure_pattern": true, "topology.origin": true,
+		"topology.affected_resources": true, "resource_scope.resource_id": true,
+		"gcl.decisions[].pre_execution_risk": true,
+	}
+	if len(masked) != len(wantMasked) {
+		t.Errorf("masked_fields=%v, want %d declared fields", masked, len(wantMasked))
+	}
+	for _, field := range masked {
+		if name, ok := field.(string); !ok || !wantMasked[name] {
+			t.Errorf("unexpected masked_fields entry %v", field)
+		}
 	}
 	// A non-canonical `operation_intent` block (the old {goal, risk_class}
 	// object) was removed: the canonical schema requires operation /

@@ -14,8 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
-	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 	"io"
 	"os"
 	"os/exec"
@@ -23,6 +21,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/embed"
+	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/schema"
 )
 
 // Exit codes (UNIX conventions).
@@ -470,7 +471,8 @@ func Run(cfg RunConfig) RunResult {
 		// verdict to the RetryBuilder so the LLM can repair instead of
 		// blindly re-running the same command. nil-safe.
 		var generator GeneratorOutput
-		if iteration > 1 && cfg.RetryBuilder != nil && len(trace.Iterations) > 0 {
+		isRetry := iteration > 1 && cfg.RetryBuilder != nil && len(trace.Iterations) > 0
+		if isRetry {
 			prev := trace.Iterations[len(trace.Iterations)-1]
 			prompt := cfg.RetryBuilder.Build(prev.Generator, prev.Critic, iteration)
 			generator = runCommand(prompt, commandTimeout)
@@ -478,11 +480,24 @@ func Run(cfg RunConfig) RunResult {
 			generator = runCommand(cfg.Command, commandTimeout)
 		}
 		generator.DurationMs = int(time.Since(generatorStart).Milliseconds())
+		// The exact object crossing the Critic boundary is sanitized now; the
+		// persistence pass is not a substitute for this boundary.
+		//
+		// SanitizeRequest has a fail-closed opaque-token check designed for
+		// user-provided free-form text; retry prompts are built from the
+		// already-sanitized previous iteration, so the strict scan would
+		// reject format words like "stdout_truncated" (16+ chars) that the
+		// RetryPromptBuilder legitimately emits. We only run the strict
+		// sanitizer on the original cfg.Command; the retry path applies the
+		// lenient MaskSecrets pass instead.
+		var sanitizeErr error
+		generator, sanitizeErr = sanitizeGeneratorOutput(generator, !isRetry)
+		if sanitizeErr != nil {
+			return RunResult{ExitCode: ExitUsage}
+		}
 		if generator.ExitCode == ExitTimeout && commandTimeout == remaining && !generator.HasLeak {
 			return failBudget(&cfg, &trace, startTime, "wall_clock", criticType)
 		}
-
-		// [H] Hallucination Detection — L1/L2/L3 checks before Critic.
 		// L1+L2 blocks immediately; L3 violations surface to Critic.
 		hdSkillRoot := cfg.SkillRoot
 		if hdSkillRoot == "" && cfg.Root != "" {
@@ -771,6 +786,9 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return "", fmt.Errorf("PersistTrace mkdir: %w", err)
 	}
+	if err := os.Chmod(outDir, 0o700); err != nil {
+		return "", fmt.Errorf("PersistTrace chmod: %w", err)
+	}
 
 	ts := time.Now().UTC().Format("20060102-150405")
 	suffix := uniqueShortID()
@@ -787,10 +805,54 @@ func PersistTrace(trace *GCLTrace, root string) (string, error) {
 	}
 	data = append(data, '\n')
 
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := writeTraceAtomic(path, data); err != nil {
 		return "", fmt.Errorf("PersistTrace write: %w", err)
 	}
 	return path, nil
+}
+
+func writeTraceAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".gcl-trace-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	cleanup := func() { _ = os.Remove(name) }
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	n, err := tmp.Write(data)
+	if err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if n != len(data) {
+		tmp.Close()
+		cleanup()
+		return io.ErrShortWrite
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		cleanup()
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 // applyMaskFields walks trace.MaskedFields and replaces the matching
@@ -1026,6 +1088,41 @@ func finalizeGeneratorOutput(command string, stdout, stderr *cappedWriter, exitC
 		StderrTruncated: stderr.truncated,
 		HasLeak:         leak,
 	}
+}
+
+// sanitizeGeneratorOutput applies the trust-boundary sanitization to the
+// Generator output before it crosses the Critic boundary or hits disk.
+//
+// When strict is true (the original cfg.Command on iter 1), the runner runs
+// the full SanitizeRequest pass — including the opaque-token fail-closed
+// check — because user input may carry unrecognised secrets.
+//
+// When strict is false (a RetryPromptBuilder-produced prompt on iter > 1),
+// the runner applies MaskSecrets only. The retry prompt is assembled from
+// the previously-sanitized Generator + Critic verdict, so it contains no
+// raw secrets the strict pass could catch; running SanitizeRequest would
+// only reject legitimate format strings (e.g. "stdout_truncated") in the
+// retry template.
+func sanitizeGeneratorOutput(gen GeneratorOutput, strict bool) (GeneratorOutput, error) {
+	if strict {
+		command, err := SanitizeRequest(gen.Command)
+		if err != nil {
+			return GeneratorOutput{}, err
+		}
+		excerpt, err := SanitizeRequest(gen.ResultExcerpt)
+		if err != nil {
+			return GeneratorOutput{}, err
+		}
+		gen.Command = command
+		gen.ResultExcerpt = excerpt
+		return gen, nil
+	}
+	// Lenient path: known-credential masking only. PersistTrace still
+	// applies MaskedFields (e.g. sets Generator.Command = "<masked>"),
+	// so the on-disk artifact is fully redacted.
+	gen.Command = MaskSecrets([]byte(gen.Command))
+	gen.ResultExcerpt = MaskSecrets([]byte(gen.ResultExcerpt))
+	return gen, nil
 }
 
 // failureSignatures maps pattern categories to regexps for extractFailurePattern.

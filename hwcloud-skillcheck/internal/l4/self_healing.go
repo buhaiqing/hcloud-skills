@@ -74,19 +74,18 @@ func (p HealingPolicy) IsZero() bool {
 		p.LookbackWindow == 0
 }
 
-// observeHealingDecision records every decision and logs actionable ones.
 func observeHealingDecision(step TaskStep, decision HealingDecision, hook string, retryCount int) HealingDecision {
 	DefaultHealingMetrics.Record(decision, hook)
 	if decision.Action != "proceed" {
-		slog.Default().Info("healing_decision",
-			"skill", step.Skill,
-			"action", step.Action,
-			"hook", hook,
-			"decision_action", decision.Action,
-			"decision_reason", decision.Reason,
-			"retry_count", retryCount,
-			"risk", step.Risk,
-		)
+		safeReason, err := sanitizeStringForPersistence("decision reason", decision.Reason)
+		if err != nil {
+			safeReason = "redacted"
+		}
+		safeAction, err := sanitizeStringForPersistence("action", step.Action)
+		if err != nil {
+			safeAction = "<masked>"
+		}
+		slog.Default().Info("healing_decision", "skill", step.Skill, "action", safeAction, "hook", hook, "decision_action", decision.Action, "decision_reason", safeReason, "retry_count", retryCount, "risk", step.Risk)
 	}
 	return decision
 }
@@ -143,7 +142,7 @@ func PostFailureHook(step TaskStep, result StepResult, retryCount int, mem *Outc
 		}
 	}
 	if isTransient(result.Error) {
-		return HealingDecision{Action: "retry", Reason: "transient error: " + result.Error}
+		return HealingDecision{Action: "retry", Reason: "transient error"}
 	}
-	return HealingDecision{Action: "escalate", Reason: "non-transient error: " + result.Error}
+	return HealingDecision{Action: "escalate", Reason: "non-transient error"}
 }

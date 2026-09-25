@@ -209,7 +209,7 @@ func TestIsSmokeTrace(t *testing.T) {
 		{"l4 smoke fault", map[string]any{"final": final, "fault": "SMOKE", "orchestration": map[string]any{"step_count": float64(3)}}, true},
 		{"zero top-level step_count", map[string]any{"final": final, "step_count": float64(0), "iterations": []any{iter}}, true},
 		{"zero orchestration step_count", map[string]any{"final": final, "orchestration": map[string]any{"step_count": float64(0)}}, true},
-		{"empty iterations is a budget failure, not smoke", map[string]any{"final": final, "iterations": []any{}}, false},
+		{"empty iterations is unverified, not evidence", map[string]any{"final": final, "iterations": []any{}}, true},
 		{"budget failure with zero iterations still counts", map[string]any{
 			"final": safetyFail, "iterations": []any{}, "request": "list servers",
 		}, false},
@@ -221,6 +221,7 @@ func TestIsSmokeTrace(t *testing.T) {
 		{"smoke request + SAFETY_FAIL", map[string]any{"final": safetyFail, "request": "smoke", "iterations": []any{iter}}, false},
 		{"zero steps + SAFETY_FAIL", map[string]any{"final": safetyFail, "step_count": float64(0)}, false},
 		{"smoke request + PASS is smoke", map[string]any{"final": final, "request": "smoke", "iterations": []any{iter}}, true},
+		{"explicit smoke marker", map[string]any{"final": final, "smoke": true, "request": "<masked>", "iterations": []any{iter}}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -11,6 +11,17 @@ import (
 	"github.com/buhaiqing/hcloud-skills/hwcloud-skillcheck/internal/gcl"
 )
 
+// riskForStep applies the caller's explicit risk while preserving the
+// action-derived high-risk floor. Destructive actions must never be downgraded
+// by caller input; non-destructive caller classifications are retained so the
+// low-risk remediation path remains operational.
+func riskForStep(callerRisk, actionRisk string) string {
+	if strings.EqualFold(actionRisk, "high") {
+		return "high"
+	}
+	return strings.ToLower(callerRisk)
+}
+
 // primarySkillFromMatched returns the keyword-matched primary skill (not the
 // pipeline-reordered first step). Trust and context attribution must use this
 // so a high-trust monitoring delegate cannot auto-approve a low-trust primary.
@@ -77,6 +88,10 @@ func resolveTraceSkill(matched []MatchedSkill, plan *ExecutionPlan, expanded []M
 		}
 	}
 	return "unknown", "unknown"
+}
+
+func isSmokeFault(fault string) bool {
+	return strings.EqualFold(strings.TrimSpace(fault), "smoke")
 }
 
 // HandleFaultInput is the input to HandleFault.
@@ -401,8 +416,8 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	primary, primarySource := resolveTraceSkill(matched, plan, expanded, in.Fault)
 	if primary == "unknown" {
 		fmt.Fprintf(os.Stderr,
-			"DEBUG: orchestrator trace %s could not attribute skill: fault=%q matched=%d plan_steps=%d expanded=%d (last source tried: %s)\n",
-			faultID, in.Fault, len(matched), len(plan.Steps), len(expanded), primarySource)
+			"DEBUG: orchestrator trace %s could not attribute skill: matched=%d plan_steps=%d expanded=%d (last source tried: %s)\n",
+			faultID, len(matched), len(plan.Steps), len(expanded), primarySource)
 	}
 	primaryCmd := ""
 	if len(plan.Steps) > 0 {
@@ -426,20 +441,43 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	// Phase 4 evidence contract: the closed loop always Detects (topology)
 	// and Diagnoses (skill match); it Executes+Verifies only when trust
 	// auto-approves (the autonomous path); Learn (trace persist) always runs.
-	executed := gclRes.OverallSafety && trustRes.AutoApprove
+	// Execution and verification are unknown until RunExecutionLoopWithHealing
+	// returns. The initial trace is explicitly non-evidence.
 	stages := []StageMarker{
 		{Stage: "detect", Done: true},
 		{Stage: "diagnose", Done: true},
-		{Stage: "execute", Done: executed},
-		{Stage: "verify", Done: executed},
+		{Stage: "execute", Done: false},
+		{Stage: "verify", Done: false},
 		{Stage: "learn", Done: true},
 	}
 
-	// The persisted critic block is the REAL structural-critic output folded
-	// from step 4 — the P0 audit finding was that this site wrote hardcoded
-	// literals (0.9/0.85/0.95/0.8) and no `final` block, so every
-	// orchestrator trace was unreadable by cmd/aggregate.go and
-	// internal/learning (both require `final`).
+	// Sanitize a complete trace copy. This preserves the raw execution objects
+	// while covering every free-form nested path, including learning overlays.
+	persistedFault, faultErr := sanitizeStringForPersistence("request/fault", in.Fault)
+	persistedCommand, commandErr := sanitizeStringForPersistence("plan command", primaryCmd)
+	persistedResource, resourceType, resourceErr := sanitizeResourceForPersistence(resource)
+	traceSafe := faultErr == nil && commandErr == nil && resourceErr == nil
+	traceTopo := topo
+	traceGCLRes := gclRes
+	traceGCLRes.Decisions = append([]GCLDecision(nil), gclRes.Decisions...)
+	if resourceErr == nil {
+		traceTopo.Origin = persistedResource
+		traceTopo.AffectedResources = []string{persistedResource}
+	}
+	for i := range traceGCLRes.Decisions {
+		if traceGCLRes.Decisions[i].GCL.PreExecutionRisk == nil {
+			continue
+		}
+		safeRisk, _, err := sanitizeAnyForPersistence(
+			fmt.Sprintf("gcl.decisions[%d].pre_execution_risk", i),
+			traceGCLRes.Decisions[i].GCL.PreExecutionRisk,
+		)
+		if err != nil {
+			traceSafe = false
+			continue
+		}
+		traceGCLRes.Decisions[i].GCL.PreExecutionRisk = safeRisk
+	}
 	traceCritic := traceCriticResult(critics, primaryCmd)
 	finalStatus := gclFinalStatus(traceCritic.Scores, gclRes.OverallSafety, len(gclRes.Decisions))
 
@@ -452,7 +490,7 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		iterations = append(iterations, map[string]any{
 			"iter": 1,
 			"generator": map[string]any{
-				"command":        primaryCmd,
+				"command":        persistedCommand,
 				"exit_code":      0,
 				"result_excerpt": "dry-run",
 				// The canonical trace schema requires the full gcl
@@ -480,71 +518,70 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 	learning.TracePersisted = tracePath
 
 	trace := map[string]any{
-		// Canonical trace contract: huaweicloud-ces-ops/assets/
-		// gcl-trace.schema.json. docs/gcl-spec.md §6 advertises the
-		// orchestrator-trace family as schema-compatible, so the required
-		// top-level fields are emitted exactly as gcl.PersistTrace emits them.
+		// Canonical trace contract mirrors internal/gcl.PersistTrace.
 		"trace_schema_version": "v1",
 		"trace_id":             faultID,
 		"skill":                primary,
-		"request":              in.Fault,
-		"rubric_version":       "v1", // same literal the GCL writer uses
-		// This writer masks nothing: it persists the caller's fault text and
-		// its own plan commands verbatim, and the smoke-marker readers
-		// (internal/learning.IsSmokeTrace) depend on the raw request/fault.
-		// An empty list is the honest declaration — naming a field here
-		// without masking it would be a false trust signal.
-		"masked_fields":  []string{},
-		"fault":          in.Fault, // smoke marker for l4 traces (learning.IsSmokeTrace)
-		"source":         "l4",     // readers treat an absent source as "gcl"
-		"command":        primaryCmd,
+		"request":              persistedFault,
+		"rubric_version":       "v1",
+		"masked_fields": []string{
+			"request", "fault", "command", "iterations[].generator.command",
+			"final.output", "final.failure_pattern", "topology.origin",
+			"topology.affected_resources", "resource_scope.resource_id",
+			"gcl.decisions[].pre_execution_risk",
+		},
+		"fault":          persistedFault,
+		"smoke":          isSmokeFault(in.Fault),
+		"source":         "l4",
+		"command":        persistedCommand,
 		"started_at":     startedAt,
 		"finished_at":    NowISO(),
-		"status":         "pass",
-		"exit_code":      0,
+		"status":         "pending",
+		"exit_code":      -1,
 		"stdout":         "",
 		"stderr":         "",
 		"iteration":      1,
 		"max_iterations": 1,
 		"decision":       "pass",
-		"resource_scope": map[string]any{"resource_id": resource, "type": strings.SplitN(resource, ":", 2)[0]},
-		// No `operation_intent` block: the canonical schema requires
-		// operation / resource_scope / expected_state / safety_class whenever
-		// the key is present, and this dry-run planner derives none of them
-		// from a user request (it has a fault string and a keyword-matched
-		// plan, not an intent). The old {goal, risk_class} object made every
-		// orchestrator trace schema-invalid.
-		"critic_scores": traceCritic.Scores,
-		"iterations":    iterations,
+		"resource_scope": map[string]any{"resource_id": persistedResource, "type": resourceType},
+		"critic_scores":  traceCritic.Scores,
+		"iterations":     iterations,
 		"final": map[string]any{
-			"status":          finalStatus, // PASS | SAFETY_FAIL | MAX_ITER
+			"status":          finalStatus,
 			"iter":            1,
-			"output":          primaryCmd,
+			"output":          persistedCommand,
 			"dimensions":      traceCritic.Scores,
 			"overall":         meanCriticScore(traceCritic.Scores),
-			"critic_type":     "structural", // the l4 plan critic is the structural dry-run critic
-			"failure_pattern": l4FailurePattern(finalStatus, primary, primaryCmd, traceCritic),
+			"critic_type":     "structural",
+			"failure_pattern": l4FailurePattern(finalStatus, primary, persistedCommand, traceCritic),
 		},
 		"trust":         trustRes,
-		"topology":      topo,
+		"topology":      traceTopo,
 		"predictive":    pred,
 		"orchestration": orch,
-		"gcl":           gclRes,
+		"gcl":           traceGCLRes,
 		"learning":      learning,
 		"stages":        stages,
 	}
 	if finalStatus != "PASS" {
-		trace["status"] = "fail"
-		trace["exit_code"] = 1
-		trace["decision"] = "halt"
+		trace["status"] = "pending"
+		trace["exit_code"] = -1
+		trace["decision"] = "pending"
 	}
-	raw, err := json.MarshalIndent(trace, "", "  ")
-	if err != nil {
+	// All untrusted nested fields were copied and sanitized above; the raw
+	// execution objects remain outside this trace map.
+	if !traceSafe {
 		learning.TracePersisted = ""
-		fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, marshal %s: %v\n", tracePath, err)
-	} else if err := os.WriteFile(tracePath, append(raw, '\n'), 0o600); err != nil {
-		learning.TracePersisted = ""
-		fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, write %s: %v\n", tracePath, err)
+		fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted: unsafe free-form value\n")
+	} else {
+		raw, err := json.MarshalIndent(trace, "", "  ")
+		if err != nil {
+			learning.TracePersisted = ""
+			fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, marshal %s: %v\n", tracePath, err)
+		} else if err := atomicWriteFile(tracePath, append(raw, '\n'), "persist orchestrator trace"); err != nil {
+			learning.TracePersisted = ""
+			fmt.Fprintf(os.Stderr, "WARN: orchestrator trace not persisted, write %s: %v\n", tracePath, err)
+		}
 	}
 
 	decision := "human_review_required"
@@ -571,6 +608,14 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		decision = "auto_proceed"
 		// Build task from plan and run execution loop with persistence + RBAC.
 		task := BuildTaskFromPlan(plan, in.Fault, root)
+		// Honor the caller's risk classification per step, but never let the
+		// caller downgrade an action-inferred higher risk. Without this guard,
+		// `--risk=low` + a destructive action (delete/terminate/destroy/...) would
+		// overwrite the inferred high risk, jump from L1_provisional to
+		// L3_trusted, and silently let the RBAC gate approve destructive ops.
+		for i := range task.Steps {
+			task.Steps[i].Risk = riskForStep(risk, task.Steps[i].Risk)
+		}
 		persistTaskChecked(root, task)
 
 		// Record task creation in context memory.
@@ -637,13 +682,38 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 			})
 		}
 	}
+	if traceSafe && learning.TracePersisted != "" {
+		trace["finished_at"] = NowISO()
+		if executionTask == nil {
+			trace["status"], trace["exit_code"], trace["decision"] = "pending", -1, "pending"
+		} else {
+			switch executionTask.Status {
+			case TaskStatusCompleted:
+				trace["status"], trace["exit_code"], trace["decision"] = "pass", 0, "pass"
+				stages[2].Done, stages[3].Done = true, true
+			case TaskStatusFailed:
+				trace["status"], trace["exit_code"], trace["decision"] = "fail", 1, "halt"
+				stages[2].Done = true
+			default:
+				trace["status"], trace["exit_code"], trace["decision"] = "fail", -1, "halt"
+			}
+		}
+		trace["stages"] = stages
+		if raw, err := json.MarshalIndent(trace, "", "  "); err == nil {
+			if err := atomicWriteFile(tracePath, append(raw, '\n'), "finalize orchestrator trace"); err != nil {
+				learning.TracePersisted = ""
+			}
+		} else {
+			learning.TracePersisted = ""
+		}
+	}
 	// Eng-T5: mutations queue in-memory; one Flush at task-finalize.
 	if cm != nil {
 		if err := cm.Flush(); err != nil {
 			fmt.Fprintf(os.Stderr, "orchestrator: context memory flush: %v\n", err)
 		}
 	}
-	return &OrchestratorOutput{
+	output := &OrchestratorOutput{
 		FaultID:          faultID,
 		StartedAt:        startedAt,
 		FinishedAt:       NowISO(),
@@ -659,6 +729,12 @@ func HandleFault(in HandleFaultInput, _ *struct{}) *OrchestratorOutput {
 		Stages:           stages,
 		Decision:         decision,
 	}
+	safeOut, sErr := SanitizeOrchestratorOutput(output)
+	if sErr == nil {
+		return safeOut
+	}
+	fmt.Fprintf(os.Stderr, "SANITIZE-DEBUG: %v\n", sErr)
+	return &OrchestratorOutput{FaultID: faultID, StartedAt: output.StartedAt, FinishedAt: output.FinishedAt, Decision: decision, Stages: stages, Learning: learning}
 }
 
 // traceCriticResult folds the per-step structural-critic results into the

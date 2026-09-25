@@ -67,6 +67,53 @@ func TestOutcomeMemory_RecordAppendsJSONL(t *testing.T) {
 	}
 }
 
+func TestOutcomeMemoryRecordRedactsActionAndError(t *testing.T) {
+	const secret = "FAKESECRET1234567890"
+	root := t.TempDir()
+	mem, err := NewOutcomeMemory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Record(OutcomeRecord{Action: "run SK=" + secret, ErrorMsg: "failed HW_SECRET_ACCESS_KEY=" + secret}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".l4-memory", "outcomes.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(secret)) {
+		t.Fatalf("outcome memory contains raw secret: %s", raw)
+	}
+}
+
+func TestOutcomeMemoryRawActionLookupAndContextHash(t *testing.T) {
+	root := t.TempDir()
+	mem, err := NewOutcomeMemory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := "run --token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+	hash := "deadbeefdeadbeef"
+	if err := mem.Record(OutcomeRecord{Timestamp: time.Now().UTC().Format(time.RFC3339), Skill: "s", Action: raw, ContextHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := mem.RecentOutcomes("s", raw, 1)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("raw action lookup got=%+v err=%v", got, err)
+	}
+	if got[0].ContextHash != hash {
+		t.Fatalf("ContextHash changed: %q", got[0].ContextHash)
+	}
+	reloaded, err := NewOutcomeMemory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = reloaded.RecentOutcomes("s", raw, 1)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("reload lookup got=%+v err=%v", got, err)
+	}
+}
+
 func TestOutcomeMemory_DirAndFileMode(t *testing.T) {
 	dir := t.TempDir()
 	mem, err := NewOutcomeMemory(dir)

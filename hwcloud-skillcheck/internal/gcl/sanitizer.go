@@ -32,15 +32,16 @@ func IsValidSafetyClass(v string) bool {
 	return false
 }
 
-// SanitizeError wraps a sanitation failure with context.
+// SanitizeError wraps a sanitation failure with context. It intentionally
+// carries no rejected value: errors are emitted to stderr and must not become
+// a secondary secret-exfiltration path.
 type SanitizeError struct {
 	Field   string
-	Value   any
 	Message string
 }
 
 func (e *SanitizeError) Error() string {
-	return fmt.Sprintf("operation_intent.%s=%v; %s", e.Field, e.Value, e.Message)
+	return fmt.Sprintf("operation_intent.%s; %s", e.Field, e.Message)
 }
 
 // SanitizeOperationIntent JSON-unmarshals raw and returns a sanitized copy.
@@ -149,7 +150,6 @@ func enforceSafetyClass(intent map[string]any) error {
 	}
 	return &SanitizeError{
 		Field:   "safety_class",
-		Value:   v,
 		Message: fmt.Sprintf("must be one of %v; see docs/gcl-spec.md §operation_intent", SAFETY_CLASS_VALUES),
 	}
 }
@@ -164,22 +164,22 @@ func isMapWith(m map[string]any, key string) bool {
 // mirroring mask_resource_id in gcl_runner.py.
 //
 // Masking rules (in priority order):
-//   - Already-masked values (*** or <masked>) pass through unchanged (idempotent).
-//   - ARNs (acs:...) get only the trailing ID segment replaced with ***.
-//   - UUIDs (8-4-4-4-12 hex) become a plain ***.
-//   - Bare single-character inputs fall back to *** (no type prefix).
-//   - Everything else is normalized to <type>-*** where <type> is the alphabetic
-//     prefix (segment before the first hyphen).
+//   - Already-masked values (`***` or `<masked>`) pass through unchanged.
+//   - ARNs (acs:<svc>:<region>:<account>[:<res>]/<id>) get only the trailing
+//     resource ID segment replaced with `***`.
+//   - UUIDs (8-4-4-4-12 hex) become a plain `***`.
+//   - Bare single-character inputs fall back to `***` (no type prefix).
+//   - Everything else is normalized to `<type>-***` where `<type>` is the
+//     alphabetic prefix (segment before the first hyphen).
 func MaskResourceID(value string) string {
 	if value == "" {
 		return masked
 	}
-	if alreadyMaskedRe.MatchString(value) {
+	if value == masked || value == "<masked>" {
 		return value
 	}
 	if arn := arnRe.FindStringSubmatchIndex(value); len(arn) > 0 {
-		prefix := value[arn[2]:arn[3]]
-		return prefix + masked
+		return value[arn[2]:arn[3]] + masked
 	}
 	if uuidRe.MatchString(value) {
 		return masked
@@ -201,14 +201,18 @@ const masked = "***"
 // ---- private helpers -------------------------------------------------------
 
 var (
-	// arnRe matches Huawei Cloud ARNs: acs:<service>:<region>:<uid>:<res>/<id>
-	arnRe = regexp.MustCompile(`^(acs:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+/)(.+)$`)
+	// arnRe matches Huawei Cloud ARNs of either canonical shape:
+	//   - 4-segment: acs:<svc>:<region>:<uid>:<res>/<id>
+	//   - 3-segment with empty resource type: acs:<svc>:<region>:<uid>:/<id>
+	// Both end with a slash-delimited resource ID; the prefix group captures
+	// everything before that final segment so the masked output preserves the
+	// type/service/account context (e.g. "acs:ecs:cn-north-4:123456789:***").
+	arnRe = regexp.MustCompile(`^(acs:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z0-9-]*)(/.+)$`)
 
 	// uuidRe matches bare UUIDs (with optional hyphens).
 	uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-	// alreadyMaskedRe matches already-masked identifiers.
-	alreadyMaskedRe = regexp.MustCompile(`\*+\)|<masked>`)
+	alreadyMaskedRe = regexp.MustCompile(`^(?:\*{3}|<masked>)$`)
 )
 
 func indexOf(s, sep string) int {
@@ -242,12 +246,7 @@ func MaskSecrets(data []byte) string {
 
 // maskSecretsInString applies MaskSecrets to a single string value.
 // If the string contains "<masked>" it is returned unchanged (pre-sanitized).
-func maskSecretsInString(s string) string {
-	if containsMasked(s) {
-		return s
-	}
-	return MaskSecrets([]byte(s))
-}
+func maskSecretsInString(s string) string { return MaskSecrets([]byte(s)) }
 
 func containsMasked(s string) bool {
 	return contains(s, "***") || contains(s, "<masked>")
@@ -285,19 +284,15 @@ func SanitizeRequest(text string) (string, error) {
 	if requestAlreadyMaskedRe.MatchString(text) {
 		return text, nil
 	}
-
 	out := requestResourceIDRe.ReplaceAllString(text, "<id>")
 	out = requestARNRe.ReplaceAllString(out, "<arn>")
 	out = requestCredentialRe.ReplaceAllString(out, "<redacted>")
-
-	// Fail-closed: any remaining token of 16+ alphanumeric chars that does
-	// not match a recognised pattern is treated as an unknown leak.
+	out = requestAuthorizationRe.ReplaceAllString(out, "${1}<masked>")
+	out = requestCookieRe.ReplaceAllString(out, "${1}<masked>")
+	out = requestURLUserInfoRe.ReplaceAllString(out, "${1}<masked>@")
+	out = requestURLSecretRe.ReplaceAllString(out, "${1}<masked>")
 	if m := requestOpaqueTokenRe.FindString(out); m != "" {
-		return "", &SanitizeError{
-			Field:   "request",
-			Value:   m,
-			Message: "unrecognized opaque token; cannot classify as resource ID, ARN, or credential",
-		}
+		return "", &SanitizeError{Field: "request", Message: "unrecognized opaque token; cannot classify as resource ID, ARN, or credential"}
 	}
 	return out, nil
 }
@@ -319,9 +314,16 @@ var requestARNRe = regexp.MustCompile(`\bacs:[A-Za-z0-9-]+:[A-Za-z0-9-]+:[A-Za-z
 
 // requestCredentialRe matches the credential patterns described in the
 // gcl-runner secret regex set, extended with the HuaweiCloud AccessKey
-// pattern (AK=<value>). The replacement preserves any leading "key="
-// prefix so the masked output still reads like a credential assignment.
-var requestCredentialRe = regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY|SECRET_ACCESS_KEY|SecretAccessKey|AK|SK)\s*[=:]\s*[A-Za-z0-9/+=]{16,}`)
+// pattern (AK=<value>) and common password/secret/token flag shapes
+// (e.g. `--prod-db-password=Sup3rSecretValue123`). The replacement
+// preserves the credential KEY so the masked output still reads like an
+// assignment; the opaque-token check after this rule rejects any
+// 16+ char token that survives all structured rules.
+var requestCredentialRe = regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY|SECRET_ACCESS_KEY|SecretAccessKey|AK|SK|password|passwd|pwd|secret|token)\s*[=:]\s*[A-Za-z0-9/+=]{16,}`)
+var requestAuthorizationRe = regexp.MustCompile(`(?i)((?:Authorization|Proxy-Authorization)\s*:\s*)(?:Bearer|Basic|Digest)?\s*[^\r\n]+`)
+var requestCookieRe = regexp.MustCompile(`(?i)((?:Set-Cookie|Cookie)\s*:\s*)[^\r\n]+`)
+var requestURLUserInfoRe = regexp.MustCompile(`(?i)(https?://)[^/\s:@]+:[^@\s/]+@`)
+var requestURLSecretRe = regexp.MustCompile(`(?i)([?&](?:access_token|refresh_token|session(?:id)?|signature|x-amz-signature|api_key|apikey|token|secret|password)=)[^&#\s]+`)
 
 // requestOpaqueTokenRe catches leftover long alphanumeric tokens after the
 // structured rules have run. 16+ chars is the threshold: a typical
@@ -335,4 +337,4 @@ var requestCredentialRe = regexp.MustCompile(`(?i)(HW_SECRET_ACCESS_KEY|SECRET_A
 // would otherwise be silently accepted). resource IDs and ARNs have
 // already been masked by the rules above by the time this check
 // runs, so expanding the alphabet here is safe.
-var requestOpaqueTokenRe = regexp.MustCompile(`\b[A-Za-z0-9_-]{16,}\b`)
+var requestOpaqueTokenRe = regexp.MustCompile(`\b[A-Za-z0-9_./:-]{16,}\b`)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -100,11 +101,12 @@ func mustReadRandom(b []byte) error {
 	return err
 }
 
-// EnsureMemoryDir creates <root>/.l4-memory with mode 0700 if missing.
-// Returns the absolute-or-joined directory path.
 func EnsureMemoryDir(root string) (string, error) {
 	dir := filepath.Join(root, ".l4-memory")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil
@@ -114,19 +116,127 @@ func EnsureMemoryDir(root string) (string, error) {
 // The directory is created with mode 0700 (owner-only).
 func PersistTask(root, id string, state *TaskState) error {
 	state.UpdatedAt = NowISO()
+	persisted, err := sanitizedTaskForPersistence(state)
+	if err != nil {
+		return err
+	}
 	taskDir := filepath.Join(root, ".l4-tasks")
 	if err := os.MkdirAll(taskDir, 0o700); err != nil {
 		return fmt.Errorf("persist task: mkdir: %w", err)
 	}
+	if err := os.Chmod(taskDir, 0o700); err != nil {
+		return fmt.Errorf("persist task: chmod: %w", err)
+	}
 	path := filepath.Join(taskDir, id+".json")
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {
 		return fmt.Errorf("persist task: marshal: %w", err)
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
-		return fmt.Errorf("persist task: write: %w", err)
+	if err := atomicWriteFile(path, append(data, '\n'), "persist task"); err != nil {
+		return err
 	}
 	return nil
+}
+
+func atomicWriteFile(path string, data []byte, operation string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("%s: mkdir: %w", operation, err)
+	}
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("%s: chmod: %w", operation, err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*.tmp")
+	if err != nil {
+		return fmt.Errorf("%s: temp create: %w", operation, err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("%s: temp chmod: %w", operation, err)
+	}
+	n, err := tmp.Write(data)
+	if err != nil {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("%s: temp write: %w", operation, err)
+	}
+	if n != len(data) {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("%s: temp write: %w", operation, io.ErrShortWrite)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		cleanup()
+		return fmt.Errorf("%s: temp sync: %w", operation, err)
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("%s: temp close: %w", operation, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return fmt.Errorf("%s: rename: %w", operation, err)
+	}
+	f, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("%s: dir sync: %w", operation, err)
+	}
+	return nil
+}
+
+func sanitizedTaskForPersistence(state *TaskState) (*TaskState, error) {
+	if state == nil {
+		return nil, fmt.Errorf("persist task: nil state")
+	}
+	out := *state
+	var err error
+	for field, value := range map[string]*string{
+		"task id": &out.ID, "task fault": &out.Fault, "task root": &out.Root,
+		"task created": &out.CreatedAt, "task updated": &out.UpdatedAt,
+		"task parent": &out.ParentTaskID,
+	} {
+		if *value, err = sanitizeStringForPersistence(field, *value); err != nil {
+			return nil, fmt.Errorf("persist task: %w", err)
+		}
+	}
+	status := string(out.Status)
+	if status, err = sanitizeStringForPersistence("task status", status); err != nil {
+		return nil, fmt.Errorf("persist task: %w", err)
+	}
+	out.Status = TaskStatus(status)
+	if out.Fault, err = sanitizeRequestForPersistence("fault", out.Fault); err != nil {
+		return nil, fmt.Errorf("persist task: %w", err)
+	}
+	out.Steps = append([]TaskStep(nil), state.Steps...)
+	for i := range out.Steps {
+		if out.Steps[i].Action, err = sanitizeStringForPersistence("step action", out.Steps[i].Action); err != nil {
+			return nil, fmt.Errorf("persist task: %w", err)
+		}
+		if out.Steps[i].Command, err = sanitizeStringForPersistence("step command", out.Steps[i].Command); err != nil {
+			return nil, fmt.Errorf("persist task: %w", err)
+		}
+	}
+	out.Results = append([]StepResult(nil), state.Results...)
+	for i := range out.Results {
+		for field, value := range map[string]*string{
+			"result skill": &out.Results[i].Skill, "result command": &out.Results[i].Command,
+			"result started": &out.Results[i].StartedAt, "result finished": &out.Results[i].FinishedAt,
+			"result error": &out.Results[i].Error, "result output": &out.Results[i].Output,
+			"result rbac reason": &out.Results[i].RBACReason, "result gcl decision": &out.Results[i].GCLDecision,
+		} {
+			if *value, err = sanitizeStringForPersistence(field, *value); err != nil {
+				return nil, fmt.Errorf("persist task: %w", err)
+			}
+		}
+	}
+	return &out, nil
 }
 
 // persistTaskChecked persists a task checkpoint and logs a warning on failure
